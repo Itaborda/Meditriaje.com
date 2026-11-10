@@ -161,8 +161,8 @@ BEGIN
         SELECT ID INTO v_prof1_id FROM PROFESIONAL WHERE REGISTRO_MEDICO = 'RM-102938';
     EXCEPTION
         WHEN NO_DATA_FOUND THEN
-            INSERT INTO PROFESIONAL (USUARIO_ID, PUBLIC_ID, ESPECIALIDAD_ID, REGISTRO_MEDICO, NOMBRES, APELLIDOS)
-            VALUES (v_user_prof1_id, 'prof-carlos-mendoza-001', v_esp_mg_id, 'RM-102938', 'Carlos Alberto', 'Mendoza Vega')
+            INSERT INTO PROFESIONAL (USUARIO_ID, PUBLIC_ID, ESPECIALIDAD_ID, REGISTRO_MEDICO, NUMERO_DOCUMENTO, NOMBRES, APELLIDOS)
+            VALUES (v_user_prof1_id, 'prof-carlos-mendoza-001', v_esp_mg_id, 'RM-102938', '1065102938', 'Carlos Alberto', 'Mendoza Vega')
             RETURNING ID INTO v_prof1_id;
     END;
 
@@ -181,8 +181,8 @@ BEGIN
         SELECT ID INTO v_prof2_id FROM PROFESIONAL WHERE REGISTRO_MEDICO = 'RM-203948';
     EXCEPTION
         WHEN NO_DATA_FOUND THEN
-            INSERT INTO PROFESIONAL (USUARIO_ID, PUBLIC_ID, ESPECIALIDAD_ID, REGISTRO_MEDICO, NOMBRES, APELLIDOS)
-            VALUES (v_user_prof2_id, 'prof-laura-gomez-002', v_esp_ped_id, 'RM-203948', 'Laura Sofia', 'Gomez Rueda')
+            INSERT INTO PROFESIONAL (USUARIO_ID, PUBLIC_ID, ESPECIALIDAD_ID, REGISTRO_MEDICO, NUMERO_DOCUMENTO, NOMBRES, APELLIDOS)
+            VALUES (v_user_prof2_id, 'prof-laura-gomez-002', v_esp_ped_id, 'RM-203948', '1065203948', 'Laura Sofia', 'Gomez Rueda')
             RETURNING ID INTO v_prof2_id;
     END;
 
@@ -201,8 +201,8 @@ BEGIN
         SELECT ID INTO v_prof3_id FROM PROFESIONAL WHERE REGISTRO_MEDICO = 'RM-304958';
     EXCEPTION
         WHEN NO_DATA_FOUND THEN
-            INSERT INTO PROFESIONAL (USUARIO_ID, PUBLIC_ID, ESPECIALIDAD_ID, REGISTRO_MEDICO, NOMBRES, APELLIDOS)
-            VALUES (v_user_prof3_id, 'prof-andres-castro-003', v_esp_mi_id, 'RM-304958', 'Andres Felipe', 'Castro Ortiz')
+            INSERT INTO PROFESIONAL (USUARIO_ID, PUBLIC_ID, ESPECIALIDAD_ID, REGISTRO_MEDICO, NUMERO_DOCUMENTO, NOMBRES, APELLIDOS)
+            VALUES (v_user_prof3_id, 'prof-andres-castro-003', v_esp_mi_id, 'RM-304958', '1065304958', 'Andres Felipe', 'Castro Ortiz')
             RETURNING ID INTO v_prof3_id;
     END;
 
@@ -221,8 +221,8 @@ BEGIN
         SELECT ID INTO v_prof4_id FROM PROFESIONAL WHERE REGISTRO_MEDICO = 'RM-405968';
     EXCEPTION
         WHEN NO_DATA_FOUND THEN
-            INSERT INTO PROFESIONAL (USUARIO_ID, PUBLIC_ID, ESPECIALIDAD_ID, REGISTRO_MEDICO, NOMBRES, APELLIDOS)
-            VALUES (v_user_prof4_id, 'prof-marcela-morales-004', v_esp_odo_id, 'RM-405968', 'Marcela Patricia', 'Morales Diaz')
+            INSERT INTO PROFESIONAL (USUARIO_ID, PUBLIC_ID, ESPECIALIDAD_ID, REGISTRO_MEDICO, NUMERO_DOCUMENTO, NOMBRES, APELLIDOS)
+            VALUES (v_user_prof4_id, 'prof-marcela-morales-004', v_esp_odo_id, 'RM-405968', '1065405968', 'Marcela Patricia', 'Morales Diaz')
             RETURNING ID INTO v_prof4_id;
     END;
 
