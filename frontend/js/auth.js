@@ -127,7 +127,7 @@ class AuthService extends EventTarget {
    * Restablece la contraseña con el código OTP de 6 dígitos recibido por correo (ADR-014, F2.1.3).
    */
   async resetPassword(email, codigo, nuevoPassword) {
-    return await api.post('/auth/reset-password', { email, codigo, nuevoPassword });
+    return await api.post('/auth/reset-password', { email, codigo, passwordNuevo: nuevoPassword });
   }
 
   /**
