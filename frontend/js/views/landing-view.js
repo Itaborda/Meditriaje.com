@@ -569,7 +569,7 @@ export async function landingView(container) {
         <div class="footer-col">
           <h4>Proyecto Académico</h4>
           <ul>
-            <li><a href="https://github.com/Sebasr0311/MediTraje" target="_blank" rel="noopener noreferrer">Repositorio GitHub</a></li>
+            <li><a href="https://github.com/Itaborda/Meditriaje.com" target="_blank" rel="noopener noreferrer">Repositorio GitHub</a></li>
             <li><a href="javascript:void(0)" onclick="alert('Universidad Popular del Cesar · Ingeniería de Sistemas')">UPC Valledupar</a></li>
             <li><a href="javascript:void(0)" onclick="alert('Arquitectura Limpia · Java 21 · Spring Boot 3 · Oracle Autonomous DB · Vanilla ES Modules')">Stack Tecnológico</a></li>
             <li><a href="#/login">Portal Administrativo</a></li>
