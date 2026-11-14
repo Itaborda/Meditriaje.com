@@ -145,10 +145,13 @@ export function initSystemAssistantWidget() {
   host.innerHTML = `
     <!-- Botón flotante accesible (FAB) -->
     <button type="button" id="assistant-fab" class="assistant-fab" aria-expanded="false" aria-controls="assistant-panel" aria-label="Abrir asistente de MediTriaje" title="Asistente de orientación y ayuda">
-      <span class="assistant-fab-icon">
-        ${ui.icon('message-circle', 'icon icon--md')}
-      </span>
-      <span class="assistant-fab-badge" aria-hidden="true">Ayuda</span>
+          <span class="assistant-fab-avatar" aria-hidden="true">
+            <img src="assets/images/assistant-mascot.png" alt="" width="44" height="44">
+          </span>
+          <span class="assistant-fab-label" aria-hidden="true">
+            <span class="assistant-fab-label--long">¿Necesitas ayuda?</span>
+            <span class="assistant-fab-label--short">Ayuda</span>
+          </span>
     </button>
 
     <!-- Panel de Chat del Asistente -->
@@ -418,36 +421,54 @@ function inyectarEstilosWidget() {
   const style = document.createElement('style');
   style.id = 'assistant-widget-styles';
   style.textContent = `
-    .assistant-fab {
-      position: fixed;
-      bottom: calc(var(--space-6) + 60px);
-      right: var(--space-6);
-      z-index: 1000;
-      width: 56px;
-      height: 56px;
-      border-radius: var(--radius-full);
-      background-color: var(--primary);
-      color: var(--on-primary);
-      border: 2px solid var(--surface);
-      box-shadow: var(--shadow-lg);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      transition: transform var(--duration-fast) var(--ease), background-color var(--duration-fast) var(--ease);
-    }
-    .assistant-fab:hover {
-      transform: scale(1.06);
-      background-color: var(--primary-hover);
-    }
-    .assistant-fab-badge {
-      font-size: 9px;
-      font-weight: var(--weight-bold);
-      line-height: 1;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
+       .assistant-fab {
+         position: fixed;
+         bottom: calc(var(--space-6) + 60px);
+         right: var(--space-6);
+         z-index: 1000;
+         height: 56px;
+         padding: 4px 18px 4px 4px;
+         border-radius: var(--radius-full);
+         background-color: var(--primary);
+         color: var(--on-primary);
+         border: 2px solid var(--surface);
+         box-shadow: var(--shadow-lg);
+         display: flex;
+         flex-direction: row;
+         align-items: center;
+         gap: 10px;
+         cursor: pointer;
+         transition: transform var(--duration-fast) var(--ease), background-color var(--duration-fast) var(--ease);
+       }
+       .assistant-fab:hover {
+         transform: scale(1.04);
+         background-color: var(--primary-hover);
+       }
+       .assistant-fab-avatar {
+         width: 44px;
+         height: 44px;
+         flex: none;
+         display: grid;
+         place-items: center;
+         border-radius: 50%;
+         background-color: #fff;
+         overflow: hidden;
+       }
+       .assistant-fab-avatar img {
+         display: block;
+         width: 34px;
+         height: 34px;
+         object-fit: contain;
+       }
+       .assistant-fab-label {
+         font-size: var(--text-sm, 0.875rem);
+         font-weight: var(--weight-bold);
+         line-height: 1.1;
+         white-space: nowrap;
+       }
+       .assistant-fab-label--short {
+         display: none;
+       }
     .assistant-panel {
       position: fixed;
       bottom: calc(var(--space-6) + 120px);
@@ -667,12 +688,20 @@ function inyectarEstilosWidget() {
         bottom: calc(var(--space-4) + 60px);
         right: var(--space-4);
       }
+      .assistant-fab-label--long {
+        display: none;
+         }
+      .assistant-fab-label--short {
+        display: inline;
+      }
       .assistant-panel {
         right: var(--space-4);
         left: var(--space-4);
         width: auto;
         bottom: calc(var(--space-4) + 120px);
       }
+
+
     }
   `;
   document.head.appendChild(style);
