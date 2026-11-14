@@ -3385,10 +3385,4 @@ body.has-sidebar.sidebar-is-pinned .app-footer {
   margin: 0 auto var(--space-3) auto;
 }
 
-/* En modo oscuro el azul del logo se pierde: se le pone un respaldo claro */
-[data-theme="dark"] .brand-logo,
-[data-theme="dark"] .auth-logo {
-  background-color: #f8fafc;
-  border-radius: var(--radius-md);
-  padding: 0.25rem;
-}
+
