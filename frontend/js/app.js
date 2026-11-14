@@ -36,6 +36,7 @@ import { renderAffiliationSearch } from './views/affiliation-search.js';
 import { renderOperationalDashboard } from './views/operational-dashboard.js';
 import { initSystemAssistantWidget } from './views/system-assistant-widget.js';
 import { initSidebar, updateSidebar } from './components/app-sidebar.js';
+import { initAccessibilityWidget } from './components/accessibility-widget.js';
 
 // Inicialización de Tema Claro / Oscuro
 function initTheme() {
@@ -264,6 +265,7 @@ function setupRoutes() {
 async function bootstrap() {
   initTheme();
   initSidebar();
+  initAccessibilityWidget();
   setupRoutes();
 
   // Escuchar cambios de autenticación para sincronizar la barra superior
