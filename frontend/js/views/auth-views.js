@@ -17,9 +17,7 @@ export function loginView(container, { queryParams } = {}) {
     <div class="container-narrow" style="padding-top: var(--space-8); padding-bottom: var(--space-8);">
       <div class="card" style="padding: var(--space-8);">
         <div class="text-center mb-6">
-          <div class="empty-state-icon" style="margin: 0 auto var(--space-3) auto; background-color: var(--teal-50); color: var(--primary);">
-            ${ui.icon('shield', 'icon icon--lg')}
-          </div>
+         <img src="assets/images/logo-full.png" alt="MediTriaje" class="auth-logo" width="220" height="186">
           <h1 class="text-2xl font-bold mb-1">Iniciar Sesión</h1>
           <p class="text-sm text-muted">Ingresa tus credenciales para acceder a MediTriaje</p>
         </div>
@@ -220,9 +218,7 @@ function renderMfaChallengeStep(container, challengeToken, email, queryParams) {
     <div class="container-narrow" style="padding-top: var(--space-8); padding-bottom: var(--space-8);">
       <div class="card" style="padding: var(--space-8);">
         <div class="text-center mb-6">
-          <div class="empty-state-icon" style="margin: 0 auto var(--space-3) auto; background-color: var(--teal-50); color: var(--primary);">
-            ${ui.icon('shield', 'icon icon--lg')}
-          </div>
+         <img src="assets/images/logo-full.png" alt="MediTriaje" class="auth-logo" width="220" height="186">
           <h1 class="text-2xl font-bold mb-1">Verificación en Dos Pasos</h1>
           <p class="text-sm text-muted">Ingresa el código para <strong>${esc(email)}</strong></p>
         </div>
@@ -1128,9 +1124,7 @@ export function forgotPasswordView(container) {
       <div class="container-narrow" style="padding-top: var(--space-8); padding-bottom: var(--space-8);">
         <div class="card" style="padding: var(--space-8);">
           <div class="text-center mb-6">
-            <div class="empty-state-icon" style="margin: 0 auto var(--space-3) auto; background-color: var(--teal-50); color: var(--primary);">
-              ${ui.icon('shield', 'icon icon--lg')}
-            </div>
+           <img src="assets/images/logo-full.png" alt="MediTriaje" class="auth-logo" width="220" height="186">
             <h1 class="text-2xl font-bold mb-1">Recuperar Contraseña</h1>
             <p class="text-sm text-muted">Te enviaremos un código numérico de 6 dígitos a tu correo registrado</p>
           </div>
@@ -1243,9 +1237,7 @@ export function forgotPasswordView(container) {
       <div class="container-narrow" style="padding-top: var(--space-8); padding-bottom: var(--space-8);">
         <div class="card" style="padding: var(--space-8);">
           <div class="text-center mb-6">
-            <div class="empty-state-icon" style="margin: 0 auto var(--space-3) auto; background-color: var(--teal-50); color: var(--primary);">
-              ${ui.icon('shield', 'icon icon--lg')}
-            </div>
+            <img src="assets/images/logo-full.png" alt="MediTriaje" class="auth-logo" width="220" height="186">
             <h1 class="text-2xl font-bold mb-1">Nueva Contraseña</h1>
             <p class="text-sm text-muted">Ingresa el código OTP de 6 dígitos enviado a tu correo</p>
           </div>

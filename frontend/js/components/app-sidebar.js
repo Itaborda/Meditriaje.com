@@ -388,7 +388,7 @@ export function updateSidebar() {
     <!-- Cabecera del Menú Lateral Accesible -->
     <div class="sidebar-header">
       <div class="sidebar-brand-group">
-        <span class="sidebar-brand-badge" aria-hidden="true">${ui.icon('hospital', 'icon text-primary')}</span>
+        <span class="sidebar-brand-badge" aria-hidden="true"><img src="assets/images/logo-icon.png" alt="" class="brand-logo"></span>
         <span class="sidebar-brand-title font-bold">MediTriaje</span>
       </div>
 
