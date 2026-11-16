@@ -34,7 +34,8 @@ import java.util.Objects;
 @RestController
 @RequestMapping("/api/v1/emergency")
 @PreAuthorize("isAuthenticated()")
-public class EmergencyController {
+public class
+EmergencyController {
 
     private final EmergencyService emergencyService;
 
