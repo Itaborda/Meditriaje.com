@@ -53,7 +53,6 @@ class NoSqlOutsideGatewayTest {
             "com/meditriaje/repository/BreakGlassRepository.java",
             "com/meditriaje/repository/CamaHospitalariaRepository.java",
             "com/meditriaje/repository/CitaRepository.java",
-            "com/meditriaje/repository/CodigoVerificacionRepository.java",
             "com/meditriaje/repository/ConsentimientoRepository.java",
             "com/meditriaje/repository/DiagnosticoCie10Repository.java",
             "com/meditriaje/repository/DispensacionRepository.java",
@@ -67,7 +66,6 @@ class NoSqlOutsideGatewayTest {
             "com/meditriaje/repository/IngresoUrgenciaRepository.java",
             "com/meditriaje/repository/LoteImportacionEpsRepository.java",
             "com/meditriaje/repository/MedicamentoRepository.java",
-            "com/meditriaje/repository/MfaBackupCodeRepository.java",
             "com/meditriaje/repository/MovimientoPacienteRepository.java",
             "com/meditriaje/repository/OcupacionCamaRepository.java",
             "com/meditriaje/repository/PacienteRepository.java",
@@ -75,14 +73,12 @@ class NoSqlOutsideGatewayTest {
             "com/meditriaje/repository/ProfesionalRepository.java",
             "com/meditriaje/repository/RecetaRepository.java",
             "com/meditriaje/repository/RecordatorioCitaRepository.java",
-            "com/meditriaje/repository/RefreshTokenRepository.java",
             "com/meditriaje/repository/ReporteRepository.java",
             "com/meditriaje/repository/RepresentacionLegalRepository.java",
             "com/meditriaje/repository/SeguimientoQrRepository.java",
             "com/meditriaje/repository/SeguimientoRepository.java",
             "com/meditriaje/repository/TriajeReglasRepository.java",
             "com/meditriaje/repository/TriajeRepository.java",
-            "com/meditriaje/repository/UsuarioRepository.java",
             "com/meditriaje/repository/ValoracionTriajeRepository.java"
     );
 

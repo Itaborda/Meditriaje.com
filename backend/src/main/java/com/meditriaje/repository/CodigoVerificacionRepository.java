@@ -1,28 +1,29 @@
 package com.meditriaje.repository;
 
 import com.meditriaje.model.CodigoVerificacion;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.meditriaje.repository.plsql.PackageGateway;
+import com.meditriaje.repository.plsql.ProcedureSpec;
 import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.stereotype.Repository;
 
-import java.sql.PreparedStatement;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Repositorio JDBC para la entidad {@code CODIGO_VERIFICACION} (F2.1, ADR-014).
- * Almacena y valida códigos de recuperación y verificación con SQL parametrizado.
+ * Repositorio para la entidad {@code CODIGO_VERIFICACION} (F2.1, ADR-014). Almacena y valida códigos de
+ * recuperación y verificación mediante las rutinas de {@code PKG_IDENTITY}; no contiene SQL.
  */
 @Repository
 public class CodigoVerificacionRepository {
 
-    private final JdbcTemplate jdbcTemplate;
+    static final String PACKAGE = "PKG_IDENTITY";
 
-    private final RowMapper<CodigoVerificacion> codigoRowMapper = (rs, rowNum) -> {
+    static final RowMapper<CodigoVerificacion> CODIGO_MAPPER = (rs, rowNum) -> {
         Timestamp tsExp = rs.getTimestamp("FECHA_EXPIRACION");
         Timestamp tsCreated = rs.getTimestamp("CREATED_AT");
         return new CodigoVerificacion(
@@ -39,32 +40,62 @@ public class CodigoVerificacionRepository {
         );
     };
 
-    public CodigoVerificacionRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "JdbcTemplate no puede ser nulo");
+    static final ProcedureSpec CREATE_VERIFICATION_CODE =
+            ProcedureSpec.procedure(PACKAGE, "create_verification_code")
+                    .in("p_public_id", Types.VARCHAR)
+                    .in("p_user_id", Types.NUMERIC)
+                    .in("p_type", Types.VARCHAR)
+                    .in("p_code_hash", Types.VARCHAR)
+                    .in("p_expires_at", Types.TIMESTAMP)
+                    .in("p_failed_attempts", Types.NUMERIC)
+                    .in("p_max_attempts", Types.NUMERIC)
+                    .in("p_used", Types.NUMERIC)
+                    .out("o_code_id", Types.NUMERIC)
+                    .build();
+
+    static final ProcedureSpec GET_VERIFICATION_CODE_BY_ID =
+            ProcedureSpec.procedure(PACKAGE, "get_verification_code_by_id")
+                    .in("p_code_id", Types.NUMERIC)
+                    .cursor("o_code", CODIGO_MAPPER)
+                    .build();
+
+    static final ProcedureSpec GET_LATEST_PENDING_CODE = ProcedureSpec.procedure(PACKAGE, "get_latest_pending_code")
+            .in("p_user_id", Types.NUMERIC)
+            .in("p_type", Types.VARCHAR)
+            .cursor("o_code", CODIGO_MAPPER)
+            .build();
+
+    static final ProcedureSpec INCREMENT_CODE_ATTEMPTS = ProcedureSpec.procedure(PACKAGE, "increment_code_attempts")
+            .in("p_code_id", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec MARK_CODE_USED = ProcedureSpec.procedure(PACKAGE, "mark_code_used")
+            .in("p_code_id", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec INVALIDATE_PENDING_CODES =
+            ProcedureSpec.procedure(PACKAGE, "invalidate_pending_codes")
+                    .in("p_user_id", Types.NUMERIC)
+                    .in("p_type", Types.VARCHAR)
+                    .build();
+
+    private final PackageGateway gateway;
+
+    public CodigoVerificacionRepository(PackageGateway gateway) {
+        this.gateway = Objects.requireNonNull(gateway, "gateway no puede ser nulo");
     }
 
     public Long crear(CodigoVerificacion codigo) {
-        final String sql = """
-            INSERT INTO CODIGO_VERIFICACION (
-                PUBLIC_ID, USUARIO_ID, TIPO, CODIGO_HASH, FECHA_EXPIRACION, INTENTOS_FALLIDOS, MAX_INTENTOS, USADO
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """;
-
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(sql, new String[] { "ID" });
-            ps.setString(1, codigo.publicId());
-            ps.setLong(2, codigo.usuarioId());
-            ps.setString(3, codigo.tipo());
-            ps.setString(4, codigo.codigoHash());
-            ps.setTimestamp(5, Timestamp.from(codigo.fechaExpiracion()));
-            ps.setInt(6, codigo.intentosFallidos());
-            ps.setInt(7, codigo.maxIntentos());
-            ps.setInt(8, codigo.usado() ? 1 : 0);
-            return ps;
-        }, keyHolder);
-
-        Number key = keyHolder.getKey();
+        Map<String, Object> out = gateway.execute(CREATE_VERIFICATION_CODE, new MapSqlParameterSource()
+                .addValue("p_public_id", codigo.publicId())
+                .addValue("p_user_id", codigo.usuarioId())
+                .addValue("p_type", codigo.tipo())
+                .addValue("p_code_hash", codigo.codigoHash())
+                .addValue("p_expires_at", Timestamp.from(codigo.fechaExpiracion()))
+                .addValue("p_failed_attempts", codigo.intentosFallidos())
+                .addValue("p_max_attempts", codigo.maxIntentos())
+                .addValue("p_used", codigo.usado() ? 1 : 0));
+        Number key = (Number) out.get("o_code_id");
         if (key == null) {
             throw new IllegalStateException("No se pudo obtener el ID autogenerado para el codigo de verificacion.");
         }
@@ -72,51 +103,29 @@ public class CodigoVerificacionRepository {
     }
 
     public Optional<CodigoVerificacion> buscarPorId(Long id) {
-        final String sql = """
-            SELECT ID, PUBLIC_ID, USUARIO_ID, TIPO, CODIGO_HASH, FECHA_EXPIRACION, INTENTOS_FALLIDOS, MAX_INTENTOS, USADO, CREATED_AT
-            FROM CODIGO_VERIFICACION
-            WHERE ID = ?
-            """;
-        List<CodigoVerificacion> resultados = jdbcTemplate.query(sql, codigoRowMapper, id);
+        List<CodigoVerificacion> resultados =
+                gateway.list(GET_VERIFICATION_CODE_BY_ID, new MapSqlParameterSource("p_code_id", id), "o_code");
         return resultados.stream().findFirst();
     }
 
     public Optional<CodigoVerificacion> buscarUltimoPendientePorUsuarioYTipo(Long usuarioId, String tipo) {
-        final String sql = """
-            SELECT ID, PUBLIC_ID, USUARIO_ID, TIPO, CODIGO_HASH, FECHA_EXPIRACION, INTENTOS_FALLIDOS, MAX_INTENTOS, USADO, CREATED_AT
-            FROM CODIGO_VERIFICACION
-            WHERE USUARIO_ID = ? AND TIPO = ? AND USADO = 0
-            ORDER BY CREATED_AT DESC, ID DESC
-            FETCH FIRST 1 ROWS ONLY
-            """;
-        List<CodigoVerificacion> resultados = jdbcTemplate.query(sql, codigoRowMapper, usuarioId, tipo);
+        List<CodigoVerificacion> resultados = gateway.list(GET_LATEST_PENDING_CODE, new MapSqlParameterSource()
+                .addValue("p_user_id", usuarioId)
+                .addValue("p_type", tipo), "o_code");
         return resultados.stream().findFirst();
     }
 
     public void incrementarIntentos(Long id) {
-        final String sql = """
-            UPDATE CODIGO_VERIFICACION
-            SET INTENTOS_FALLIDOS = INTENTOS_FALLIDOS + 1
-            WHERE ID = ?
-            """;
-        jdbcTemplate.update(sql, id);
+        gateway.execute(INCREMENT_CODE_ATTEMPTS, new MapSqlParameterSource("p_code_id", id));
     }
 
     public void marcarComoUsado(Long id) {
-        final String sql = """
-            UPDATE CODIGO_VERIFICACION
-            SET USADO = 1
-            WHERE ID = ?
-            """;
-        jdbcTemplate.update(sql, id);
+        gateway.execute(MARK_CODE_USED, new MapSqlParameterSource("p_code_id", id));
     }
 
     public void invalidarCodigosPrevios(Long usuarioId, String tipo) {
-        final String sql = """
-            UPDATE CODIGO_VERIFICACION
-            SET USADO = 1
-            WHERE USUARIO_ID = ? AND TIPO = ? AND USADO = 0
-            """;
-        jdbcTemplate.update(sql, usuarioId, tipo);
+        gateway.execute(INVALIDATE_PENDING_CODES, new MapSqlParameterSource()
+                .addValue("p_user_id", usuarioId)
+                .addValue("p_type", tipo));
     }
 }

@@ -1,113 +1,54 @@
 package com.meditriaje.repository;
 
-import com.meditriaje.model.CodigoVerificacion;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
-
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.List;
-import java.util.Optional;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@ExtendWith(MockitoExtension.class)
+import com.meditriaje.model.CodigoVerificacion;
+import com.meditriaje.repository.plsql.PackageGateway;
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.namedparam.SqlParameterSource;
+
+/** Códigos de verificación vía PKG_IDENTITY (sin SQL en Java). */
 class CodigoVerificacionRepositoryTest {
 
-    @Mock
-    private JdbcTemplate jdbcTemplate;
-
-    private CodigoVerificacionRepository repository;
-
-    @BeforeEach
-    void setUp() {
-        repository = new CodigoVerificacionRepository(jdbcTemplate);
-    }
+    private final PackageGateway gateway = mock(PackageGateway.class);
+    private final CodigoVerificacionRepository repository = new CodigoVerificacionRepository(gateway);
 
     @Test
-    void buscarPorId_retornaCodigoSiExiste() {
+    void crear_enviaLaBanderaUsadoComoNumeroYDevuelveElId() {
+        when(gateway.execute(eq(CodigoVerificacionRepository.CREATE_VERIFICATION_CODE), any(SqlParameterSource.class)))
+                .thenReturn(Map.of("o_code_id", new BigDecimal("5")));
         CodigoVerificacion codigo = new CodigoVerificacion(
-                1L, "cod-uuid", 10L, CodigoVerificacion.TIPO_RECUPERACION_PASSWORD,
-                "hash123", Instant.now().plus(15, ChronoUnit.MINUTES), 0, 3, false, Instant.now()
-        );
+                null, "pub", 7L, "RECUPERACION_PASSWORD", "hash", Instant.now(), 0, 3, false, null);
 
-        when(jdbcTemplate.query(anyString(), any(RowMapper.class), eq(1L)))
-                .thenReturn(List.of(codigo));
-
-        Optional<CodigoVerificacion> resultado = repository.buscarPorId(1L);
-
-        assertThat(resultado).isPresent();
-        assertThat(resultado.get().id()).isEqualTo(1L);
-        assertThat(resultado.get().usuarioId()).isEqualTo(10L);
-        assertThat(resultado.get().codigoHash()).isEqualTo("hash123");
+        assertThat(repository.crear(codigo)).isEqualTo(5L);
+        verify(gateway).execute(eq(CodigoVerificacionRepository.CREATE_VERIFICATION_CODE),
+                argThat((SqlParameterSource p) -> Integer.valueOf(0).equals(p.getValue("p_used"))));
     }
 
     @Test
-    void buscarPorId_retornaVacioSiNoExiste() {
-        when(jdbcTemplate.query(anyString(), any(RowMapper.class), eq(99L)))
-                .thenReturn(List.of());
+    void buscarPorId_vacioSinFilas() {
+        when(gateway.list(eq(CodigoVerificacionRepository.GET_VERIFICATION_CODE_BY_ID), any(SqlParameterSource.class),
+                eq("o_code"))).thenReturn(List.of());
 
-        Optional<CodigoVerificacion> resultado = repository.buscarPorId(99L);
-
-        assertThat(resultado).isEmpty();
+        assertThat(repository.buscarPorId(1L)).isEmpty();
     }
 
     @Test
-    void buscarUltimoPendientePorUsuarioYTipo_retornaCodigoSiExiste() {
-        CodigoVerificacion codigo = new CodigoVerificacion(
-                2L, "cod-uuid-2", 10L, CodigoVerificacion.TIPO_RECUPERACION_PASSWORD,
-                "hash456", Instant.now().plus(15, ChronoUnit.MINUTES), 1, 3, false, Instant.now()
-        );
+    void invalidarCodigosPrevios_enviaUsuarioYTipo() {
+        repository.invalidarCodigosPrevios(3L, "RECUPERACION_PASSWORD");
 
-        when(jdbcTemplate.query(anyString(), any(RowMapper.class), eq(10L), eq(CodigoVerificacion.TIPO_RECUPERACION_PASSWORD)))
-                .thenReturn(List.of(codigo));
-
-        Optional<CodigoVerificacion> resultado = repository
-                .buscarUltimoPendientePorUsuarioYTipo(10L, CodigoVerificacion.TIPO_RECUPERACION_PASSWORD);
-
-        assertThat(resultado).isPresent();
-        assertThat(resultado.get().id()).isEqualTo(2L);
-        assertThat(resultado.get().intentosFallidos()).isEqualTo(1);
-    }
-
-    @Test
-    void incrementarIntentos_ejecutaUpdateParametrizado() {
-        repository.incrementarIntentos(5L);
-
-        verify(jdbcTemplate).update(
-                anyString(),
-                eq(5L)
-        );
-    }
-
-    @Test
-    void marcarComoUsado_ejecutaUpdateParametrizado() {
-        repository.marcarComoUsado(5L);
-
-        verify(jdbcTemplate).update(
-                anyString(),
-                eq(5L)
-        );
-    }
-
-    @Test
-    void invalidarCodigosPrevios_ejecutaUpdateParametrizado() {
-        repository.invalidarCodigosPrevios(10L, CodigoVerificacion.TIPO_RECUPERACION_PASSWORD);
-
-        verify(jdbcTemplate).update(
-                anyString(),
-                eq(10L),
-                eq(CodigoVerificacion.TIPO_RECUPERACION_PASSWORD)
-        );
+        verify(gateway).execute(eq(CodigoVerificacionRepository.INVALIDATE_PENDING_CODES),
+                argThat((SqlParameterSource p) -> Long.valueOf(3L).equals(p.getValue("p_user_id"))
+                        && "RECUPERACION_PASSWORD".equals(p.getValue("p_type"))));
     }
 }
