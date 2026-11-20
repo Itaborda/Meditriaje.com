@@ -3,7 +3,7 @@
  * KPIs de capacidad, Resolución 5596/2015 MinSalud Colombia, reconocimiento auditado de alertas y QR (O01, O02, O03).
  */
 
-import { operationalApi, emergencyApi } from '../api.js';
+import { operationalApi } from '../api.js';
 import { ui, esc } from '../ui.js';
 
 let refreshIntervalId = null;
@@ -55,15 +55,11 @@ export async function renderOperationalDashboard(container) {
         </p>
       </div>
 
-      <!-- Controles de Sede y Refresco -->
+      <!-- Hospital único (el servidor resuelve la sede) y controles de refresco -->
       <div class="operational-header-actions">
         <div>
-          <label for="select-sede-op" class="font-medium text-xs text-muted" style="display: block; margin-bottom: 4px;">
-            Sede Hospitalaria:
-          </label>
-          <select id="select-sede-op" class="form-control" style="min-width: 230px;" aria-label="Seleccionar sede hospitalaria">
-            <option value="">Cargando sedes...</option>
-          </select>
+          <span class="font-medium text-xs text-muted" style="display: block; margin-bottom: 4px;">Hospital:</span>
+          <strong id="hospital-name-op" class="text-sm">-</strong>
         </div>
 
         <div style="display: flex; gap: var(--space-2); align-self: flex-end;">
@@ -98,7 +94,7 @@ export async function renderOperationalDashboard(container) {
         <div>
           <strong style="font-weight: var(--weight-bold); font-size: var(--text-sm);">ALERTA DE SATURACIÓN OPERATIVA EN CURSO:</strong>
           <div id="texto-alerta-critica" style="font-size: var(--text-sm); margin-top: 2px;">
-            Existen demoras asistenciales o saturación de camas activas en esta sede.
+            Existen demoras asistenciales o saturación de camas activas en el hospital.
           </div>
         </div>
       </div>
@@ -385,7 +381,7 @@ export async function renderOperationalDashboard(container) {
   `;
 
   // Referencias al DOM
-  const selectSede = container.querySelector('#select-sede-op');
+  const hospitalNameEl = container.querySelector('#hospital-name-op');
   const bannerAlerta = container.querySelector('#banner-alerta-critica');
   const textoAlerta = container.querySelector('#texto-alerta-critica');
   const btnToggleAutoRefresh = container.querySelector('#btnToggleAutoRefresh');
@@ -432,38 +428,14 @@ export async function renderOperationalDashboard(container) {
 
   let isAutoRefreshActive = true;
 
-  // Cargar sedes activas
-  try {
-    const rawSedes = await emergencyApi.listarSedes();
-    const sedes = Array.isArray(rawSedes) ? rawSedes : (rawSedes?.content || []);
-    selectSede.innerHTML = '';
-    if (sedes && sedes.length > 0) {
-      sedes.forEach(s => {
-        const opt = document.createElement('option');
-        opt.value = s.publicId;
-        opt.textContent = s.nombre;
-        selectSede.appendChild(opt);
-      });
-      await cargarDatosDashboard(selectSede.value);
-    } else {
-      selectSede.innerHTML = '<option value="">Hospital Rosario Pumarejo de López</option>';
-      await cargarDatosDashboard(null);
-    }
-  } catch (err) {
-    selectSede.innerHTML = '<option value="">Hospital Rosario Pumarejo de López</option>';
-    await cargarDatosDashboard(null);
-  }
-
-  // Cambio de sede
-  selectSede.addEventListener('change', () => {
-    cargarDatosDashboard(selectSede.value);
-  });
+  // Carga inicial del panel del hospital
+  await cargarDatosDashboard();
 
   // Botón manual de refresco
   btnManualRefresh.addEventListener('click', async () => {
     btnManualRefresh.disabled = true;
     btnManualRefresh.innerHTML = `${ui.icon('refresh', 'icon icon--sm icon--spin')} <span>Actualizando...</span>`;
-    await cargarDatosDashboard(selectSede.value);
+    await cargarDatosDashboard();
     btnManualRefresh.disabled = false;
     btnManualRefresh.innerHTML = `${ui.icon('refresh', 'icon icon--sm')} <span>Actualizar</span>`;
     ui.showToast('Métricas operativas actualizadas.', 'info', 2000);
@@ -493,7 +465,7 @@ export async function renderOperationalDashboard(container) {
     refreshIntervalId = setInterval(() => {
       // Solo refrescar si la vista actual sigue siendo el dashboard operativo
       if (window.location.hash.startsWith('#/operational/dashboard')) {
-        cargarDatosDashboard(selectSede.value, true);
+        cargarDatosDashboard(true);
       } else {
         detenerAutoRefresh();
       }
@@ -513,9 +485,10 @@ export async function renderOperationalDashboard(container) {
   /**
    * Carga y renderiza datos del dashboard desde el backend.
    */
-  async function cargarDatosDashboard(sedePubId, isBackground = false) {
+  async function cargarDatosDashboard(isBackground = false) {
     try {
-      const data = await operationalApi.obtenerDashboard(sedePubId);
+      const data = await operationalApi.obtenerDashboard();
+      if (hospitalNameEl) hospitalNameEl.textContent = data.sedeNombre || 'Hospital';
 
       // 1. KPI Ocupación
       const pct = Math.round(data.tasaOcupacionPorcentaje || 0);
@@ -601,7 +574,7 @@ export async function renderOperationalDashboard(container) {
       // 6. Alertas Activas
       if (totalAlertas > 0) {
         bannerAlerta.style.display = 'flex';
-        textoAlerta.textContent = `Atención: Existen ${totalAlertas} alerta(s) de saturación que requieren intervención inmediata en esta sede.`;
+        textoAlerta.textContent = `Atención: Existen ${totalAlertas} alerta(s) de saturación que requieren intervención inmediata en el hospital.`;
         tbodyAlertas.innerHTML = '';
 
         data.alertasActivas.forEach(a => {
@@ -649,7 +622,7 @@ export async function renderOperationalDashboard(container) {
             <td colspan="6" style="text-align: center; color: var(--text-muted); padding: var(--space-6);">
               <div class="flex items-center justify-center gap-2" style="color: var(--success); font-weight: var(--weight-medium);">
                 ${ui.icon('check-circle', 'icon')}
-                <span>No hay alertas activas en esta sede. La operación hospitalaria transcurre con normalidad.</span>
+                <span>No hay alertas activas en el hospital. La operación hospitalaria transcurre con normalidad.</span>
               </div>
             </td>
           </tr>
@@ -701,7 +674,7 @@ export async function renderOperationalDashboard(container) {
         try {
           await operationalApi.reconocerAlerta(alertaId, motivo);
           ui.showToast('Alerta reconocida con éxito y asentada en auditoría.', 'success');
-          await cargarDatosDashboard(selectSede.value);
+          await cargarDatosDashboard();
         } catch (err) {
           ui.showToast(err.message || 'Error al reconocer la alerta.', 'error');
           return false;
@@ -738,7 +711,7 @@ export async function renderOperationalDashboard(container) {
       else if (nivel === 'II') qrNivel.style.borderLeft = '3px solid var(--triage-2-bd)';
       else if (nivel === 'III') qrNivel.style.borderLeft = '3px solid var(--triage-3-bd)';
 
-      qrSedeVal.textContent = qrData.sedeNombre || selectSede.options[selectSede.selectedIndex]?.text || 'Sede Principal';
+      qrSedeVal.textContent = qrData.sedeNombre || hospitalNameEl?.textContent || 'Hospital';
       qrTokenVal.textContent = qrData.tokenQr;
 
       ui.showToast('Localización intrahospitalaria verificada con éxito.', 'success', 2500);

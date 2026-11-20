@@ -20,7 +20,7 @@ import com.meditriaje.repository.DispensacionRepository;
 import com.meditriaje.repository.DispensacionRepository.ItemPrescritoInfo;
 import com.meditriaje.repository.PacienteRepository;
 import com.meditriaje.repository.RecetaRepository;
-import com.meditriaje.repository.SedeRepository;
+import com.meditriaje.repository.SiteRepository;
 import com.meditriaje.repository.UsuarioRepository;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.stereotype.Service;
@@ -47,7 +47,7 @@ import java.util.stream.Collectors;
 public class DispensationService {
 
     private final UsuarioRepository usuarioRepository;
-    private final SedeRepository sedeRepository;
+    private final SiteRepository siteRepository;
     private final RecetaRepository recetaRepository;
     private final PacienteRepository pacienteRepository;
     private final DispensacionRepository dispensacionRepository;
@@ -56,7 +56,7 @@ public class DispensationService {
 
     public DispensationService(
             UsuarioRepository usuarioRepository,
-            SedeRepository sedeRepository,
+            SiteRepository siteRepository,
             RecetaRepository recetaRepository,
             PacienteRepository pacienteRepository,
             DispensacionRepository dispensacionRepository,
@@ -64,7 +64,7 @@ public class DispensationService {
             Clock clock
     ) {
         this.usuarioRepository = Objects.requireNonNull(usuarioRepository, "usuarioRepository no puede ser nulo");
-        this.sedeRepository = Objects.requireNonNull(sedeRepository, "sedeRepository no puede ser nulo");
+        this.siteRepository = Objects.requireNonNull(siteRepository, "siteRepository no puede ser nulo");
         this.recetaRepository = Objects.requireNonNull(recetaRepository, "recetaRepository no puede ser nulo");
         this.pacienteRepository = Objects.requireNonNull(pacienteRepository, "pacienteRepository no puede ser nulo");
         this.dispensacionRepository = Objects.requireNonNull(dispensacionRepository, "dispensacionRepository no puede ser nulo");
@@ -98,12 +98,8 @@ public class DispensationService {
             throw new AccesoNoAutorizadoException("El usuario dispensador se encuentra inactivo o bloqueado.");
         }
 
-        Sede sede = sedeRepository.buscarPorPublicId(request.sedePublicId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Sede farmacéutica no encontrada: " + request.sedePublicId()));
-
-        if (!"ACTIVO".equalsIgnoreCase(sede.estado())) {
-            throw new DatosInvalidosException("La sede seleccionada se encuentra inactiva.");
-        }
+        // Hospital único: la dispensación se registra siempre en la única sede (la resuelve el servidor).
+        Sede sede = siteRepository.getSingleSite();
 
         Receta receta = recetaRepository.buscarEntidadPorPublicId(request.recetaPublicId())
                 .orElseThrow(() -> new RecursoNoEncontradoException("Receta médica no encontrada: " + request.recetaPublicId()));
@@ -281,23 +277,6 @@ public class DispensationService {
     public DispensacionResponse consultarDispensacionPorPublicId(String dispensacionPublicId) {
         return dispensacionRepository.buscarPorPublicId(dispensacionPublicId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Dispensación no encontrada: " + dispensacionPublicId));
-    }
-
-    /**
-     * Lista las sedes asistenciales activas disponibles para registrar dispensaciones.
-     */
-    public List<com.meditriaje.dto.admin.SedeResponse> listarSedesActivas() {
-        return sedeRepository.listar(0, 100, null, "ACTIVO").stream()
-                .map(s -> new com.meditriaje.dto.admin.SedeResponse(
-                        s.publicId(),
-                        null,
-                        null,
-                        s.nombre(),
-                        s.direccion(),
-                        s.ciudad(),
-                        s.estado()
-                ))
-                .toList();
     }
 
     private void validarRolFarmaceutico(Collection<? extends GrantedAuthority> authorities) {

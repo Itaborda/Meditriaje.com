@@ -130,26 +130,25 @@ public class HospitalController {
     /**
      * H06: Centro de Control Hospitalario: Censo de camas e indicadores de ocupación en tiempo real.
      */
-    @GetMapping("/census/{sedeId}")
+    @GetMapping("/census")
     @PreAuthorize("hasAnyRole('ROLE_ADMINISTRADOR', 'ROLE_ENFERMERIA', 'ROLE_PROFESIONAL')")
-    public ResponseEntity<CensoCamasResponse> obtenerCensoCamas(@PathVariable String sedeId) {
-        CensoCamasResponse resp = hospitalService.obtenerCensoCamas(sedeId);
+    public ResponseEntity<CensoCamasResponse> obtenerCensoCamas() {
+        CensoCamasResponse resp = hospitalService.obtenerCensoCamas();
         return ResponseEntity.ok(resp);
     }
 
     /**
      * H01: Listado de camas con estado y capacidad. Para ROLE_ADMINISTRADOR anonimiza datos de paciente (S-02).
      */
-    @GetMapping("/beds/{sedeId}")
+    @GetMapping("/beds")
     @PreAuthorize("hasAnyRole('ROLE_ADMINISTRADOR', 'ROLE_ENFERMERIA', 'ROLE_PROFESIONAL')")
     public ResponseEntity<List<CamaDetalleResponse>> listarCamas(
-            @PathVariable String sedeId,
             Authentication authentication
     ) {
         boolean esSoloAdmin = authentication != null
                 && authentication.getAuthorities().stream().anyMatch(a -> "ROLE_ADMINISTRADOR".equals(a.getAuthority()))
                 && authentication.getAuthorities().stream().noneMatch(a -> "ROLE_PROFESIONAL".equals(a.getAuthority()) || "ROLE_ENFERMERIA".equals(a.getAuthority()));
-        List<CamaDetalleResponse> resp = hospitalService.listarCamasDetalle(sedeId, esSoloAdmin);
+        List<CamaDetalleResponse> resp = hospitalService.listarCamasDetalle(esSoloAdmin);
         return ResponseEntity.ok(resp);
     }
 

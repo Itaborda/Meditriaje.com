@@ -29,7 +29,7 @@ import com.meditriaje.repository.IdentidadProvisionalRepository;
 import com.meditriaje.repository.IngresoUrgenciaRepository;
 import com.meditriaje.repository.PacienteRepository;
 import com.meditriaje.repository.ProfesionalRepository;
-import com.meditriaje.repository.SedeRepository;
+import com.meditriaje.repository.SiteRepository;
 import com.meditriaje.repository.UsuarioRepository;
 import com.meditriaje.repository.ValoracionTriajeRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -67,7 +67,7 @@ public class EmergencyService {
     private final IdentidadProvisionalRepository identidadRepository;
     private final ValoracionTriajeRepository valoracionRepository;
     private final AsignacionAsistencialRepository asignacionRepository;
-    private final SedeRepository sedeRepository;
+    private final SiteRepository siteRepository;
     private final PacienteRepository pacienteRepository;
     private final UsuarioRepository usuarioRepository;
     private final ProfesionalRepository profesionalRepository;
@@ -80,7 +80,7 @@ public class EmergencyService {
             IdentidadProvisionalRepository identidadRepository,
             ValoracionTriajeRepository valoracionRepository,
             AsignacionAsistencialRepository asignacionRepository,
-            SedeRepository sedeRepository,
+            SiteRepository siteRepository,
             PacienteRepository pacienteRepository,
             UsuarioRepository usuarioRepository,
             ProfesionalRepository profesionalRepository,
@@ -92,7 +92,7 @@ public class EmergencyService {
                 identidadRepository,
                 valoracionRepository,
                 asignacionRepository,
-                sedeRepository,
+                siteRepository,
                 pacienteRepository,
                 usuarioRepository,
                 profesionalRepository,
@@ -108,7 +108,7 @@ public class EmergencyService {
             IdentidadProvisionalRepository identidadRepository,
             ValoracionTriajeRepository valoracionRepository,
             AsignacionAsistencialRepository asignacionRepository,
-            SedeRepository sedeRepository,
+            SiteRepository siteRepository,
             PacienteRepository pacienteRepository,
             UsuarioRepository usuarioRepository,
             ProfesionalRepository profesionalRepository,
@@ -120,7 +120,7 @@ public class EmergencyService {
         this.identidadRepository = Objects.requireNonNull(identidadRepository);
         this.valoracionRepository = Objects.requireNonNull(valoracionRepository);
         this.asignacionRepository = Objects.requireNonNull(asignacionRepository);
-        this.sedeRepository = Objects.requireNonNull(sedeRepository);
+        this.siteRepository = Objects.requireNonNull(siteRepository);
         this.pacienteRepository = Objects.requireNonNull(pacienteRepository);
         this.usuarioRepository = Objects.requireNonNull(usuarioRepository);
         this.profesionalRepository = Objects.requireNonNull(profesionalRepository);
@@ -142,8 +142,8 @@ public class EmergencyService {
         Usuario registrador = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario registrador no encontrado."));
 
-        Sede sede = sedeRepository.buscarPorPublicId(request.sitePublicId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Sede no encontrada: " + request.sitePublicId()));
+        // Hospital único: el episodio se abre siempre en la única sede (la resuelve el servidor).
+        Sede sede = siteRepository.getSingleSite();
 
         Long pacienteId = null;
         boolean esProvisional = request.esIdentidadProvisional() || request.pacientePublicId() == null || request.pacientePublicId().isBlank();
@@ -482,16 +482,11 @@ public class EmergencyService {
     }
 
     /**
-     * Consulta la cola priorizada de urgencias por sede (U05).
+     * Consulta la cola priorizada de urgencias del hospital (U05).
      */
-    public List<ItemColaUrgenciaResponse> listarColaUrgencias(String sitePublicId, String estadoFiltro) {
-        Long sedeId = null;
-        if (sitePublicId != null && !sitePublicId.isBlank()) {
-            Sede sede = sedeRepository.buscarPorPublicId(sitePublicId)
-                    .orElseThrow(() -> new RecursoNoEncontradoException("Sede no encontrada: " + sitePublicId));
-            sedeId = sede.id();
-        }
-        return episodioRepository.listarColaUrgenciaPorSede(sedeId, estadoFiltro);
+    public List<ItemColaUrgenciaResponse> listarColaUrgencias(String estadoFiltro) {
+        // Hospital único: sin filtro de sede la cola incluye todos los episodios del hospital.
+        return episodioRepository.listarColaUrgenciaPorSede(null, estadoFiltro);
     }
 
     /**

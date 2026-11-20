@@ -3,11 +3,9 @@ package com.meditriaje.demo;
 import com.meditriaje.repository.CitaRepository;
 import com.meditriaje.repository.DisponibilidadSlotRepository;
 import com.meditriaje.repository.EspecialidadRepository;
-import com.meditriaje.repository.InstitucionRepository;
 import com.meditriaje.repository.MedicamentoRepository;
 import com.meditriaje.repository.PacienteRepository;
 import com.meditriaje.repository.ProfesionalRepository;
-import com.meditriaje.repository.SedeRepository;
 import com.meditriaje.repository.UsuarioRepository;
 import com.meditriaje.service.AdminCatalogService;
 import com.meditriaje.service.AdminProfessionalService;
@@ -64,12 +62,6 @@ class DemoDataSeederTest {
     private EspecialidadRepository especialidadRepository;
 
     @Mock
-    private InstitucionRepository institucionRepository;
-
-    @Mock
-    private SedeRepository sedeRepository;
-
-    @Mock
     private DisponibilidadSlotRepository slotRepository;
 
     @Mock
@@ -123,8 +115,6 @@ class DemoDataSeederTest {
                 pacienteRepository,
                 profesionalRepository,
                 especialidadRepository,
-                institucionRepository,
-                sedeRepository,
                 slotRepository,
                 citaRepository,
                 medicamentoRepository,

@@ -84,9 +84,9 @@ class OperationalControllerTest {
                 "sede-1", "Sede Central", 50, 10, 38, 2, 0, 76.0, 5,
                 Map.of("II", 2L, "III", 3L), Map.of("II", 20.0), List.of()
         );
-        when(analyticsService.obtenerDashboardHospitalario(any(), anyString(), anyString())).thenReturn(resp);
+        when(analyticsService.obtenerDashboardHospitalario(anyString(), anyString())).thenReturn(resp);
 
-        mockMvc.perform(get("/api/v1/operational/dashboard?sedePublicId=sede-1")
+        mockMvc.perform(get("/api/v1/operational/dashboard")
                         .cookie(cookie(TOKEN_ADMIN))
                         .header("X-Requested-With", "XMLHttpRequest"))
                 .andExpect(status().isOk())

@@ -146,7 +146,7 @@ test.describe('Auditoría Integral: Dashboard Administrativo y Menú Lateral', (
     await expect(page.locator('text=Aislamiento de Privilegios')).toBeVisible();
 
     // 3. Comprobar que los KPIs numéricos cargan reemplazando los skeletons
-    await expect(page.locator('#dashMetricSites')).toHaveText('2');
+    await expect(page.locator('#dashMetricBeds')).toBeVisible();
     await expect(page.locator('#dashMetricPros')).toHaveText('12');
     await expect(page.locator('#dashMetricSpecs')).toHaveText('8');
     await expect(page.locator('#dashMetricSlots')).toHaveText('45');
@@ -174,8 +174,8 @@ test.describe('Auditoría Integral: Dashboard Administrativo y Menú Lateral', (
     await expect(sidebar.locator('a[href="#/hospital/census"]')).toBeVisible();
 
     // Comprobar infraestructura
-    await expect(sidebar.locator('a[href="#/admin/institutions"]')).toBeVisible();
-    await expect(sidebar.locator('a[href="#/admin/sites"]')).toBeVisible();
+    // Hospital único: no hay enlaces de instituciones ni sedes
+    await expect(sidebar.locator('a[href="#/admin/sites"]')).toHaveCount(0);
 
     // Comprobar cuerpo médico y citas
     await expect(sidebar.locator('a[href="#/admin/specialties"]')).toBeVisible();

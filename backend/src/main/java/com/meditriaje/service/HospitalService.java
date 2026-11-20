@@ -31,7 +31,7 @@ public class HospitalService {
     private final ProcedimientoHospitalarioRepository procedimientoRepository;
     private final EgresoHospitalarioRepository egresoRepository;
     private final EpisodioAtencionRepository episodioRepository;
-    private final SedeRepository sedeRepository;
+    private final SiteRepository siteRepository;
     private final UsuarioRepository usuarioRepository;
     private final ProfesionalRepository profesionalRepository;
     private final AuditoriaService auditoriaService;
@@ -46,7 +46,7 @@ public class HospitalService {
             ProcedimientoHospitalarioRepository procedimientoRepository,
             EgresoHospitalarioRepository egresoRepository,
             EpisodioAtencionRepository episodioRepository,
-            SedeRepository sedeRepository,
+            SiteRepository siteRepository,
             UsuarioRepository usuarioRepository,
             ProfesionalRepository profesionalRepository,
             AuditoriaService auditoriaService,
@@ -60,7 +60,7 @@ public class HospitalService {
         this.procedimientoRepository = Objects.requireNonNull(procedimientoRepository);
         this.egresoRepository = Objects.requireNonNull(egresoRepository);
         this.episodioRepository = Objects.requireNonNull(episodioRepository);
-        this.sedeRepository = Objects.requireNonNull(sedeRepository);
+        this.siteRepository = Objects.requireNonNull(siteRepository);
         this.usuarioRepository = Objects.requireNonNull(usuarioRepository);
         this.profesionalRepository = Objects.requireNonNull(profesionalRepository);
         this.auditoriaService = Objects.requireNonNull(auditoriaService);
@@ -545,9 +545,9 @@ public class HospitalService {
      * Centro de Control Hospitalario: censo de camas e indicadores de ocupación en tiempo real (H06).
      * No expone contenido clínico privado a perfiles administrativos.
      */
-    public CensoCamasResponse obtenerCensoCamas(String sedePublicId) {
-        Sede sede = sedeRepository.buscarPorPublicId(sedePublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Sede no encontrada: " + sedePublicId));
+    public CensoCamasResponse obtenerCensoCamas() {
+        // Hospital único: el censo siempre corresponde a la única sede.
+        Sede sede = siteRepository.getSingleSite();
 
         List<CamaDetalleResponse> camas = camaRepository.listarDetallePorSedeId(sede.id());
         int total = camas.size();
@@ -588,14 +588,12 @@ public class HospitalService {
         );
     }
 
-    public List<CamaDetalleResponse> listarCamasDetalle(String sedePublicId) {
-        return listarCamasDetalle(sedePublicId, false);
+    public List<CamaDetalleResponse> listarCamasDetalle() {
+        return listarCamasDetalle(false);
     }
 
-    public List<CamaDetalleResponse> listarCamasDetalle(String sedePublicId, boolean anonimizarPaciente) {
-        Sede sede = sedeRepository.buscarPorPublicId(sedePublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Sede no encontrada: " + sedePublicId));
-        List<CamaDetalleResponse> camas = camaRepository.listarDetallePorSedeId(sede.id());
+    public List<CamaDetalleResponse> listarCamasDetalle(boolean anonimizarPaciente) {
+        List<CamaDetalleResponse> camas = camaRepository.listarDetallePorSedeId(siteRepository.getSingleSiteId());
         if (anonimizarPaciente) {
             return camas.stream().map(c -> new CamaDetalleResponse(
                     c.publicId(),

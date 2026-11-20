@@ -1,26 +1,16 @@
 package com.meditriaje.service;
 
 import com.meditriaje.dto.admin.ActualizarEspecialidadRequest;
-import com.meditriaje.dto.admin.ActualizarInstitucionRequest;
-import com.meditriaje.dto.admin.ActualizarSedeRequest;
 import com.meditriaje.dto.admin.CrearEspecialidadRequest;
-import com.meditriaje.dto.admin.CrearInstitucionRequest;
-import com.meditriaje.dto.admin.CrearSedeRequest;
 import com.meditriaje.dto.admin.EspecialidadResponse;
-import com.meditriaje.dto.admin.InstitucionResponse;
-import com.meditriaje.dto.admin.SedeResponse;
 import com.meditriaje.dto.common.PaginatedResponse;
 import com.meditriaje.exception.DatosInvalidosException;
 import com.meditriaje.exception.RecursoNoEncontradoException;
 import com.meditriaje.model.AccionAuditable;
 import com.meditriaje.model.Especialidad;
-import com.meditriaje.model.Institucion;
 import com.meditriaje.model.ResultadoAuditoria;
-import com.meditriaje.model.Sede;
 import com.meditriaje.model.Usuario;
 import com.meditriaje.repository.EspecialidadRepository;
-import com.meditriaje.repository.InstitucionRepository;
-import com.meditriaje.repository.SedeRepository;
 import com.meditriaje.repository.UsuarioRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -50,12 +40,6 @@ class AdminCatalogServiceTest {
     private EspecialidadRepository especialidadRepository;
 
     @Mock
-    private InstitucionRepository institucionRepository;
-
-    @Mock
-    private SedeRepository sedeRepository;
-
-    @Mock
     private UsuarioRepository usuarioRepository;
 
     @Mock
@@ -71,8 +55,6 @@ class AdminCatalogServiceTest {
     void setUp() {
         catalogService = new AdminCatalogService(
                 especialidadRepository,
-                institucionRepository,
-                sedeRepository,
                 usuarioRepository,
                 auditoriaService
         );
@@ -225,215 +207,5 @@ class AdminCatalogServiceTest {
         assertThatThrownBy(() -> catalogService.listarEspecialidades(0, 10, "PENDIENTE"))
                 .isInstanceOf(DatosInvalidosException.class)
                 .hasMessageContaining("Estado invalido");
-    }
-
-    // =========================================================================
-    // INSTITUCION TESTS
-    // =========================================================================
-
-    @Test
-    void crearInstitucion_exito_creaYAudita() {
-        mockAdminUsuario();
-        CrearInstitucionRequest req = new CrearInstitucionRequest("900123456-1", "Hospital Central IPS");
-        when(institucionRepository.existePorNit("900123456-1")).thenReturn(false);
-        Institucion inst = new Institucion(1L, "inst-uuid-1", "900123456-1", "Hospital Central IPS", "ACTIVO", Instant.now());
-        when(institucionRepository.crear(anyString(), eq("900123456-1"), eq("Hospital Central IPS"))).thenReturn(inst);
-
-        InstitucionResponse resp = catalogService.crearInstitucion(req, ADMIN_PUBLIC_ID, IP_ORIGEN);
-
-        assertThat(resp.publicId()).isEqualTo("inst-uuid-1");
-        assertThat(resp.nit()).isEqualTo("900123456-1");
-        assertThat(resp.razonSocial()).isEqualTo("Hospital Central IPS");
-        assertThat(resp.estado()).isEqualTo("ACTIVO");
-
-        verify(auditoriaService).registrarEvento(
-                eq(ADMIN_ID),
-                eq(AccionAuditable.CAMBIO_ADMINISTRATIVO),
-                eq("INSTITUCION"),
-                eq("inst-uuid-1"),
-                eq(ResultadoAuditoria.EXITO),
-                eq(IP_ORIGEN)
-        );
-    }
-
-    @Test
-    void crearInstitucion_nitDuplicado_lanzaDatosInvalidos() {
-        CrearInstitucionRequest req = new CrearInstitucionRequest("900123456-1", "Hospital Central");
-        when(institucionRepository.existePorNit("900123456-1")).thenReturn(true);
-
-        assertThatThrownBy(() -> catalogService.crearInstitucion(req, ADMIN_PUBLIC_ID, IP_ORIGEN))
-                .isInstanceOf(DatosInvalidosException.class)
-                .hasMessageContaining("Ya existe una institución con el NIT");
-    }
-
-    @Test
-    void actualizarInstitucion_exito_actualizaYAudita() {
-        mockAdminUsuario();
-        ActualizarInstitucionRequest req = new ActualizarInstitucionRequest("Hospital Central S.A.S.");
-        Institucion actual = new Institucion(1L, "inst-uuid-1", "900123456-1", "Hospital Central", "ACTIVO", Instant.now());
-        when(institucionRepository.buscarPorPublicId("inst-uuid-1")).thenReturn(Optional.of(actual));
-
-        InstitucionResponse resp = catalogService.actualizarInstitucion("inst-uuid-1", req, ADMIN_PUBLIC_ID, IP_ORIGEN);
-
-        assertThat(resp.razonSocial()).isEqualTo("Hospital Central S.A.S.");
-        verify(institucionRepository).actualizar("inst-uuid-1", "Hospital Central S.A.S.");
-        verify(auditoriaService).registrarEvento(eq(ADMIN_ID), eq(AccionAuditable.CAMBIO_ADMINISTRATIVO), eq("INSTITUCION"), eq("inst-uuid-1"), eq(ResultadoAuditoria.EXITO), eq(IP_ORIGEN));
-    }
-
-    @Test
-    void desactivarInstitucion_exito() {
-        mockAdminUsuario();
-        Institucion actual = new Institucion(1L, "inst-uuid-1", "900123456-1", "Hospital Central", "ACTIVO", Instant.now());
-        when(institucionRepository.buscarPorPublicId("inst-uuid-1")).thenReturn(Optional.of(actual));
-
-        InstitucionResponse resp = catalogService.desactivarInstitucion("inst-uuid-1", ADMIN_PUBLIC_ID, IP_ORIGEN);
-
-        assertThat(resp.estado()).isEqualTo("INACTIVO");
-        verify(institucionRepository).cambiarEstado("inst-uuid-1", "INACTIVO");
-    }
-
-    @Test
-    void activarInstitucion_exito() {
-        mockAdminUsuario();
-        Institucion actual = new Institucion(1L, "inst-uuid-1", "900123456-1", "Hospital Central", "INACTIVO", Instant.now());
-        when(institucionRepository.buscarPorPublicId("inst-uuid-1")).thenReturn(Optional.of(actual));
-
-        InstitucionResponse resp = catalogService.activarInstitucion("inst-uuid-1", ADMIN_PUBLIC_ID, IP_ORIGEN);
-
-        assertThat(resp.estado()).isEqualTo("ACTIVO");
-        verify(institucionRepository).cambiarEstado("inst-uuid-1", "ACTIVO");
-    }
-
-    // =========================================================================
-    // SEDE TESTS
-    // =========================================================================
-
-    @Test
-    void crearSede_exito_creaYAudita() {
-        mockAdminUsuario();
-        CrearSedeRequest req = new CrearSedeRequest("inst-uuid-1", "Sede Norte", "Calle 100 #15-20", "Bogotá");
-        Institucion inst = new Institucion(1L, "inst-uuid-1", "900123456-1", "Hospital Central", "ACTIVO", Instant.now());
-        when(institucionRepository.buscarPorPublicId("inst-uuid-1")).thenReturn(Optional.of(inst));
-
-        Sede sede = new Sede(100L, 1L, "sede-uuid-1", "Sede Norte", "Calle 100 #15-20", "Bogotá", "ACTIVO");
-        when(sedeRepository.crear(eq(1L), anyString(), eq("Sede Norte"), eq("Calle 100 #15-20"), eq("Bogotá")))
-                .thenReturn(sede);
-
-        SedeResponse resp = catalogService.crearSede(req, ADMIN_PUBLIC_ID, IP_ORIGEN);
-
-        assertThat(resp.publicId()).isEqualTo("sede-uuid-1");
-        assertThat(resp.institucionPublicId()).isEqualTo("inst-uuid-1");
-        assertThat(resp.institucionRazonSocial()).isEqualTo("Hospital Central");
-        assertThat(resp.nombre()).isEqualTo("Sede Norte");
-        assertThat(resp.estado()).isEqualTo("ACTIVO");
-
-        verify(auditoriaService).registrarEvento(
-                eq(ADMIN_ID),
-                eq(AccionAuditable.CAMBIO_ADMINISTRATIVO),
-                eq("SEDE"),
-                eq("sede-uuid-1"),
-                eq(ResultadoAuditoria.EXITO),
-                eq(IP_ORIGEN)
-        );
-    }
-
-    @Test
-    void crearSede_institucionNoExiste_lanzaRecursoNoEncontrado() {
-        CrearSedeRequest req = new CrearSedeRequest("inst-inexistente", "Sede Norte", "Calle 100", "Bogotá");
-        when(institucionRepository.buscarPorPublicId("inst-inexistente")).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> catalogService.crearSede(req, ADMIN_PUBLIC_ID, IP_ORIGEN))
-                .isInstanceOf(RecursoNoEncontradoException.class);
-    }
-
-    @Test
-    void crearSede_institucionInactiva_lanzaDatosInvalidos() {
-        CrearSedeRequest req = new CrearSedeRequest("inst-uuid-1", "Sede Norte", "Calle 100", "Bogotá");
-        Institucion instInactiva = new Institucion(1L, "inst-uuid-1", "900123456-1", "Hospital Central", "INACTIVO", Instant.now());
-        when(institucionRepository.buscarPorPublicId("inst-uuid-1")).thenReturn(Optional.of(instInactiva));
-
-        assertThatThrownBy(() -> catalogService.crearSede(req, ADMIN_PUBLIC_ID, IP_ORIGEN))
-                .isInstanceOf(DatosInvalidosException.class)
-                .hasMessageContaining("No se pueden crear sedes en una institución inactiva");
-    }
-
-    @Test
-    void actualizarSede_exito() {
-        mockAdminUsuario();
-        ActualizarSedeRequest req = new ActualizarSedeRequest("Sede Norte Renovada", "Cra 15 #100-10", "Bogotá");
-        Sede actual = new Sede(100L, 1L, "sede-uuid-1", "Sede Norte", "Calle 100", "Bogotá", "ACTIVO");
-        Institucion inst = new Institucion(1L, "inst-uuid-1", "900123456-1", "Hospital Central", "ACTIVO", Instant.now());
-
-        when(sedeRepository.buscarPorPublicId("sede-uuid-1")).thenReturn(Optional.of(actual));
-        when(institucionRepository.buscarPorId(1L)).thenReturn(Optional.of(inst));
-
-        SedeResponse resp = catalogService.actualizarSede("sede-uuid-1", req, ADMIN_PUBLIC_ID, IP_ORIGEN);
-
-        assertThat(resp.nombre()).isEqualTo("Sede Norte Renovada");
-        assertThat(resp.direccion()).isEqualTo("Cra 15 #100-10");
-        verify(sedeRepository).actualizar("sede-uuid-1", "Sede Norte Renovada", "Cra 15 #100-10", "Bogotá");
-    }
-
-    @Test
-    void desactivarSede_exito() {
-        mockAdminUsuario();
-        Sede actual = new Sede(100L, 1L, "sede-uuid-1", "Sede Norte", "Calle 100", "Bogotá", "ACTIVO");
-        Institucion inst = new Institucion(1L, "inst-uuid-1", "900123456-1", "Hospital Central", "ACTIVO", Instant.now());
-
-        when(sedeRepository.buscarPorPublicId("sede-uuid-1")).thenReturn(Optional.of(actual));
-        when(institucionRepository.buscarPorId(1L)).thenReturn(Optional.of(inst));
-
-        SedeResponse resp = catalogService.desactivarSede("sede-uuid-1", ADMIN_PUBLIC_ID, IP_ORIGEN);
-
-        assertThat(resp.estado()).isEqualTo("INACTIVO");
-        verify(sedeRepository).cambiarEstado("sede-uuid-1", "INACTIVO");
-    }
-
-    @Test
-    void activarSede_institucionActiva_exito() {
-        mockAdminUsuario();
-        Sede actual = new Sede(100L, 1L, "sede-uuid-1", "Sede Norte", "Calle 100", "Bogotá", "INACTIVO");
-        Institucion inst = new Institucion(1L, "inst-uuid-1", "900123456-1", "Hospital Central", "ACTIVO", Instant.now());
-
-        when(sedeRepository.buscarPorPublicId("sede-uuid-1")).thenReturn(Optional.of(actual));
-        when(institucionRepository.buscarPorId(1L)).thenReturn(Optional.of(inst));
-
-        SedeResponse resp = catalogService.activarSede("sede-uuid-1", ADMIN_PUBLIC_ID, IP_ORIGEN);
-
-        assertThat(resp.estado()).isEqualTo("ACTIVO");
-        verify(sedeRepository).cambiarEstado("sede-uuid-1", "ACTIVO");
-    }
-
-    @Test
-    void activarSede_institucionInactiva_lanzaDatosInvalidos() {
-        Sede actual = new Sede(100L, 1L, "sede-uuid-1", "Sede Norte", "Calle 100", "Bogotá", "INACTIVO");
-        Institucion instInactiva = new Institucion(1L, "inst-uuid-1", "900123456-1", "Hospital Central", "INACTIVO", Instant.now());
-
-        when(sedeRepository.buscarPorPublicId("sede-uuid-1")).thenReturn(Optional.of(actual));
-        when(institucionRepository.buscarPorId(1L)).thenReturn(Optional.of(instInactiva));
-
-        assertThatThrownBy(() -> catalogService.activarSede("sede-uuid-1", ADMIN_PUBLIC_ID, IP_ORIGEN))
-                .isInstanceOf(DatosInvalidosException.class)
-                .hasMessageContaining("No se puede activar una sede de una institución inactiva");
-
-        verify(sedeRepository, never()).cambiarEstado(anyString(), anyString());
-    }
-
-    @Test
-    void listarSedes_conInstitucionCache_retornaPaginado() {
-        Sede s1 = new Sede(100L, 1L, "sede-1", "Sede Norte", "Calle 100", "Bogotá", "ACTIVO");
-        Sede s2 = new Sede(101L, 1L, "sede-2", "Sede Sur", "Calle 1", "Bogotá", "ACTIVO");
-        Institucion inst = new Institucion(1L, "inst-1", "900123456-1", "Hospital Central", "ACTIVO", Instant.now());
-
-        when(sedeRepository.listar(0, 10, "inst-1", "ACTIVO")).thenReturn(List.of(s1, s2));
-        when(sedeRepository.contar("inst-1", "ACTIVO")).thenReturn(2L);
-        when(institucionRepository.buscarPorId(1L)).thenReturn(Optional.of(inst));
-
-        PaginatedResponse<SedeResponse> pag = catalogService.listarSedes(0, 10, "inst-1", "ACTIVO");
-
-        assertThat(pag.content()).hasSize(2);
-        assertThat(pag.totalElements()).isEqualTo(2L);
-        assertThat(pag.content().get(0).institucionRazonSocial()).isEqualTo("Hospital Central");
-        assertThat(pag.content().get(1).institucionRazonSocial()).isEqualTo("Hospital Central");
     }
 }

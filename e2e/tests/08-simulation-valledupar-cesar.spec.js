@@ -88,9 +88,7 @@ test.describe('Simulación Clínica y Operativa — Valledupar, Cesar (Hospital 
     await page.goto('/#/nursing/admission');
     await expect(page.locator('h1')).toContainText('Admisión Presencial de Urgencias');
 
-    // Seleccionar sede Valledupar
-    await page.waitForSelector(`#admSedeSelect option[value="${sedeValledupar}"]`, { state: 'attached' });
-    await page.selectOption('#admSedeSelect', sedeValledupar);
+    // Hospital único: no hay selector de sede (el servidor la resuelve)
 
     // Marcar como paciente sin identificación hallado en vía pública de Valledupar
     const chkNN = page.locator('#chkEsNN');
@@ -179,7 +177,7 @@ test.describe('Simulación Clínica y Operativa — Valledupar, Cesar (Hospital 
   });
 
   test('Paso 3: Censo hospitalario con pabellones locales (Pabellón Guatapurí) en Valledupar', async ({ page }) => {
-    await page.route(`**/api/v1/hospital/census/${sedeValledupar}`, async (route) => {
+    await page.route('**/api/v1/hospital/census', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

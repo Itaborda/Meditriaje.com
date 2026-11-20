@@ -83,7 +83,7 @@ class AvailabilityControllerTest {
     @Test
     void getAvailability_conRolPaciente_retorna200Ok() throws Exception {
         PaginatedResponse<DisponibilidadSlotResponse> respuestaVacia = PaginatedResponse.of(List.of(), 0, 10, 0L);
-        when(availabilityService.consultarDisponibilidad(any(), any(), any(), any(), anyInt(), anyInt()))
+        when(availabilityService.consultarDisponibilidad(any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(respuestaVacia);
 
         mockMvc.perform(get("/api/v1/availability")
@@ -96,7 +96,7 @@ class AvailabilityControllerTest {
     @Test
     void getAvailability_conRolProfesional_retorna200Ok() throws Exception {
         PaginatedResponse<DisponibilidadSlotResponse> respuestaVacia = PaginatedResponse.of(List.of(), 0, 10, 0L);
-        when(availabilityService.consultarDisponibilidad(any(), any(), any(), any(), anyInt(), anyInt()))
+        when(availabilityService.consultarDisponibilidad(any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(respuestaVacia);
 
         mockMvc.perform(get("/api/v1/availability")
@@ -107,7 +107,7 @@ class AvailabilityControllerTest {
     @Test
     void getAvailability_conRolAdministrador_retorna200Ok() throws Exception {
         PaginatedResponse<DisponibilidadSlotResponse> respuestaVacia = PaginatedResponse.of(List.of(), 0, 10, 0L);
-        when(availabilityService.consultarDisponibilidad(any(), any(), any(), any(), anyInt(), anyInt()))
+        when(availabilityService.consultarDisponibilidad(any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(respuestaVacia);
 
         mockMvc.perform(get("/api/v1/availability")
@@ -133,13 +133,12 @@ class AvailabilityControllerTest {
         PaginatedResponse<DisponibilidadSlotResponse> paginated = PaginatedResponse.of(List.of(slot), 0, 10, 1L);
 
         when(availabilityService.consultarDisponibilidad(
-                eq("esp-1"), eq("sede-1"), eq("PRESENCIAL"), eq(LocalDate.of(2026, 10, 15)), eq(0), eq(10)
+                eq("esp-1"), eq("PRESENCIAL"), eq(LocalDate.of(2026, 10, 15)), eq(0), eq(10)
         )).thenReturn(paginated);
 
         mockMvc.perform(get("/api/v1/availability")
                         .cookie(new Cookie("access_token", TOKEN_PACIENTE))
                         .param("especialidadPublicId", "esp-1")
-                        .param("sedePublicId", "sede-1")
                         .param("modalidad", "PRESENCIAL")
                         .param("fecha", "2026-10-15")
                         .param("page", "0")
@@ -158,7 +157,7 @@ class AvailabilityControllerTest {
     @Test
     void getAvailability_priorizaEspecialidadPublicIdSobreEspecialidad() throws Exception {
         PaginatedResponse<DisponibilidadSlotResponse> respuesta = PaginatedResponse.of(List.of(), 0, 10, 0L);
-        when(availabilityService.consultarDisponibilidad(eq("esp-uuid-prioritario"), any(), any(), any(), anyInt(), anyInt()))
+        when(availabilityService.consultarDisponibilidad(eq("esp-uuid-prioritario"), any(), any(), anyInt(), anyInt()))
                 .thenReturn(respuesta);
 
         mockMvc.perform(get("/api/v1/availability")
@@ -168,47 +167,29 @@ class AvailabilityControllerTest {
                 .andExpect(status().isOk());
 
         verify(availabilityService).consultarDisponibilidad(
-                eq("esp-uuid-prioritario"), isNull(), isNull(), isNull(), eq(0), eq(10)
-        );
-    }
-
-    @Test
-    void getAvailability_priorizaSedePublicIdSobreSede() throws Exception {
-        PaginatedResponse<DisponibilidadSlotResponse> respuesta = PaginatedResponse.of(List.of(), 0, 10, 0L);
-        when(availabilityService.consultarDisponibilidad(any(), eq("sede-uuid-prioritario"), any(), any(), anyInt(), anyInt()))
-                .thenReturn(respuesta);
-
-        mockMvc.perform(get("/api/v1/availability")
-                        .cookie(new Cookie("access_token", TOKEN_PACIENTE))
-                        .param("sede", "sede-secundaria")
-                        .param("sedePublicId", "sede-uuid-prioritario"))
-                .andExpect(status().isOk());
-
-        verify(availabilityService).consultarDisponibilidad(
-                isNull(), eq("sede-uuid-prioritario"), isNull(), isNull(), eq(0), eq(10)
+                eq("esp-uuid-prioritario"), isNull(), isNull(), eq(0), eq(10)
         );
     }
 
     @Test
     void getAvailability_usaParametrosAlternativosCuandoPublicIdNoViene() throws Exception {
         PaginatedResponse<DisponibilidadSlotResponse> respuesta = PaginatedResponse.of(List.of(), 0, 10, 0L);
-        when(availabilityService.consultarDisponibilidad(eq("esp-1"), eq("sede-1"), any(), any(), anyInt(), anyInt()))
+        when(availabilityService.consultarDisponibilidad(eq("esp-1"), any(), any(), anyInt(), anyInt()))
                 .thenReturn(respuesta);
 
         mockMvc.perform(get("/api/v1/availability")
                         .cookie(new Cookie("access_token", TOKEN_PACIENTE))
-                        .param("especialidad", "esp-1")
-                        .param("sede", "sede-1"))
+                        .param("especialidad", "esp-1"))
                 .andExpect(status().isOk());
 
         verify(availabilityService).consultarDisponibilidad(
-                eq("esp-1"), eq("sede-1"), isNull(), isNull(), eq(0), eq(10)
+                eq("esp-1"), isNull(), isNull(), eq(0), eq(10)
         );
     }
 
     @Test
     void getAvailability_modalidadInvalida_retorna400BadRequest() throws Exception {
-        when(availabilityService.consultarDisponibilidad(any(), any(), eq("VIRTUAL"), any(), anyInt(), anyInt()))
+        when(availabilityService.consultarDisponibilidad(any(), eq("VIRTUAL"), any(), anyInt(), anyInt()))
                 .thenThrow(new DatosInvalidosException("Modalidad inválida: 'VIRTUAL'"));
 
         mockMvc.perform(get("/api/v1/availability")
@@ -221,7 +202,7 @@ class AvailabilityControllerTest {
     @Test
     void getAvailability_sinDisponibilidad_retornaListaVacia() throws Exception {
         PaginatedResponse<DisponibilidadSlotResponse> respuestaVacia = PaginatedResponse.of(List.of(), 0, 10, 0L);
-        when(availabilityService.consultarDisponibilidad(any(), any(), any(), any(), anyInt(), anyInt()))
+        when(availabilityService.consultarDisponibilidad(any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(respuestaVacia);
 
         mockMvc.perform(get("/api/v1/availability")

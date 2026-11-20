@@ -35,7 +35,7 @@ class OperationalAnalyticsServiceTest {
     private HospitalService hospitalService;
 
     @Mock
-    private SedeRepository sedeRepository;
+    private SiteRepository siteRepository;
 
     @Mock
     private EpisodioAtencionRepository episodioRepository;
@@ -64,7 +64,7 @@ class OperationalAnalyticsServiceTest {
                 alertaRepository,
                 seguimientoQrRepository,
                 hospitalService,
-                sedeRepository,
+                siteRepository,
                 episodioRepository,
                 triajeRepository,
                 identidadRepository,
@@ -78,12 +78,12 @@ class OperationalAnalyticsServiceTest {
     @DisplayName("O01/O02: obtenerDashboardHospitalario calcula ocupación, esperas y genera alerta si saturación >= 85%")
     void obtenerDashboardHospitalario_calculaYGeneraAlerta() {
         Sede sede = new Sede(1L, 10L, "sede-1", "Sede Central", "Dir", "Valledupar", "ACTIVO");
-        when(sedeRepository.buscarPorPublicId("sede-1")).thenReturn(Optional.of(sede));
+        when(siteRepository.getSingleSite()).thenReturn(sede);
 
         CensoCamasResponse censo = new CensoCamasResponse(
                 "sede-1", "Sede Central", 100, 88, 10, 2, 0, 88.0, List.of()
         );
-        when(hospitalService.obtenerCensoCamas("sede-1")).thenReturn(censo);
+        when(hospitalService.obtenerCensoCamas()).thenReturn(censo);
 
         ItemColaUrgenciaResponse itemCola = new ItemColaUrgenciaResponse(
                 "ep-1", null, "Paciente NN", "NN-001", "sede-1", "Sede Central",
@@ -92,7 +92,7 @@ class OperationalAnalyticsServiceTest {
         when(episodioRepository.listarColaUrgenciaPorSede(1L, null)).thenReturn(List.of(itemCola));
         when(alertaRepository.listarPorSede(1L, "ACTIVA")).thenReturn(List.of());
 
-        DashboardHospitalarioResponse resp = service.obtenerDashboardHospitalario("sede-1", "usr-admin", "127.0.0.1");
+        DashboardHospitalarioResponse resp = service.obtenerDashboardHospitalario("usr-admin", "127.0.0.1");
 
         assertNotNull(resp);
         assertEquals(88.0, resp.tasaOcupacionPorcentaje());

@@ -91,7 +91,7 @@ class EmergencyControllerTest {
     @DisplayName("SEC01: Petición anónima a admisiones retorna 401 Unauthorized")
     void registrarAdmision_sinSesion_retorna401() throws Exception {
         RegistrarAdmisionUrgenciaRequest req = new RegistrarAdmisionUrgenciaRequest(
-                "sede-pub", null, true, "ESPONTANEO", "Dolor fuerte", null, null, null, null, null, null, null
+                null, true, "ESPONTANEO", "Dolor fuerte", null, null, null, null, null, null, null
         );
 
         mockMvc.perform(post("/api/v1/emergency/admissions")
@@ -105,7 +105,7 @@ class EmergencyControllerTest {
     @DisplayName("SEC02: Paciente intentando registrar admisión retorna 403 Forbidden")
     void registrarAdmision_paciente_retorna403() throws Exception {
         RegistrarAdmisionUrgenciaRequest req = new RegistrarAdmisionUrgenciaRequest(
-                "sede-pub", null, true, "ESPONTANEO", "Dolor fuerte", null, null, null, null, null, null, null
+                null, true, "ESPONTANEO", "Dolor fuerte", null, null, null, null, null, null, null
         );
 
         mockMvc.perform(post("/api/v1/emergency/admissions")
@@ -120,7 +120,7 @@ class EmergencyControllerTest {
     @DisplayName("U02: Enfermería registrando admisión presencial retorna 201 Created y Location")
     void registrarAdmision_enfermeria_retorna201() throws Exception {
         RegistrarAdmisionUrgenciaRequest req = new RegistrarAdmisionUrgenciaRequest(
-                "sede-pub", null, true, "AMBULANCIA", "Trauma", null, null, null, null, null, null, null
+                null, true, "AMBULANCIA", "Trauma", null, null, null, null, null, null, null
         );
 
         EpisodioUrgenciaResponse respMock = new EpisodioUrgenciaResponse(
@@ -190,7 +190,7 @@ class EmergencyControllerTest {
                 "ep-pub-123", null, "NN (NN-20261010-ABCD)", "NN-20261010-ABCD",
                 "sede-pub", "Hospital", "URGENCIA", "EN_TRIAJE", "II", "Dolor", 10L, Instant.now(), null
         );
-        when(emergencyService.listarColaUrgencias(any(), any())).thenReturn(List.of(item));
+        when(emergencyService.listarColaUrgencias(any())).thenReturn(List.of(item));
 
         mockMvc.perform(get("/api/v1/emergency/queue")
                         .cookie(cookie(TOKEN_ENFERMERIA))

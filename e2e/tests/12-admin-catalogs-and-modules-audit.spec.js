@@ -274,7 +274,7 @@ test.describe('Auditoría Minuciosa: Catálogos y Módulos de Administración', 
     await expect(page.locator('.alert--info')).toContainText('Aislamiento de Privilegios');
 
     // Verificar 4 KPIs
-    await expect(page.locator('#dashMetricSites')).toBeVisible();
+    await expect(page.locator('#dashMetricBeds')).toBeVisible();
     await expect(page.locator('#dashMetricPros')).toBeVisible();
     await expect(page.locator('#dashMetricSpecs')).toBeVisible();
     await expect(page.locator('#dashMetricSlots')).toBeVisible();
@@ -282,42 +282,6 @@ test.describe('Auditoría Minuciosa: Catálogos y Módulos de Administración', 
     // Tabla de auditoría reciente con clase table--stacked
     const table = page.locator('#dashRecentAuditContainer table');
     await expect(table).toHaveClass(/table--stacked/);
-  });
-
-  // =========================================================================
-  // PRUEBA 2: Instituciones de Salud
-  // =========================================================================
-  test('2. Módulo Instituciones: formulario accesible, filtro y tabla', async ({ page }) => {
-    await page.goto('/#/admin/institutions');
-    await expect(page.locator('#main-content h2').first()).toContainText('Instituciones de Salud');
-
-    // Botón nueva institución abre formulario y enfoca NIT
-    const btnToggle = page.locator('#btnToggleNewInst');
-    await expect(btnToggle).toBeVisible();
-    await btnToggle.click();
-    await expect(page.locator('#newInstCard')).toBeVisible();
-    await expect(page.locator('#instNit')).toBeFocused();
-
-    // Tabla de instituciones con datos y scope semántico
-    const thNit = page.locator('#main-content table th[scope="col"]').first();
-    await expect(thNit).toBeVisible();
-    await expect(page.locator('#main-content table tbody tr')).toContainText('Hospital Rosario Pumarejo de López');
-  });
-
-  // =========================================================================
-  // PRUEBA 3: Sedes Asistenciales
-  // =========================================================================
-  test('3. Módulo Sedes: listado, filtros por institución y formulario colapsable', async ({ page }) => {
-    await page.goto('/#/admin/sites');
-    await expect(page.locator('#main-content h2').first()).toContainText('Sedes Asistenciales');
-
-    const btnToggle = page.locator('#btnToggleNewSite');
-    await btnToggle.click();
-    await expect(page.locator('#newSiteCard')).toBeVisible();
-
-    // Tabla de sedes y botones con aria-label
-    const btnEdit = page.locator('.btn-edit').first();
-    await expect(btnEdit).toHaveAttribute('aria-label', /Editar sede/);
   });
 
   // =========================================================================
@@ -439,7 +403,7 @@ test.describe('Auditoría Minuciosa: Catálogos y Módulos de Administración', 
     await page.goto('/#/hospital/census');
     await expect(page.locator('h1')).toContainText('Centro de Control Hospitalario');
     await expect(page.locator('#censusKpiGrid')).toBeVisible();
-    await expect(page.locator('#censusSedeSelect')).toBeVisible();
+    await expect(page.locator('#censusHospitalName')).toBeVisible();
   });
 
   // =========================================================================

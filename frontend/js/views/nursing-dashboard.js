@@ -11,8 +11,6 @@ import { router } from '../router.js';
 import { ui, esc } from '../ui.js';
 
 let dashboardState = {
-  sedes: [],
-  selectedSedePublicId: '',
   filterEstado: '',
   queue: [],
   loading: false,
@@ -70,13 +68,6 @@ export async function nursingDashboardView(container) {
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
-          <!-- Selector de Sede -->
-          <div class="form-group m-0" style="min-width: 220px;">
-            <select id="nursingSedeSelect" class="form-select form-input--sm" aria-label="Seleccionar sede de atención">
-              <option value="">Cargando sedes...</option>
-            </select>
-          </div>
-
           <a href="#/hospital/census" class="btn btn-secondary btn--sm flex items-center gap-1" title="Ver censo de camas hospitalarias">
             ${ui.icon('hospital', 'icon icon--sm')}
             <span>Censo Camas</span>
@@ -181,15 +172,10 @@ export async function nursingDashboardView(container) {
     </div>
   `;
 
-  // Cargar Sedes
-  await loadSedes();
+  // Hospital único: la cola es la del hospital (el servidor resuelve la sede)
+  await loadQueue();
 
   // Escuchadores de eventos
-  const sedeSelect = document.getElementById('nursingSedeSelect');
-  sedeSelect.addEventListener('change', async (e) => {
-    dashboardState.selectedSedePublicId = e.target.value;
-    await loadQueue();
-  });
 
   const estadoSelect = document.getElementById('filterEstadoSelect');
   estadoSelect.addEventListener('change', async (e) => {
@@ -204,40 +190,12 @@ export async function nursingDashboardView(container) {
   });
 }
 
-async function loadSedes() {
-  const sedeSelect = document.getElementById('nursingSedeSelect');
-  try {
-    const rawSedes = await emergencyApi.listarSedes();
-    const sedes = Array.isArray(rawSedes) ? rawSedes : (rawSedes?.content || []);
-    dashboardState.sedes = sedes || [];
-    if (sedes && sedes.length > 0) {
-      dashboardState.selectedSedePublicId = sedes[0].publicId;
-      sedeSelect.innerHTML = sedes.map(s => `
-        <option value="${esc(s.publicId)}">${esc(s.nombre)} (${esc(s.ciudad || 'Valledupar')})</option>
-      `).join('');
-      await loadQueue();
-    } else {
-      sedeSelect.innerHTML = `<option value="">Sin sedes disponibles</option>`;
-    }
-  } catch (err) {
-    ui.showToast('No fue posible cargar las sedes: ' + (err.message || 'Error de red'), 'error');
-  }
-}
-
 async function loadQueue() {
   const tbody = document.getElementById('urgencyQueueBody');
-  if (!dashboardState.selectedSedePublicId) {
-    tbody.innerHTML = `<tr><td colspan="7" class="text-center p-8 text-muted">Seleccione una sede para visualizar la cola.</td></tr>`;
-    return;
-  }
-
   tbody.innerHTML = `<tr><td colspan="7" class="text-center p-8 text-muted">Cargando episodios de urgencias...</td></tr>`;
 
   try {
-    const rawQueue = await emergencyApi.listarColaUrgencias(
-      dashboardState.selectedSedePublicId,
-      dashboardState.filterEstado || null
-    );
+    const rawQueue = await emergencyApi.listarColaUrgencias(dashboardState.filterEstado || null);
     dashboardState.queue = Array.isArray(rawQueue) ? rawQueue : (rawQueue?.items || rawQueue?.content || []);
     renderQueue();
     updateKpis();

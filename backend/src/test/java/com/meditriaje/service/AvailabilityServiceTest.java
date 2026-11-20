@@ -62,7 +62,7 @@ class AvailabilityServiceTest {
                 .thenReturn(1);
 
         PaginatedResponse<DisponibilidadSlotResponse> resultado = availabilityService.consultarDisponibilidad(
-                null, null, null, null, 0, 10
+                null, null, null, 0, 10
         );
 
         assertThat(resultado.content()).hasSize(1);
@@ -81,23 +81,23 @@ class AvailabilityServiceTest {
         ZonedDateTime endOfDay = fechaFutura.atTime(23, 59, 59, 999_999_999).atZone(ZONE_BOGOTA);
 
         when(slotRepository.consultarDisponibles(
-                eq("esp-1"), eq("sede-1"), eq("PRESENCIAL"),
+                eq("esp-1"), isNull(), eq("PRESENCIAL"),
                 eq(startOfDay.toInstant()), eq(endOfDay.toInstant()), eq(0), eq(10)
         )).thenReturn(List.of());
         when(slotRepository.contarDisponibles(
-                eq("esp-1"), eq("sede-1"), eq("PRESENCIAL"),
+                eq("esp-1"), isNull(), eq("PRESENCIAL"),
                 eq(startOfDay.toInstant()), eq(endOfDay.toInstant())
         )).thenReturn(0);
 
         PaginatedResponse<DisponibilidadSlotResponse> resultado = availabilityService.consultarDisponibilidad(
-                " esp-1 ", " sede-1 ", "presencial", fechaFutura, 0, 10
+                " esp-1 ", "presencial", fechaFutura, 0, 10
         );
 
         assertThat(resultado.content()).isEmpty();
         assertThat(resultado.totalElements()).isZero();
 
         verify(slotRepository).consultarDisponibles(
-                "esp-1", "sede-1", "PRESENCIAL",
+                "esp-1", null, "PRESENCIAL",
                 startOfDay.toInstant(), endOfDay.toInstant(), 0, 10
         );
     }
@@ -117,7 +117,7 @@ class AvailabilityServiceTest {
         )).thenReturn(0);
 
         PaginatedResponse<DisponibilidadSlotResponse> resultado = availabilityService.consultarDisponibilidad(
-                null, null, null, hoyBogota, 0, 10
+                null, null, hoyBogota, 0, 10
         );
 
         assertThat(resultado.content()).isEmpty();
@@ -131,7 +131,7 @@ class AvailabilityServiceTest {
         LocalDate fechaPasada = LocalDate.of(2026, 10, 9);
 
         PaginatedResponse<DisponibilidadSlotResponse> resultado = availabilityService.consultarDisponibilidad(
-                "esp-1", "sede-1", "PRESENCIAL", fechaPasada, 0, 10
+                "esp-1", "PRESENCIAL", fechaPasada, 0, 10
         );
 
         assertThat(resultado.content()).isEmpty();
@@ -142,7 +142,7 @@ class AvailabilityServiceTest {
     @Test
     void consultarDisponibilidad_modalidadInvalida_lanzaDatosInvalidosException() {
         assertThatThrownBy(() -> availabilityService.consultarDisponibilidad(
-                null, null, "DOMICILIARIA", null, 0, 10
+                null, "DOMICILIARIA", null, 0, 10
         ))
                 .isInstanceOf(DatosInvalidosException.class)
                 .hasMessageContaining("Modalidad inválida: 'DOMICILIARIA'");
@@ -158,7 +158,7 @@ class AvailabilityServiceTest {
                 .thenReturn(0);
 
         PaginatedResponse<DisponibilidadSlotResponse> resultado = availabilityService.consultarDisponibilidad(
-                null, null, "telemedicina", null, 0, 10
+                null, "telemedicina", null, 0, 10
         );
 
         assertThat(resultado.content()).isEmpty();
@@ -168,7 +168,7 @@ class AvailabilityServiceTest {
     @Test
     void consultarDisponibilidad_pageNegativo_lanzaDatosInvalidosException() {
         assertThatThrownBy(() -> availabilityService.consultarDisponibilidad(
-                null, null, null, null, -1, 10
+                null, null, null, -1, 10
         ))
                 .isInstanceOf(DatosInvalidosException.class)
                 .hasMessageContaining("El número de página no puede ser menor a 0.");
@@ -179,7 +179,7 @@ class AvailabilityServiceTest {
     @Test
     void consultarDisponibilidad_sizeMenorAUno_lanzaDatosInvalidosException() {
         assertThatThrownBy(() -> availabilityService.consultarDisponibilidad(
-                null, null, null, null, 0, 0
+                null, null, null, 0, 0
         ))
                 .isInstanceOf(DatosInvalidosException.class)
                 .hasMessageContaining("El tamaño de página debe estar entre 1 y 100.");
@@ -190,7 +190,7 @@ class AvailabilityServiceTest {
     @Test
     void consultarDisponibilidad_sizeMayorACien_lanzaDatosInvalidosException() {
         assertThatThrownBy(() -> availabilityService.consultarDisponibilidad(
-                null, null, null, null, 0, 101
+                null, null, null, 0, 101
         ))
                 .isInstanceOf(DatosInvalidosException.class)
                 .hasMessageContaining("El tamaño de página debe estar entre 1 y 100.");

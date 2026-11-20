@@ -37,12 +37,11 @@ public class OperationalController {
     @GetMapping("/dashboard")
     @PreAuthorize("hasAnyRole('ROLE_ADMINISTRADOR', 'ROLE_ENFERMERIA', 'ROLE_PROFESIONAL')")
     public ResponseEntity<DashboardHospitalarioResponse> obtenerDashboard(
-            @RequestParam(required = false) String sedePublicId,
             Authentication auth,
             HttpServletRequest httpRequest
     ) {
         String usuarioPubId = auth != null ? auth.getName() : null;
-        DashboardHospitalarioResponse resp = analyticsService.obtenerDashboardHospitalario(sedePublicId, usuarioPubId, obtenerIp(httpRequest));
+        DashboardHospitalarioResponse resp = analyticsService.obtenerDashboardHospitalario(usuarioPubId, obtenerIp(httpRequest));
         return ResponseEntity.ok(resp);
     }
 
@@ -52,10 +51,9 @@ public class OperationalController {
     @GetMapping("/alerts")
     @PreAuthorize("hasAnyRole('ROLE_ADMINISTRADOR', 'ROLE_ENFERMERIA', 'ROLE_PROFESIONAL')")
     public ResponseEntity<List<AlertaOperativaResponse>> listarAlertas(
-            @RequestParam(required = false) String sedePublicId,
             @RequestParam(required = false) String estado
     ) {
-        return ResponseEntity.ok(analyticsService.listarAlertas(sedePublicId, estado));
+        return ResponseEntity.ok(analyticsService.listarAlertas(estado));
     }
 
     /**

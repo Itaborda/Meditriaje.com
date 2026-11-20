@@ -58,14 +58,13 @@ public class AdminSlotController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String profesionalPublicId,
-            @RequestParam(required = false) String sedePublicId,
             @RequestParam(required = false) String especialidadPublicId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant fechaDesde,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant fechaHasta,
             @RequestParam(required = false) String estado
     ) {
         PaginatedResponse<SlotResponse> response = slotGeneratorService.listar(
-                page, size, profesionalPublicId, sedePublicId, especialidadPublicId, fechaDesde, fechaHasta, estado
+                page, size, profesionalPublicId, especialidadPublicId, fechaDesde, fechaHasta, estado
         );
         return ResponseEntity.ok(response);
     }

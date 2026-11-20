@@ -174,9 +174,9 @@ class HospitalControllerTest {
     @DisplayName("H06: Consulta de censo de camas por administrador retorna 200 OK con métricas")
     void obtenerCensoCamas_admin_retorna200() throws Exception {
         CensoCamasResponse censo = new CensoCamasResponse("sede-pub", "Hospital Central", 20, 15, 3, 1, 1, 75.0, List.of());
-        when(hospitalService.obtenerCensoCamas("sede-pub")).thenReturn(censo);
+        when(hospitalService.obtenerCensoCamas()).thenReturn(censo);
 
-        mockMvc.perform(get("/api/v1/hospital/census/sede-pub")
+        mockMvc.perform(get("/api/v1/hospital/census")
                         .cookie(cookie(TOKEN_ADMIN)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalCamas").value(20))

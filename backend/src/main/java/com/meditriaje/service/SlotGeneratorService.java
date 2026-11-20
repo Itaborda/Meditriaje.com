@@ -16,7 +16,7 @@ import com.meditriaje.model.Usuario;
 import com.meditriaje.repository.DisponibilidadSlotRepository;
 import com.meditriaje.repository.EspecialidadRepository;
 import com.meditriaje.repository.ProfesionalRepository;
-import com.meditriaje.repository.SedeRepository;
+import com.meditriaje.repository.SiteRepository;
 import com.meditriaje.repository.UsuarioRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,7 +53,7 @@ public class SlotGeneratorService {
     private final DisponibilidadSlotRepository slotRepository;
     private final ProfesionalRepository profesionalRepository;
     private final UsuarioRepository usuarioRepository;
-    private final SedeRepository sedeRepository;
+    private final SiteRepository siteRepository;
     private final EspecialidadRepository especialidadRepository;
     private final AuditoriaService auditoriaService;
 
@@ -61,14 +61,14 @@ public class SlotGeneratorService {
             DisponibilidadSlotRepository slotRepository,
             ProfesionalRepository profesionalRepository,
             UsuarioRepository usuarioRepository,
-            SedeRepository sedeRepository,
+            SiteRepository siteRepository,
             EspecialidadRepository especialidadRepository,
             AuditoriaService auditoriaService
     ) {
         this.slotRepository = Objects.requireNonNull(slotRepository, "DisponibilidadSlotRepository no puede ser nulo");
         this.profesionalRepository = Objects.requireNonNull(profesionalRepository, "ProfesionalRepository no puede ser nulo");
         this.usuarioRepository = Objects.requireNonNull(usuarioRepository, "UsuarioRepository no puede ser nulo");
-        this.sedeRepository = Objects.requireNonNull(sedeRepository, "SedeRepository no puede ser nulo");
+        this.siteRepository = Objects.requireNonNull(siteRepository, "SiteRepository no puede ser nulo");
         this.especialidadRepository = Objects.requireNonNull(especialidadRepository, "EspecialidadRepository no puede ser nulo");
         this.auditoriaService = Objects.requireNonNull(auditoriaService, "AuditoriaService no puede ser nulo");
     }
@@ -92,13 +92,8 @@ public class SlotGeneratorService {
             throw new DatosInvalidosException("El profesional no tiene un usuario activo en el sistema.");
         }
 
-        // 2. Validar sede existente y activa
-        Sede sede = sedeRepository.buscarPorPublicId(request.sedePublicId().trim())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Sede no encontrada: " + request.sedePublicId()));
-
-        if (!ESTADO_ACTIVO.equalsIgnoreCase(sede.estado())) {
-            throw new DatosInvalidosException("La sede seleccionada no se encuentra activa.");
-        }
+        // 2. Hospital único: los slots se generan siempre en la única sede (la resuelve el servidor)
+        Sede sede = siteRepository.getSingleSite();
 
         // 3. Validar rango de fechas (zona America/Bogota)
         LocalDate hoyBogota = LocalDate.now(ZONE_BOGOTA);
@@ -352,7 +347,6 @@ public class SlotGeneratorService {
             int page,
             int size,
             String profesionalPublicId,
-            String sedePublicId,
             String especialidadPublicId,
             Instant fechaDesde,
             Instant fechaHasta,
@@ -367,7 +361,8 @@ public class SlotGeneratorService {
         }
 
         String profFiltro = (profesionalPublicId != null && !profesionalPublicId.isBlank()) ? profesionalPublicId.trim() : null;
-        String sedeFiltro = (sedePublicId != null && !sedePublicId.isBlank()) ? sedePublicId.trim() : null;
+        // Hospital único: no hay filtro de sede.
+        String sedeFiltro = null;
         String espFiltro = (especialidadPublicId != null && !especialidadPublicId.isBlank()) ? especialidadPublicId.trim() : null;
 
         List<SlotResponse> items = slotRepository.listar(

@@ -1,6 +1,6 @@
 /**
  * MediTraje 2.0 — Vista de Disponibilidad y Reserva de Citas (patient-booking.js)
- * Búsqueda de slots en tiempo real, filtros accesibles por especialidad, sede, modalidad y fecha,
+ * Búsqueda de slots en tiempo real, filtros accesibles por especialidad, modalidad y fecha,
  * confirmación resumida y agendamiento transaccional con manejo de colisiones 409 (M8.2b, HU-03, HU-04).
  */
 
@@ -18,13 +18,11 @@ let bookingState = {
   consultationReason: 'Consulta médica general o chequeo preventivo',
   filters: {
     especialidad: '',
-    sede: '',
     modalidad: '',
     fecha: ''
   },
   selectedDoctor: '',
-  availableSpecialties: new Map(), // publicId -> nombre
-  availableSites: new Map()        // publicId -> nombre
+  availableSpecialties: new Map() // publicId -> nombre
 };
 
 /**
@@ -96,7 +94,6 @@ export async function patientBookingView(container, context = {}) {
   bookingState.consultationReason = 'Consulta médica general o chequeo preventivo';
   bookingState.filters = {
     especialidad: '',
-    sede: '',
     modalidad: '',
     fecha: ''
   };
@@ -184,14 +181,6 @@ export async function patientBookingView(container, context = {}) {
               </select>
             </div>
 
-            <!-- Filtro Sede -->
-            <div class="form-group m-0">
-              <label for="filterSite" class="form-label text-xs">Sede de atención</label>
-              <select id="filterSite" class="form-select text-sm">
-                <option value="">Todas las sedes</option>
-              </select>
-            </div>
-
             <!-- Filtro Modalidad -->
             <div class="form-group m-0">
               <label for="filterModality" class="form-label text-xs">Modalidad</label>
@@ -247,9 +236,6 @@ async function loadAvailability(container) {
   if (bookingState.filters.especialidad) {
     params.especialidad = bookingState.filters.especialidad;
   }
-  if (bookingState.filters.sede) {
-    params.sede = bookingState.filters.sede;
-  }
   if (bookingState.filters.modalidad) {
     params.modalidad = bookingState.filters.modalidad;
   }
@@ -275,20 +261,16 @@ async function loadAvailability(container) {
 }
 
 /**
- * Llena dinámicamente los selectores de especialidades y sedes
+ * Llena dinámicamente el selector de especialidades (hospital único: no hay filtro de sede)
  */
 function populateFilterOptions(container) {
   const specialtySelect = container.querySelector('#filterSpecialty');
-  const siteSelect = container.querySelector('#filterSite');
 
   // Solo rellenar si aún no están poblados o si tienen 1 opción
   if (specialtySelect && specialtySelect.options.length <= 1) {
     bookingState.slots.forEach(s => {
       if (s.especialidadPublicId && s.especialidadNombre) {
         bookingState.availableSpecialties.set(s.especialidadPublicId, s.especialidadNombre);
-      }
-      if (s.sedePublicId && s.sedeNombre) {
-        bookingState.availableSites.set(s.sedePublicId, s.sedeNombre);
       }
     });
 
@@ -298,14 +280,6 @@ function populateFilterOptions(container) {
       opt.textContent = nombre;
       if (bookingState.filters.especialidad === id) opt.selected = true;
       specialtySelect.appendChild(opt);
-    });
-
-    bookingState.availableSites.forEach((nombre, id) => {
-      const opt = document.createElement('option');
-      opt.value = id;
-      opt.textContent = nombre;
-      if (bookingState.filters.sede === id) opt.selected = true;
-      siteSelect.appendChild(opt);
     });
   }
 }
@@ -324,7 +298,6 @@ function setupFilterEvents(container) {
       const reasonVal = container.querySelector('#filterReason')?.value;
       if (reasonVal) bookingState.consultationReason = reasonVal;
     }
-    bookingState.filters.sede = container.querySelector('#filterSite')?.value || '';
     bookingState.filters.modalidad = container.querySelector('#filterModality')?.value || '';
     
     // Ocultar confirmación previa si cambia el filtro
@@ -351,7 +324,7 @@ function setupFilterEvents(container) {
 
   btnReset?.addEventListener('click', async () => {
     if (form) form.reset();
-    bookingState.filters = { especialidad: '', sede: '', modalidad: '', fecha: '' };
+    bookingState.filters = { especialidad: '', modalidad: '', fecha: '' };
     bookingState.selectedDoctor = '';
     if (!bookingState.triageData) {
       bookingState.consultationReason = 'Consulta médica general o chequeo preventivo';
@@ -377,7 +350,7 @@ function renderSlotsGrouped(container) {
       onAction: () => {
         const form = container.querySelector('#filtersForm');
         if (form) form.reset();
-        bookingState.filters = { especialidad: '', sede: '', modalidad: '', fecha: '' };
+        bookingState.filters = { especialidad: '', modalidad: '', fecha: '' };
         bookingState.selectedDoctor = '';
         hideConfirmationCard(container);
         loadAvailability(container);

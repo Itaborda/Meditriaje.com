@@ -24,7 +24,7 @@ public class OperationalAnalyticsService {
     private final AlertaOperativaRepository alertaRepository;
     private final SeguimientoQrRepository seguimientoQrRepository;
     private final HospitalService hospitalService;
-    private final SedeRepository sedeRepository;
+    private final SiteRepository siteRepository;
     private final EpisodioAtencionRepository episodioRepository;
     private final ValoracionTriajeRepository triajeRepository;
     private final IdentidadProvisionalRepository identidadRepository;
@@ -36,7 +36,7 @@ public class OperationalAnalyticsService {
             AlertaOperativaRepository alertaRepository,
             SeguimientoQrRepository seguimientoQrRepository,
             HospitalService hospitalService,
-            SedeRepository sedeRepository,
+            SiteRepository siteRepository,
             EpisodioAtencionRepository episodioRepository,
             ValoracionTriajeRepository triajeRepository,
             IdentidadProvisionalRepository identidadRepository,
@@ -47,7 +47,7 @@ public class OperationalAnalyticsService {
         this.alertaRepository = Objects.requireNonNull(alertaRepository);
         this.seguimientoQrRepository = Objects.requireNonNull(seguimientoQrRepository);
         this.hospitalService = Objects.requireNonNull(hospitalService);
-        this.sedeRepository = Objects.requireNonNull(sedeRepository);
+        this.siteRepository = Objects.requireNonNull(siteRepository);
         this.episodioRepository = Objects.requireNonNull(episodioRepository);
         this.triajeRepository = Objects.requireNonNull(triajeRepository);
         this.identidadRepository = Objects.requireNonNull(identidadRepository);
@@ -57,22 +57,17 @@ public class OperationalAnalyticsService {
     }
 
     /**
-     * O01: Construye el panel analítico hospitalario en tiempo real para una sede.
+     * O01: Construye el panel analítico hospitalario en tiempo real (hospital único).
      */
     @Transactional
     public DashboardHospitalarioResponse obtenerDashboardHospitalario(
-            String sedePublicId,
             String usuarioAutenticadoPublicId,
             String ipOrigen
     ) {
-        Sede sede = (sedePublicId != null && !sedePublicId.isBlank())
-                ? sedeRepository.buscarPorPublicId(sedePublicId)
-                    .orElseThrow(() -> new RecursoNoEncontradoException("Sede no encontrada: " + sedePublicId))
-                : sedeRepository.listar(0, 1, null, "ACTIVO").stream().findFirst()
-                    .orElseThrow(() -> new RecursoNoEncontradoException("No hay sedes activas registradas en el sistema."));
+        Sede sede = siteRepository.getSingleSite();
 
         // Métricas de camas
-        CensoCamasResponse censo = hospitalService.obtenerCensoCamas(sede.publicId());
+        CensoCamasResponse censo = hospitalService.obtenerCensoCamas();
         int totalCamas = censo.totalCamas();
         int ocupadas = censo.ocupadas();
         int disponibles = censo.disponibles();
@@ -165,21 +160,17 @@ public class OperationalAnalyticsService {
                         Instant.now(clock)
                 ));
             } catch (DataIntegrityViolationException ignored) {
-                // Deduplicado de forma segura por el índice único UQ_ALERTA_SEDE_TIPO_ACTIVA
+                // Deduplicado de forma segura por el índice único UQ_ALERTA_OPERATIVA_ACTIVA (V025)
             }
         }
     }
 
     /**
-     * O02: Lista alertas operativas de una sede.
+     * O02: Lista las alertas operativas del hospital.
      */
-    public List<AlertaOperativaResponse> listarAlertas(String sedePublicId, String estado) {
-        Long sedeId = null;
-        if (sedePublicId != null && !sedePublicId.isBlank()) {
-            sedeId = sedeRepository.buscarPorPublicId(sedePublicId)
-                    .map(Sede::id).orElse(null);
-        }
-        return alertaRepository.listarPorSede(sedeId, estado);
+    public List<AlertaOperativaResponse> listarAlertas(String estado) {
+        // Hospital único: sin filtro de sede se listan todas las alertas.
+        return alertaRepository.listarPorSede(null, estado);
     }
 
     /**

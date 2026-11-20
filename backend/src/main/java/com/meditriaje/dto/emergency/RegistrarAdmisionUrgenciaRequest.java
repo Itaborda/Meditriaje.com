@@ -7,9 +7,6 @@ import jakarta.validation.constraints.Size;
  * Petición de ingreso presencial y apertura de episodio de urgencias (Fase U, ADR-022, U02).
  */
 public record RegistrarAdmisionUrgenciaRequest(
-        @NotBlank(message = "El identificador de la sede es obligatorio.")
-        String sitePublicId,
-
         String pacientePublicId,
 
         boolean esIdentidadProvisional,

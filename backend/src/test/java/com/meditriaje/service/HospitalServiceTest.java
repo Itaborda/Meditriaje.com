@@ -36,7 +36,7 @@ class HospitalServiceTest {
     @Mock private ProcedimientoHospitalarioRepository procedimientoRepository;
     @Mock private EgresoHospitalarioRepository egresoRepository;
     @Mock private EpisodioAtencionRepository episodioRepository;
-    @Mock private SedeRepository sedeRepository;
+    @Mock private SiteRepository siteRepository;
     @Mock private UsuarioRepository usuarioRepository;
     @Mock private ProfesionalRepository profesionalRepository;
     @Mock private AuditoriaService auditoriaService;
@@ -66,7 +66,7 @@ class HospitalServiceTest {
                 procedimientoRepository,
                 egresoRepository,
                 episodioRepository,
-                sedeRepository,
+                siteRepository,
                 usuarioRepository,
                 profesionalRepository,
                 auditoriaService,
@@ -213,7 +213,7 @@ class HospitalServiceTest {
     @Test
     @DisplayName("H06: Centro de Control calcula censo de camas e indicadores de ocupación")
     void obtenerCensoCamas_calculaOcupacionCorrectamente() {
-        when(sedeRepository.buscarPorPublicId("sede-pub")).thenReturn(Optional.of(sedeMock));
+        when(siteRepository.getSingleSite()).thenReturn(sedeMock);
 
         CamaDetalleResponse c1 = new CamaDetalleResponse("c-1", "h-1", "H1", "a-1", "Urgencias", "sede-pub", "Hospital", "C1", "OCUPADA", "ep-1", "Paciente 1", "oc-1");
         CamaDetalleResponse c2 = new CamaDetalleResponse("c-2", "h-1", "H1", "a-1", "Urgencias", "sede-pub", "Hospital", "C2", "DISPONIBLE", null, null, null);
@@ -223,7 +223,7 @@ class HospitalServiceTest {
         when(camaRepository.listarDetallePorSedeId(1L)).thenReturn(List.of(c1, c2, c3, c4));
         when(areaRepository.listarPorSedeId(1L)).thenReturn(List.of(areaMock));
 
-        CensoCamasResponse censo = hospitalService.obtenerCensoCamas("sede-pub");
+        CensoCamasResponse censo = hospitalService.obtenerCensoCamas();
 
         assertThat(censo).isNotNull();
         assertThat(censo.totalCamas()).isEqualTo(4);

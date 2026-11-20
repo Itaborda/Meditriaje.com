@@ -17,9 +17,6 @@ public record GenerarSlotsRequest(
         @NotBlank(message = "El publicId del profesional es obligatorio")
         String profesionalPublicId,
 
-        @NotBlank(message = "El publicId de la sede es obligatorio")
-        String sedePublicId,
-
         @NotNull(message = "La fecha de inicio es obligatoria")
         LocalDate fechaInicio,
 

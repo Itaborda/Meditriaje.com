@@ -44,7 +44,7 @@ test.describe('Fase 3: Gestión Hospitalaria, Camas, Movimientos y Egresos', () 
 
   test('debe visualizar el censo hospitalario con métricas de capacidad y ocupación (H01, H02)', async ({ page }) => {
     // Mock censo y camas
-    await page.route(`**/api/v1/hospital/census/${sedeId}`, async (route) => {
+    await page.route('**/api/v1/hospital/census', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -79,7 +79,7 @@ test.describe('Fase 3: Gestión Hospitalaria, Camas, Movimientos y Egresos', () 
       });
     });
 
-    await page.route(`**/api/v1/hospital/beds/${sedeId}`, async (route) => {
+    await page.route('**/api/v1/hospital/beds', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -149,7 +149,7 @@ test.describe('Fase 3: Gestión Hospitalaria, Camas, Movimientos y Egresos', () 
     });
 
     // Camas disponibles
-    await page.route(`**/api/v1/hospital/beds/${sedeId}`, async (route) => {
+    await page.route('**/api/v1/hospital/beds', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -249,7 +249,7 @@ test.describe('Fase 3: Gestión Hospitalaria, Camas, Movimientos y Egresos', () 
       });
     });
 
-    await page.route(`**/api/v1/hospital/beds/${sedeId}`, async (route) => {
+    await page.route('**/api/v1/hospital/beds', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

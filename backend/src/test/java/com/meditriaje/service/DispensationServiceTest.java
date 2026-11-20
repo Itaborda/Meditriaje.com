@@ -22,7 +22,7 @@ import com.meditriaje.repository.DispensacionRepository;
 import com.meditriaje.repository.DispensacionRepository.ItemPrescritoInfo;
 import com.meditriaje.repository.PacienteRepository;
 import com.meditriaje.repository.RecetaRepository;
-import com.meditriaje.repository.SedeRepository;
+import com.meditriaje.repository.SiteRepository;
 import com.meditriaje.repository.UsuarioRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -60,7 +60,7 @@ class DispensationServiceTest {
     private UsuarioRepository usuarioRepository;
 
     @Mock
-    private SedeRepository sedeRepository;
+    private SiteRepository siteRepository;
 
     @Mock
     private RecetaRepository recetaRepository;
@@ -87,7 +87,7 @@ class DispensationServiceTest {
     void setUp() {
         service = new DispensationService(
                 usuarioRepository,
-                sedeRepository,
+                siteRepository,
                 recetaRepository,
                 pacienteRepository,
                 dispensacionRepository,
@@ -104,7 +104,7 @@ class DispensationServiceTest {
         Receta receta = new Receta(30L, "rec-uuid-1", 100L, 200L, 300L, 30, now.minus(5, ChronoUnit.DAYS));
 
         when(usuarioRepository.buscarPorPublicId("usr-farm-1")).thenReturn(Optional.of(farmaceutico));
-        when(sedeRepository.buscarPorPublicId("sede-uuid-1")).thenReturn(Optional.of(sede));
+        when(siteRepository.getSingleSite()).thenReturn(sede);
         when(recetaRepository.buscarEntidadPorPublicId("rec-uuid-1")).thenReturn(Optional.of(receta));
 
         List<ItemPrescritoInfo> items = List.of(
@@ -130,7 +130,6 @@ class DispensationServiceTest {
 
         RegistrarDispensacionRequest request = new RegistrarDispensacionRequest(
                 "rec-uuid-1",
-                "sede-uuid-1",
                 "Primera entrega",
                 List.of(new DetalleEntregaRequest("med-uuid-1", 10, "LOTE-INV-1", LocalDate.of(2027, 12, 31)))
         );
@@ -162,12 +161,11 @@ class DispensationServiceTest {
         Receta receta = new Receta(30L, "rec-uuid-1", 100L, 200L, 300L, 30, now.minus(35, ChronoUnit.DAYS));
 
         when(usuarioRepository.buscarPorPublicId("usr-farm-1")).thenReturn(Optional.of(farmaceutico));
-        when(sedeRepository.buscarPorPublicId("sede-uuid-1")).thenReturn(Optional.of(sede));
+        when(siteRepository.getSingleSite()).thenReturn(sede);
         when(recetaRepository.buscarEntidadPorPublicId("rec-uuid-1")).thenReturn(Optional.of(receta));
 
         RegistrarDispensacionRequest request = new RegistrarDispensacionRequest(
                 "rec-uuid-1",
-                "sede-uuid-1",
                 null,
                 List.of(new DetalleEntregaRequest("med-uuid-1", 5, "LOTE-1", null))
         );
@@ -185,7 +183,6 @@ class DispensationServiceTest {
     void registrarDispensacion_rechazaRolNoFarmaceutico() {
         RegistrarDispensacionRequest request = new RegistrarDispensacionRequest(
                 "rec-uuid-1",
-                "sede-uuid-1",
                 null,
                 List.of(new DetalleEntregaRequest("med-uuid-1", 5, "LOTE-1", null))
         );
@@ -207,7 +204,7 @@ class DispensationServiceTest {
         Receta receta = new Receta(30L, "rec-uuid-1", 100L, 200L, 300L, 30, now.minus(2, ChronoUnit.DAYS));
 
         when(usuarioRepository.buscarPorPublicId("usr-farm-1")).thenReturn(Optional.of(farmaceutico));
-        when(sedeRepository.buscarPorPublicId("sede-uuid-1")).thenReturn(Optional.of(sede));
+        when(siteRepository.getSingleSite()).thenReturn(sede);
         when(recetaRepository.buscarEntidadPorPublicId("rec-uuid-1")).thenReturn(Optional.of(receta));
 
         // Prescrito: 10. Ya entregado: 8. Saldo disponible: 2.
@@ -220,7 +217,6 @@ class DispensationServiceTest {
         // Solicita 5 (supera saldo de 2)
         RegistrarDispensacionRequest request = new RegistrarDispensacionRequest(
                 "rec-uuid-1",
-                "sede-uuid-1",
                 null,
                 List.of(new DetalleEntregaRequest("med-uuid-1", 5, "LOTE-1", null))
         );
@@ -238,7 +234,7 @@ class DispensationServiceTest {
         Receta receta = new Receta(30L, "rec-uuid-1", 100L, 200L, 300L, 30, now.minus(2, ChronoUnit.DAYS));
 
         when(usuarioRepository.buscarPorPublicId("usr-farm-1")).thenReturn(Optional.of(farmaceutico));
-        when(sedeRepository.buscarPorPublicId("sede-uuid-1")).thenReturn(Optional.of(sede));
+        when(siteRepository.getSingleSite()).thenReturn(sede);
         when(recetaRepository.buscarEntidadPorPublicId("rec-uuid-1")).thenReturn(Optional.of(receta));
 
         // Prescrito: 10. Ya entregado: 10. Saldo: 0.
@@ -250,7 +246,6 @@ class DispensationServiceTest {
 
         RegistrarDispensacionRequest request = new RegistrarDispensacionRequest(
                 "rec-uuid-1",
-                "sede-uuid-1",
                 null,
                 List.of(new DetalleEntregaRequest("med-uuid-1", 1, "LOTE-1", null))
         );
@@ -268,7 +263,7 @@ class DispensationServiceTest {
         Receta receta = new Receta(30L, "rec-uuid-1", 100L, 200L, 300L, 30, now.minus(2, ChronoUnit.DAYS));
 
         when(usuarioRepository.buscarPorPublicId("usr-farm-1")).thenReturn(Optional.of(farmaceutico));
-        when(sedeRepository.buscarPorPublicId("sede-uuid-1")).thenReturn(Optional.of(sede));
+        when(siteRepository.getSingleSite()).thenReturn(sede);
         when(recetaRepository.buscarEntidadPorPublicId("rec-uuid-1")).thenReturn(Optional.of(receta));
 
         List<ItemPrescritoInfo> items = List.of(
@@ -278,7 +273,6 @@ class DispensationServiceTest {
 
         RegistrarDispensacionRequest request = new RegistrarDispensacionRequest(
                 "rec-uuid-1",
-                "sede-uuid-1",
                 null,
                 List.of(new DetalleEntregaRequest("med-uuid-999", 5, "LOTE-1", null))
         );
@@ -296,12 +290,11 @@ class DispensationServiceTest {
         Receta receta = new Receta(30L, "rec-uuid-1", 100L, 200L, 300L, 30, now.minus(2, ChronoUnit.DAYS));
 
         when(usuarioRepository.buscarPorPublicId("usr-farm-1")).thenReturn(Optional.of(farmaceutico));
-        when(sedeRepository.buscarPorPublicId("sede-uuid-1")).thenReturn(Optional.of(sede));
+        when(siteRepository.getSingleSite()).thenReturn(sede);
         when(recetaRepository.buscarEntidadPorPublicId("rec-uuid-1")).thenReturn(Optional.of(receta));
 
         RegistrarDispensacionRequest request = new RegistrarDispensacionRequest(
                 "rec-uuid-1",
-                "sede-uuid-1",
                 null,
                 List.of(
                         new DetalleEntregaRequest("med-uuid-1", 5, "LOTE-1", null),
@@ -312,27 +305,6 @@ class DispensationServiceTest {
         assertThatThrownBy(() -> service.registrarDispensacion(request, "usr-farm-1", authoritiesFarmaceutico, "127.0.0.1"))
                 .isInstanceOf(DatosInvalidosException.class)
                 .hasMessageContaining("duplicados");
-    }
-
-    @Test
-    @DisplayName("registrarDispensacion - Rechaza sede inactiva")
-    void registrarDispensacion_rechazaSedeInactiva() {
-        Usuario farmaceutico = new Usuario(10L, "usr-farm-1", "farmacia@ejemplo.com", "hash", "ACTIVO", 0, null, null, false, false, null, null);
-        Sede sedeInactiva = new Sede(20L, 1L, "sede-uuid-1", "Sede Antigua", "Calle 50", "Medellín", "INACTIVO");
-
-        when(usuarioRepository.buscarPorPublicId("usr-farm-1")).thenReturn(Optional.of(farmaceutico));
-        when(sedeRepository.buscarPorPublicId("sede-uuid-1")).thenReturn(Optional.of(sedeInactiva));
-
-        RegistrarDispensacionRequest request = new RegistrarDispensacionRequest(
-                "rec-uuid-1",
-                "sede-uuid-1",
-                null,
-                List.of(new DetalleEntregaRequest("med-uuid-1", 5, "LOTE-1", null))
-        );
-
-        assertThatThrownBy(() -> service.registrarDispensacion(request, "usr-farm-1", authoritiesFarmaceutico, "127.0.0.1"))
-                .isInstanceOf(DatosInvalidosException.class)
-                .hasMessageContaining("inactiva");
     }
 
     @Test
@@ -422,18 +394,5 @@ class DispensationServiceTest {
         assertThatThrownBy(() -> service.consultarDispensacionPaciente("rec-uuid-1", "usr-pac-1"))
                 .isInstanceOf(AccesoNoAutorizadoException.class)
                 .hasMessageContaining("otro paciente");
-    }
-
-    @Test
-    @DisplayName("listarSedesActivas - Retorna lista de sedes activas mapeadas")
-    void listarSedesActivas_retornaSedesDeRepository() {
-        Sede sede1 = new Sede(1L, 10L, "sede-1", "Sede Central", "Calle 10", "Bogotá", "ACTIVO");
-        when(sedeRepository.listar(0, 100, null, "ACTIVO")).thenReturn(List.of(sede1));
-
-        List<com.meditriaje.dto.admin.SedeResponse> result = service.listarSedesActivas();
-
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).publicId()).isEqualTo("sede-1");
-        assertThat(result.get(0).nombre()).isEqualTo("Sede Central");
     }
 }

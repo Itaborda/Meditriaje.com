@@ -25,7 +25,7 @@ import com.meditriaje.repository.IdentidadProvisionalRepository;
 import com.meditriaje.repository.IngresoUrgenciaRepository;
 import com.meditriaje.repository.PacienteRepository;
 import com.meditriaje.repository.ProfesionalRepository;
-import com.meditriaje.repository.SedeRepository;
+import com.meditriaje.repository.SiteRepository;
 import com.meditriaje.repository.UsuarioRepository;
 import com.meditriaje.repository.ValoracionTriajeRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -67,7 +67,7 @@ class EmergencyServiceTest {
     @Mock
     private AsignacionAsistencialRepository asignacionRepository;
     @Mock
-    private SedeRepository sedeRepository;
+    private SiteRepository siteRepository;
     @Mock
     private PacienteRepository pacienteRepository;
     @Mock
@@ -94,7 +94,7 @@ class EmergencyServiceTest {
                 identidadRepository,
                 valoracionRepository,
                 asignacionRepository,
-                sedeRepository,
+                siteRepository,
                 pacienteRepository,
                 usuarioRepository,
                 profesionalRepository,
@@ -123,13 +123,13 @@ class EmergencyServiceTest {
     @DisplayName("U02: Admisión de urgencia de paciente identificado exitosa")
     void registrarAdmision_pacienteIdentificado_exito() {
         RegistrarAdmisionUrgenciaRequest req = new RegistrarAdmisionUrgenciaRequest(
-                "sede-valledupar-pub", "pac-pub-id", false,
+                "pac-pub-id", false,
                 "ESPONTANEO", "Dolor toracico agudo", "Pedro Perez", "3111111111",
                 "Sin observaciones", null, null, null, null
         );
 
         when(usuarioRepository.buscarPorPublicId("enf-pub-id")).thenReturn(Optional.of(enfermeroMock));
-        when(sedeRepository.buscarPorPublicId("sede-valledupar-pub")).thenReturn(Optional.of(sedeMock));
+        when(siteRepository.getSingleSite()).thenReturn(sedeMock);
         when(pacienteRepository.buscarPorPublicId("pac-pub-id")).thenReturn(Optional.of(pacienteMock));
 
         EpisodioAtencion epCreado = new EpisodioAtencion(
@@ -158,14 +158,14 @@ class EmergencyServiceTest {
     @DisplayName("U02/U03: Admisión de paciente no identificado (NN) genera código provisional opaco")
     void registrarAdmision_pacienteProvisionalNN_exito() {
         RegistrarAdmisionUrgenciaRequest req = new RegistrarAdmisionUrgenciaRequest(
-                "sede-valledupar-pub", null, true,
+                null, true,
                 "AMBULANCIA", "Paciente inconsciente encontrado en via publica",
                 null, null, "Trauma craneoencefalico aparente",
                 "Tatuaje en brazo izquierdo, contextura media", 35, "MASCULINO", "INCONSCIENTE"
         );
 
         when(usuarioRepository.buscarPorPublicId("enf-pub-id")).thenReturn(Optional.of(enfermeroMock));
-        when(sedeRepository.buscarPorPublicId("sede-valledupar-pub")).thenReturn(Optional.of(sedeMock));
+        when(siteRepository.getSingleSite()).thenReturn(sedeMock);
 
         EpisodioAtencion epCreado = new EpisodioAtencion(
                 101L, "ep-nn-id", null, "URGENCIA", 1L, "REGISTRADO", AHORA, null,
@@ -304,10 +304,9 @@ class EmergencyServiceTest {
                 "URGENCIA", "EN_TRIAJE", "II", "Dolor pecho", 12L, AHORA, null
         );
 
-        when(sedeRepository.buscarPorPublicId("sede-pub")).thenReturn(Optional.of(sedeMock));
-        when(episodioRepository.listarColaUrgenciaPorSede(1L, null)).thenReturn(List.of(item1, item2));
+        when(episodioRepository.listarColaUrgenciaPorSede(null, null)).thenReturn(List.of(item1, item2));
 
-        List<ItemColaUrgenciaResponse> cola = emergencyService.listarColaUrgencias("sede-pub", null);
+        List<ItemColaUrgenciaResponse> cola = emergencyService.listarColaUrgencias(null);
 
         assertThat(cola).hasSize(2);
         assertThat(cola.get(0).nivelTriaje()).isEqualTo("I");

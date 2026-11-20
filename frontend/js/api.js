@@ -201,8 +201,7 @@ export const pharmacyApi = {
   buscarRecetas: (query = '', page = 0, size = 10) => api.get('/pharmacy/prescriptions', { query, page, size }),
   consultarReceta: (publicId) => api.get(`/pharmacy/prescriptions/${publicId}`),
   registrarDispensacion: (data) => api.post('/pharmacy/dispensations', data),
-  consultarDispensacion: (publicId) => api.get(`/pharmacy/dispensations/${publicId}`),
-  listarSedes: () => api.get('/pharmacy/sites')
+  consultarDispensacion: (publicId) => api.get(`/pharmacy/dispensations/${publicId}`)
 };
 
 export const emergencyApi = {
@@ -212,9 +211,9 @@ export const emergencyApi = {
   registrarValoracionTriaje: (episodePublicId, data) => api.post(`/emergency/episodes/${episodePublicId}/triage-assessments`, data),
   listarHistorialTriaje: (episodePublicId) => api.get(`/emergency/episodes/${episodePublicId}/triage-assessments`),
   asignarEquipo: (episodePublicId, data) => api.post(`/emergency/episodes/${episodePublicId}/assignments`, data),
-  listarColaUrgencias: (sedePublicId, estado = null) => api.get(`/emergency/queue/${sedePublicId}`, estado ? { estado } : {}),
-  cerrarEpisodio: (episodePublicId) => api.post(`/emergency/episodes/${episodePublicId}/close`, {}),
-  listarSedes: () => api.get('/admin/sites')
+  // Hospital único: la cola es la del hospital, el servidor resuelve la sede.
+  listarColaUrgencias: (estado = null) => api.get('/emergency/queue', estado ? { status: estado } : {}),
+  cerrarEpisodio: (episodePublicId) => api.post(`/emergency/episodes/${episodePublicId}/close`, {})
 };
 
 export const patientApi = {
@@ -228,8 +227,8 @@ export const hospitalApi = {
   registrarProcedimiento: (episodeId, data) => api.post(`/hospital/episodes/${episodeId}/procedures`, data),
   actualizarEstadoProcedimiento: (procedimientoId, data) => api.patch(`/hospital/procedures/${procedimientoId}/status`, data),
   registrarEgreso: (episodeId, data) => api.post(`/hospital/episodes/${episodeId}/discharge`, data),
-  obtenerCenso: (sedeId) => api.get(`/hospital/census/${sedeId}`),
-  listarCamas: (sedeId) => api.get(`/hospital/beds/${sedeId}`),
+  obtenerCenso: () => api.get('/hospital/census'),
+  listarCamas: () => api.get('/hospital/beds'),
   listarMovimientos: (episodeId) => api.get(`/hospital/episodes/${episodeId}/movements`),
   listarProcedimientos: (episodeId) => api.get(`/hospital/episodes/${episodeId}/procedures`)
 };
@@ -246,8 +245,8 @@ export const affiliationApi = {
 };
 
 export const operationalApi = {
-  obtenerDashboard: (sedePublicId = null) => api.get('/operational/dashboard', sedePublicId ? { sedePublicId } : {}),
-  listarAlertas: (sedePublicId = null, estado = null) => api.get('/operational/alerts', { ...(sedePublicId && { sedePublicId }), ...(estado && { estado }) }),
+  obtenerDashboard: () => api.get('/operational/dashboard'),
+  listarAlertas: (estado = null) => api.get('/operational/alerts', estado ? { estado } : {}),
   reconocerAlerta: (alertaId, motivo) => api.post(`/operational/alerts/${alertaId}/acknowledge`, { motivo }),
   generarTrackingQr: (episodioId) => api.post(`/operational/episodes/${episodioId}/tracking-qr`, {}),
   consultarTrackingQr: (token) => api.get(`/operational/tracking-qr/${token}`)

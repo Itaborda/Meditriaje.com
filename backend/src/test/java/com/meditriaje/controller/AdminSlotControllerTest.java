@@ -102,7 +102,7 @@ class AdminSlotControllerTest {
     @Test
     void postGenerate_conRolProfesional_retorna403Forbidden() throws Exception {
         GenerarSlotsRequest req = new GenerarSlotsRequest(
-                "prof-1", "sede-1", LocalDate.now().plusDays(1), LocalDate.now().plusDays(1),
+                "prof-1", LocalDate.now().plusDays(1), LocalDate.now().plusDays(1),
                 LocalTime.of(8, 0), LocalTime.of(10, 0), 20, "PRESENCIAL", null
         );
 
@@ -122,7 +122,7 @@ class AdminSlotControllerTest {
     @Test
     void postGenerate_conDatosValidos_retorna201Created() throws Exception {
         GenerarSlotsRequest req = new GenerarSlotsRequest(
-                "prof-1", "sede-1", LocalDate.now().plusDays(1), LocalDate.now().plusDays(1),
+                "prof-1", LocalDate.now().plusDays(1), LocalDate.now().plusDays(1),
                 LocalTime.of(8, 0), LocalTime.of(9, 0), 20, "PRESENCIAL", List.of(DayOfWeek.MONDAY)
         );
 
@@ -149,9 +149,9 @@ class AdminSlotControllerTest {
 
     @Test
     void postGenerate_datosInvalidosEnCuerpo_retorna400BadRequest() throws Exception {
-        // Falta sedePublicId y fechaInicio
+        // Falta fechaInicio
         GenerarSlotsRequest req = new GenerarSlotsRequest(
-                "prof-1", "", null, LocalDate.now().plusDays(1),
+                "prof-1", null, LocalDate.now().plusDays(1),
                 LocalTime.of(8, 0), LocalTime.of(10, 0), 20, "PRESENCIAL", null
         );
 
@@ -168,7 +168,7 @@ class AdminSlotControllerTest {
     void postGenerate_duracionFueraDeRango_retorna400BadRequest() throws Exception {
         // Duración menor a 5 min
         GenerarSlotsRequest req = new GenerarSlotsRequest(
-                "prof-1", "sede-1", LocalDate.now().plusDays(1), LocalDate.now().plusDays(1),
+                "prof-1", LocalDate.now().plusDays(1), LocalDate.now().plusDays(1),
                 LocalTime.of(8, 0), LocalTime.of(10, 0), 3, "PRESENCIAL", null
         );
 
@@ -184,7 +184,7 @@ class AdminSlotControllerTest {
     @Test
     void postGenerate_conflictoSolape_retorna400BadRequest() throws Exception {
         GenerarSlotsRequest req = new GenerarSlotsRequest(
-                "prof-1", "sede-1", LocalDate.now().plusDays(1), LocalDate.now().plusDays(1),
+                "prof-1", LocalDate.now().plusDays(1), LocalDate.now().plusDays(1),
                 LocalTime.of(8, 0), LocalTime.of(9, 0), 20, "PRESENCIAL", null
         );
 
@@ -209,7 +209,7 @@ class AdminSlotControllerTest {
         );
         PaginatedResponse<SlotResponse> paginated = PaginatedResponse.of(List.of(slotResp), 0, 10, 1L);
 
-        when(slotGeneratorService.listar(anyInt(), anyInt(), any(), any(), any(), any(), any(), any()))
+        when(slotGeneratorService.listar(anyInt(), anyInt(), any(), any(), any(), any(), any()))
                 .thenReturn(paginated);
 
         mockMvc.perform(get("/api/v1/admin/slots")

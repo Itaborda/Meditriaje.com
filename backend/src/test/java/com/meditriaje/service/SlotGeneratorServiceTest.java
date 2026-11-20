@@ -16,7 +16,7 @@ import com.meditriaje.model.Usuario;
 import com.meditriaje.repository.DisponibilidadSlotRepository;
 import com.meditriaje.repository.EspecialidadRepository;
 import com.meditriaje.repository.ProfesionalRepository;
-import com.meditriaje.repository.SedeRepository;
+import com.meditriaje.repository.SiteRepository;
 import com.meditriaje.repository.UsuarioRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -54,7 +54,7 @@ class SlotGeneratorServiceTest {
     private UsuarioRepository usuarioRepository;
 
     @Mock
-    private SedeRepository sedeRepository;
+    private SiteRepository siteRepository;
 
     @Mock
     private EspecialidadRepository especialidadRepository;
@@ -83,7 +83,7 @@ class SlotGeneratorServiceTest {
                 slotRepository,
                 profesionalRepository,
                 usuarioRepository,
-                sedeRepository,
+                siteRepository,
                 especialidadRepository,
                 auditoriaService
         );
@@ -98,7 +98,7 @@ class SlotGeneratorServiceTest {
     private void stubCatalogosValidos() {
         when(profesionalRepository.buscarPorPublicId(PROF_UUID)).thenReturn(Optional.of(profesional));
         when(usuarioRepository.buscarPorId(100L)).thenReturn(Optional.of(usuarioProf));
-        when(sedeRepository.buscarPorPublicId(SEDE_UUID)).thenReturn(Optional.of(sede));
+        when(siteRepository.getSingleSite()).thenReturn(sede);
         when(especialidadRepository.buscarPorId(5L)).thenReturn(Optional.of(especialidad));
     }
 
@@ -118,7 +118,7 @@ class SlotGeneratorServiceTest {
         LocalDate fecha = hoy.plusDays(1);
 
         GenerarSlotsRequest request = new GenerarSlotsRequest(
-                PROF_UUID, SEDE_UUID, fecha, fecha,
+                PROF_UUID, fecha, fecha,
                 LocalTime.of(8, 0), LocalTime.of(9, 0),
                 20, "PRESENCIAL", null
         );
@@ -160,7 +160,7 @@ class SlotGeneratorServiceTest {
 
         // Ventana de 08:00 a 08:50 con slots de 20 min -> debe generar 2 slots (08:00-08:20 y 08:20-08:40), omitiendo 08:40-09:00
         GenerarSlotsRequest request = new GenerarSlotsRequest(
-                PROF_UUID, SEDE_UUID, fecha, fecha,
+                PROF_UUID, fecha, fecha,
                 LocalTime.of(8, 0), LocalTime.of(8, 50),
                 20, "PRESENCIAL", null
         );
@@ -186,7 +186,7 @@ class SlotGeneratorServiceTest {
 
         // Filtrar únicamente los días lunes
         GenerarSlotsRequest request = new GenerarSlotsRequest(
-                PROF_UUID, SEDE_UUID, inicio, fin,
+                PROF_UUID, inicio, fin,
                 LocalTime.of(8, 0), LocalTime.of(8, 30),
                 30, "PRESENCIAL", List.of(DayOfWeek.MONDAY)
         );
@@ -209,7 +209,7 @@ class SlotGeneratorServiceTest {
 
         // Especialidad tiene duracion 20
         GenerarSlotsRequest request = new GenerarSlotsRequest(
-                PROF_UUID, SEDE_UUID, fecha, fecha,
+                PROF_UUID, fecha, fecha,
                 LocalTime.of(8, 0), LocalTime.of(8, 40),
                 null, "TELEMEDICINA", null
         );
@@ -228,7 +228,7 @@ class SlotGeneratorServiceTest {
         LocalDate fecha = LocalDate.now(ZONE_BOGOTA).plusDays(1);
 
         GenerarSlotsRequest request = new GenerarSlotsRequest(
-                PROF_UUID, SEDE_UUID, fecha, fecha,
+                PROF_UUID, fecha, fecha,
                 LocalTime.of(8, 0), LocalTime.of(8, 40),
                 20, "PRESENCIAL", null
         );
@@ -255,7 +255,7 @@ class SlotGeneratorServiceTest {
         when(profesionalRepository.buscarPorPublicId("prof-inexistente")).thenReturn(Optional.empty());
 
         GenerarSlotsRequest request = new GenerarSlotsRequest(
-                "prof-inexistente", SEDE_UUID, LocalDate.now(ZONE_BOGOTA).plusDays(1),
+                "prof-inexistente", LocalDate.now(ZONE_BOGOTA).plusDays(1),
                 LocalDate.now(ZONE_BOGOTA).plusDays(1), LocalTime.of(8, 0), LocalTime.of(9, 0),
                 20, "PRESENCIAL", null
         );
@@ -272,7 +272,7 @@ class SlotGeneratorServiceTest {
         when(usuarioRepository.buscarPorId(100L)).thenReturn(Optional.of(usuarioInactivo));
 
         GenerarSlotsRequest request = new GenerarSlotsRequest(
-                PROF_UUID, SEDE_UUID, LocalDate.now(ZONE_BOGOTA).plusDays(1),
+                PROF_UUID, LocalDate.now(ZONE_BOGOTA).plusDays(1),
                 LocalDate.now(ZONE_BOGOTA).plusDays(1), LocalTime.of(8, 0), LocalTime.of(9, 0),
                 20, "PRESENCIAL", null
         );
@@ -283,32 +283,14 @@ class SlotGeneratorServiceTest {
     }
 
     @Test
-    void generarSlots_sedeInactiva_lanzaDatosInvalidos() {
-        Sede sedeInactiva = new Sede(20L, 1L, SEDE_UUID, "Sede Inactiva", "Calle 100", "Bogota", "INACTIVO");
-        when(profesionalRepository.buscarPorPublicId(PROF_UUID)).thenReturn(Optional.of(profesional));
-        when(usuarioRepository.buscarPorId(100L)).thenReturn(Optional.of(usuarioProf));
-        when(sedeRepository.buscarPorPublicId(SEDE_UUID)).thenReturn(Optional.of(sedeInactiva));
-
-        GenerarSlotsRequest request = new GenerarSlotsRequest(
-                PROF_UUID, SEDE_UUID, LocalDate.now(ZONE_BOGOTA).plusDays(1),
-                LocalDate.now(ZONE_BOGOTA).plusDays(1), LocalTime.of(8, 0), LocalTime.of(9, 0),
-                20, "PRESENCIAL", null
-        );
-
-        assertThatThrownBy(() -> service.generarSlots(request, ADMIN_UUID, "127.0.0.1"))
-                .isInstanceOf(DatosInvalidosException.class)
-                .hasMessageContaining("La sede seleccionada no se encuentra activa");
-    }
-
-    @Test
     void generarSlots_fechaInicioAnteriorAHoy_lanzaDatosInvalidos() {
         when(profesionalRepository.buscarPorPublicId(PROF_UUID)).thenReturn(Optional.of(profesional));
         when(usuarioRepository.buscarPorId(100L)).thenReturn(Optional.of(usuarioProf));
-        when(sedeRepository.buscarPorPublicId(SEDE_UUID)).thenReturn(Optional.of(sede));
+        when(siteRepository.getSingleSite()).thenReturn(sede);
 
         LocalDate ayer = LocalDate.now(ZONE_BOGOTA).minusDays(1);
         GenerarSlotsRequest request = new GenerarSlotsRequest(
-                PROF_UUID, SEDE_UUID, ayer, ayer.plusDays(1),
+                PROF_UUID, ayer, ayer.plusDays(1),
                 LocalTime.of(8, 0), LocalTime.of(9, 0),
                 20, "PRESENCIAL", null
         );
@@ -322,11 +304,11 @@ class SlotGeneratorServiceTest {
     void generarSlots_fechaFinMenorAInicio_lanzaDatosInvalidos() {
         when(profesionalRepository.buscarPorPublicId(PROF_UUID)).thenReturn(Optional.of(profesional));
         when(usuarioRepository.buscarPorId(100L)).thenReturn(Optional.of(usuarioProf));
-        when(sedeRepository.buscarPorPublicId(SEDE_UUID)).thenReturn(Optional.of(sede));
+        when(siteRepository.getSingleSite()).thenReturn(sede);
 
         LocalDate fecha = LocalDate.now(ZONE_BOGOTA).plusDays(5);
         GenerarSlotsRequest request = new GenerarSlotsRequest(
-                PROF_UUID, SEDE_UUID, fecha, fecha.minusDays(1),
+                PROF_UUID, fecha, fecha.minusDays(1),
                 LocalTime.of(8, 0), LocalTime.of(9, 0),
                 20, "PRESENCIAL", null
         );
@@ -340,11 +322,11 @@ class SlotGeneratorServiceTest {
     void generarSlots_horaFinMenorOIgualAInicio_lanzaDatosInvalidos() {
         when(profesionalRepository.buscarPorPublicId(PROF_UUID)).thenReturn(Optional.of(profesional));
         when(usuarioRepository.buscarPorId(100L)).thenReturn(Optional.of(usuarioProf));
-        when(sedeRepository.buscarPorPublicId(SEDE_UUID)).thenReturn(Optional.of(sede));
+        when(siteRepository.getSingleSite()).thenReturn(sede);
 
         LocalDate fecha = LocalDate.now(ZONE_BOGOTA).plusDays(1);
         GenerarSlotsRequest request = new GenerarSlotsRequest(
-                PROF_UUID, SEDE_UUID, fecha, fecha,
+                PROF_UUID, fecha, fecha,
                 LocalTime.of(10, 0), LocalTime.of(9, 0),
                 20, "PRESENCIAL", null
         );
@@ -360,7 +342,7 @@ class SlotGeneratorServiceTest {
         LocalDate fecha = LocalDate.now(ZONE_BOGOTA).plusDays(1);
 
         GenerarSlotsRequest request = new GenerarSlotsRequest(
-                PROF_UUID, SEDE_UUID, fecha, fecha,
+                PROF_UUID, fecha, fecha,
                 LocalTime.of(8, 0), LocalTime.of(9, 0),
                 20, "DOMICILIARIA", null
         );
@@ -377,7 +359,7 @@ class SlotGeneratorServiceTest {
 
         // Ventana de 10 min pero slot dura 20 min -> genera 0 slots
         GenerarSlotsRequest request = new GenerarSlotsRequest(
-                PROF_UUID, SEDE_UUID, fecha, fecha,
+                PROF_UUID, fecha, fecha,
                 LocalTime.of(8, 0), LocalTime.of(8, 10),
                 20, "PRESENCIAL", null
         );
@@ -513,7 +495,7 @@ class SlotGeneratorServiceTest {
                 .thenReturn(0);
 
         PaginatedResponse<SlotResponse> resp = service.listar(
-                0, 10, null, null, null, null, null, "LIBRE"
+                0, 10, null, null, null, null, "LIBRE"
         );
 
         assertThat(resp.content()).isEmpty();
@@ -522,7 +504,7 @@ class SlotGeneratorServiceTest {
 
     @Test
     void listar_estadoInvalido_lanzaDatosInvalidos() {
-        assertThatThrownBy(() -> service.listar(0, 10, null, null, null, null, null, "INVALIDO"))
+        assertThatThrownBy(() -> service.listar(0, 10, null, null, null, null, "INVALIDO"))
                 .isInstanceOf(DatosInvalidosException.class)
                 .hasMessageContaining("Estado invalido");
     }

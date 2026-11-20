@@ -202,8 +202,6 @@ function setupRoutes() {
   // Rutas M8.4: Administración del Sistema (Oferta Asistencial, Infraestructura y Slots)
   router.addRoute('/admin', (c) => adminDashboardView(c, { tab: 'dashboard' }), { requiresAuth: true, requiredRole: 'ROLE_ADMINISTRADOR' });
   router.addRoute('/admin/dashboard', (c) => adminDashboardView(c, { tab: 'dashboard' }), { requiresAuth: true, requiredRole: 'ROLE_ADMINISTRADOR' });
-  router.addRoute('/admin/institutions', (c) => adminDashboardView(c, { tab: 'institutions' }), { requiresAuth: true, requiredRole: 'ROLE_ADMINISTRADOR' });
-  router.addRoute('/admin/sites', (c) => adminDashboardView(c, { tab: 'sites' }), { requiresAuth: true, requiredRole: 'ROLE_ADMINISTRADOR' });
   router.addRoute('/admin/specialties', (c) => adminDashboardView(c, { tab: 'specialties' }), { requiresAuth: true, requiredRole: 'ROLE_ADMINISTRADOR' });
   router.addRoute('/admin/professionals', (c) => adminDashboardView(c, { tab: 'professionals' }), { requiresAuth: true, requiredRole: 'ROLE_ADMINISTRADOR' });
   router.addRoute('/admin/slots', (c) => adminDashboardView(c, { tab: 'slots' }), { requiresAuth: true, requiredRole: 'ROLE_ADMINISTRADOR' });

@@ -73,7 +73,6 @@ class PharmacyDispensationControllerTest {
 
         RegistrarDispensacionRequest request = new RegistrarDispensacionRequest(
                 "receta-uuid-1",
-                "sede-uuid-1",
                 "Entrega en ventanilla",
                 List.of(new DetalleEntregaRequest("med-uuid-1", 10, "LOTE-INV-1", LocalDate.of(2028, 1, 1)))
         );
@@ -111,7 +110,7 @@ class PharmacyDispensationControllerTest {
         mockAuth(tokenPaciente, "pac-uuid-1", "ROLE_PACIENTE");
 
         RegistrarDispensacionRequest request = new RegistrarDispensacionRequest(
-                "receta-uuid-1", "sede-uuid-1", null,
+                "receta-uuid-1", null,
                 List.of(new DetalleEntregaRequest("med-uuid-1", 5, null, null))
         );
 
@@ -130,7 +129,7 @@ class PharmacyDispensationControllerTest {
         mockAuth(tokenAdmin, "admin-uuid-1", "ROLE_ADMINISTRADOR");
 
         RegistrarDispensacionRequest request = new RegistrarDispensacionRequest(
-                "receta-uuid-1", "sede-uuid-1", null,
+                "receta-uuid-1", null,
                 List.of(new DetalleEntregaRequest("med-uuid-1", 5, null, null))
         );
 
@@ -147,7 +146,7 @@ class PharmacyDispensationControllerTest {
     @DisplayName("POST /api/v1/pharmacy/dispensations - Sin autenticación recibe 401 Unauthorized")
     void registrarDispensacion_sinAuth_retorna401() throws Exception {
         RegistrarDispensacionRequest request = new RegistrarDispensacionRequest(
-                "receta-uuid-1", "sede-uuid-1", null,
+                "receta-uuid-1", null,
                 List.of(new DetalleEntregaRequest("med-uuid-1", 5, null, null))
         );
 
@@ -165,7 +164,7 @@ class PharmacyDispensationControllerTest {
         mockAuth(tokenFarmaceutico, "farm-uuid-1", "ROLE_FARMACEUTICO");
 
         RegistrarDispensacionRequest request = new RegistrarDispensacionRequest(
-                "receta-uuid-1", "sede-uuid-1", null, List.of()
+                "receta-uuid-1", null, List.of()
         );
 
         mockMvc.perform(post("/api/v1/pharmacy/dispensations")
@@ -259,22 +258,5 @@ class PharmacyDispensationControllerTest {
                         .cookie(new Cookie("access_token", tokenAdmin)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.codigo").value("ACCESO_DENEGADO"));
-    }
-
-    @Test
-    @DisplayName("GET /api/v1/pharmacy/sites - Farmacéutico recibe 200 OK con lista de sedes activas")
-    void listarSedes_farmaceutico_retorna200() throws Exception {
-        mockAuth(tokenFarmaceutico, "farm-uuid-1", "ROLE_FARMACEUTICO");
-
-        when(dispensationService.listarSedesActivas())
-                .thenReturn(List.of(new com.meditriaje.dto.admin.SedeResponse(
-                        "sede-uuid-1", null, null, "Sede Central", "Calle 10 # 20-30", "Bogotá", "ACTIVO"
-                )));
-
-        mockMvc.perform(get("/api/v1/pharmacy/sites")
-                        .cookie(new Cookie("access_token", tokenFarmaceutico)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].publicId").value("sede-uuid-1"))
-                .andExpect(jsonPath("$[0].nombre").value("Sede Central"));
     }
 }

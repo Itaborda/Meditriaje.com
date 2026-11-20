@@ -2,12 +2,9 @@ package com.meditriaje.demo;
 
 import com.meditriaje.dto.RegistroPacienteRequest;
 import com.meditriaje.dto.admin.CrearEspecialidadRequest;
-import com.meditriaje.dto.admin.CrearInstitucionRequest;
 import com.meditriaje.dto.admin.CrearProfesionalRequest;
-import com.meditriaje.dto.admin.CrearSedeRequest;
 import com.meditriaje.dto.admin.GenerarSlotsRequest;
 import com.meditriaje.dto.admin.GenerarSlotsResponse;
-import com.meditriaje.dto.admin.InstitucionResponse;
 import com.meditriaje.dto.admin.SlotResponse;
 import com.meditriaje.dto.allergy.RegistrarAlergiaRequest;
 import com.meditriaje.dto.appointment.CancelarCitaRequest;
@@ -29,19 +26,15 @@ import com.meditriaje.dto.triage.CrearTriajeRequest;
 import com.meditriaje.dto.triage.SintomaItemRequest;
 import com.meditriaje.dto.triage.TriajeResponse;
 import com.meditriaje.model.Especialidad;
-import com.meditriaje.model.Institucion;
 import com.meditriaje.model.Paciente;
 import com.meditriaje.model.Profesional;
-import com.meditriaje.model.Sede;
 import com.meditriaje.model.Usuario;
 import com.meditriaje.repository.CitaRepository;
 import com.meditriaje.repository.DisponibilidadSlotRepository;
 import com.meditriaje.repository.EspecialidadRepository;
-import com.meditriaje.repository.InstitucionRepository;
 import com.meditriaje.repository.MedicamentoRepository;
 import com.meditriaje.repository.PacienteRepository;
 import com.meditriaje.repository.ProfesionalRepository;
-import com.meditriaje.repository.SedeRepository;
 import com.meditriaje.repository.UsuarioRepository;
 import com.meditriaje.service.AdminCatalogService;
 import com.meditriaje.service.AdminProfessionalService;
@@ -103,8 +96,6 @@ public class DemoDataSeeder implements CommandLineRunner {
     private final PacienteRepository pacienteRepository;
     private final ProfesionalRepository profesionalRepository;
     private final EspecialidadRepository especialidadRepository;
-    private final InstitucionRepository institucionRepository;
-    private final SedeRepository sedeRepository;
     private final DisponibilidadSlotRepository slotRepository;
     private final CitaRepository citaRepository;
     private final MedicamentoRepository medicamentoRepository;
@@ -128,8 +119,6 @@ public class DemoDataSeeder implements CommandLineRunner {
             PacienteRepository pacienteRepository,
             ProfesionalRepository profesionalRepository,
             EspecialidadRepository especialidadRepository,
-            InstitucionRepository institucionRepository,
-            SedeRepository sedeRepository,
             DisponibilidadSlotRepository slotRepository,
             CitaRepository citaRepository,
             MedicamentoRepository medicamentoRepository,
@@ -152,8 +141,6 @@ public class DemoDataSeeder implements CommandLineRunner {
         this.pacienteRepository = Objects.requireNonNull(pacienteRepository, "pacienteRepository no puede ser nulo");
         this.profesionalRepository = Objects.requireNonNull(profesionalRepository, "profesionalRepository no puede ser nulo");
         this.especialidadRepository = Objects.requireNonNull(especialidadRepository, "especialidadRepository no puede ser nulo");
-        this.institucionRepository = Objects.requireNonNull(institucionRepository, "institucionRepository no puede ser nulo");
-        this.sedeRepository = Objects.requireNonNull(sedeRepository, "sedeRepository no puede ser nulo");
         this.slotRepository = Objects.requireNonNull(slotRepository, "slotRepository no puede ser nulo");
         this.citaRepository = Objects.requireNonNull(citaRepository, "citaRepository no puede ser nulo");
         this.medicamentoRepository = Objects.requireNonNull(medicamentoRepository, "medicamentoRepository no puede ser nulo");
@@ -281,26 +268,7 @@ public class DemoDataSeeder implements CommandLineRunner {
             farmPublicId = usuarioRepository.buscarPorEmail(farmEmail).orElseThrow().publicId();
         }
 
-        // C. Institución y Sedes
-        String institucionPublicId;
-        if (!institucionRepository.existePorNit("900123456-1")) {
-            InstitucionResponse inst = adminCatalogService.crearInstitucion(
-                    new CrearInstitucionRequest("900123456-1", "Hospital Universitario San Rafael Demo"),
-                    adminPublicId, IP_LOCAL
-            );
-            institucionPublicId = inst.publicId();
-            log.info("Demo: Institución creada: {}", inst.razonSocial());
-        } else {
-            institucionPublicId = institucionRepository.listar(0, 10, "ACTIVO").stream()
-                    .filter(i -> "900123456-1".equals(i.nit()))
-                    .findFirst()
-                    .map(Institucion::publicId)
-                    .orElseThrow();
-        }
-
-        // Sedes
-        String sede1PublicId = obtenerOCrearSede(institucionPublicId, "Sede Principal Chapinero", "Calle 53 # 10-20", "Bogotá", adminPublicId);
-        String sede2PublicId = obtenerOCrearSede(institucionPublicId, "Sede Ambulatoria Norte", "Autopista Norte # 128-45", "Bogotá", adminPublicId);
+        // C. Hospital único: la sede la crea la migración V024; no se crean sedes ni instituciones.
 
         // D. Especialidades (4)
         String espMedGeneral = obtenerOCrearEspecialidad("Medicina General", 20, adminPublicId);
@@ -326,12 +294,10 @@ public class DemoDataSeeder implements CommandLineRunner {
 
         for (int i = 0; i < profesionales.size(); i++) {
             ProfesionalDemoInfo prof = profesionales.get(i);
-            String sedeElegida = (i % 2 == 0) ? sede1PublicId : sede2PublicId;
             try {
                 GenerarSlotsResponse resSlots = slotGeneratorService.generarSlots(
                         new GenerarSlotsRequest(
                                 prof.profesionalPublicId(),
-                                sedeElegida,
                                 fechaInicioSlots,
                                 fechaFinSlots,
                                 LocalTime.of(8, 0),
@@ -445,7 +411,6 @@ public class DemoDataSeeder implements CommandLineRunner {
                 dispensationService.registrarDispensacion(
                         new RegistrarDispensacionRequest(
                                 receta1.publicId(),
-                                sede1PublicId,
                                 "Dispensación completa de analgésico primario.",
                                 List.of(new DetalleEntregaRequest(medAcetaminofen, 10, "LOTE-2026-A1", LocalDate.now(ZONE_BOGOTA).plusYears(2)))
                         ),
@@ -656,17 +621,6 @@ public class DemoDataSeeder implements CommandLineRunner {
                 }
             }
         }
-    }
-
-    private String obtenerOCrearSede(String institucionPublicId, String nombre, String direccion, String ciudad, String adminPublicId) {
-        return sedeRepository.listar(0, 10, institucionPublicId, "ACTIVO").stream()
-                .filter(s -> s.nombre().equalsIgnoreCase(nombre))
-                .findFirst()
-                .map(Sede::publicId)
-                .orElseGet(() -> adminCatalogService.crearSede(
-                        new CrearSedeRequest(institucionPublicId, nombre, direccion, ciudad),
-                        adminPublicId, IP_LOCAL
-                ).publicId());
     }
 
     private String obtenerOCrearEspecialidad(String nombre, int duracionMin, String adminPublicId) {

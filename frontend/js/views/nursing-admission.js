@@ -26,13 +26,7 @@ export async function nursingAdmissionView(container) {
       <div class="card p-6">
         <form id="admissionForm" novalidate>
           
-          <!-- Sede Hospitalaria -->
-          <div class="form-group mb-4">
-            <label for="admSedeSelect" class="form-label font-semibold">Sede Hospitalaria <span class="text-danger">*</span></label>
-            <select id="admSedeSelect" class="form-select" required>
-              <option value="">Cargando sedes...</option>
-            </select>
-          </div>
+          <!-- Hospital único: el servidor asigna la sede del episodio -->
 
           <!-- Tipo de Identificación / Switch NN -->
           <div class="card p-4 mb-4" style="background-color: var(--card-bg, #f8fafc); border: 1px solid var(--border);">
@@ -102,7 +96,7 @@ export async function nursingAdmissionView(container) {
               <select id="selViaIngreso" class="form-select" required>
                 <option value="ESPONTANEO">Ingreso Espontáneo (por sus propios medios)</option>
                 <option value="AMBULANCIA">Ambulancia / Traslado prehospitalario (TAM/TAB)</option>
-                <option value="REMISION">Remisión de otra IPS</option>
+                <option value="REMITIDO">Remisión de otra IPS</option>
                 <option value="POLICIA">Acompañado por Fuerza Pública / Policía</option>
               </select>
             </div>
@@ -143,20 +137,6 @@ export async function nursingAdmissionView(container) {
 
     </div>
   `;
-
-  // Cargar Sedes
-  const sedeSelect = document.getElementById('admSedeSelect');
-  try {
-    const rawSedes = await emergencyApi.listarSedes();
-    const sedes = Array.isArray(rawSedes) ? rawSedes : (rawSedes?.content || []);
-    if (sedes && sedes.length > 0) {
-      sedeSelect.innerHTML = sedes.map(s => `
-        <option value="${esc(s.publicId)}">${esc(s.nombre)} (${esc(s.ciudad || 'Valledupar')})</option>
-      `).join('');
-    }
-  } catch (err) {
-    ui.showToast('Error cargando sedes: ' + err.message, 'error');
-  }
 
   // Lógica switch NN
   const chkNN = document.getElementById('chkEsNN');
@@ -212,7 +192,6 @@ export async function nursingAdmissionView(container) {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    const sedePublicId = sedeSelect.value;
     const esNN = chkNN.checked;
     const pacientePubId = document.getElementById('hdnPacientePublicId').value.trim();
     const viaIngreso = document.getElementById('selViaIngreso').value;
@@ -220,11 +199,6 @@ export async function nursingAdmissionView(container) {
     const acompananteNombre = document.getElementById('txtAcompananteNombre').value.trim();
     const acompananteTelefono = document.getElementById('txtAcompananteTelefono').value.trim();
     const observaciones = document.getElementById('txtObservaciones').value.trim();
-
-    if (!sedePublicId) {
-      ui.showToast('Debe seleccionar una sede hospitalaria.', 'warning');
-      return;
-    }
 
     if (!motivoConsulta) {
       ui.showToast('El motivo de consulta es obligatorio.', 'warning');
@@ -236,15 +210,15 @@ export async function nursingAdmissionView(container) {
       return;
     }
 
+    // Nombres de campo del contrato RegistrarAdmisionUrgenciaRequest del backend
     const payload = {
-      sedePublicId,
       pacientePublicId: esNN ? null : pacientePubId,
       esIdentidadProvisional: esNN,
-      viaIngreso,
-      motivoConsulta,
+      medioLlegada: viaIngreso,
+      motivoLlegada: motivoConsulta,
       acompananteNombre: acompananteNombre || null,
-      acompananteTelefono: acompananteTelefono || null,
-      observacionesIngreso: observaciones || null,
+      acompananteContacto: acompananteTelefono || null,
+      observaciones: observaciones || null,
       descripcionFisica: esNN ? document.getElementById('txtDescripcionFisica').value.trim() : null,
       edadAparente: esNN && document.getElementById('txtEdadAparente').value ? parseInt(document.getElementById('txtEdadAparente').value, 10) : null,
       generoAparente: esNN ? document.getElementById('selGeneroAparente').value : null,

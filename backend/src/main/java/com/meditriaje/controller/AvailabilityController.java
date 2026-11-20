@@ -35,8 +35,6 @@ public class AvailabilityController {
             @RequestParam(required = false) String especialidadPublicId,
             @RequestParam(required = false) String profesional,
             @RequestParam(required = false) String profesionalPublicId,
-            @RequestParam(required = false) String sede,
-            @RequestParam(required = false) String sedePublicId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha,
             @RequestParam(required = false) String modalidad,
             @RequestParam(defaultValue = "0") int page,
@@ -50,16 +48,11 @@ public class AvailabilityController {
                 ? profesionalPublicId
                 : profesional;
 
-        String sedeFiltro = (sedePublicId != null && !sedePublicId.isBlank())
-                ? sedePublicId
-                : sede;
-
         PaginatedResponse<DisponibilidadSlotResponse> response;
         if (profFiltro != null && !profFiltro.isBlank()) {
             response = availabilityService.consultarDisponibilidad(
                     espFiltro,
                     profFiltro,
-                    sedeFiltro,
                     modalidad,
                     fecha,
                     page,
@@ -68,7 +61,6 @@ public class AvailabilityController {
         } else {
             response = availabilityService.consultarDisponibilidad(
                     espFiltro,
-                    sedeFiltro,
                     modalidad,
                     fecha,
                     page,

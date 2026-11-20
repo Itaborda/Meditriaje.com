@@ -79,7 +79,7 @@ Todas las respuestas de error utilizan la estructura canónica sin trazas de dep
 
 | Método | Endpoint | Roles Permitidos | Descripción |
 |---|---|---|---|
-| `GET` | `/api/v1/availability` | Autenticado | Consulta de slots libres futuros (`ESTADO = 'LIBRE'`). Filtros: `especialidad`, `sede`, `fecha`, `modalidad`. |
+| `GET` | `/api/v1/availability` | Autenticado | Consulta de slots libres futuros (`ESTADO = 'LIBRE'`). Filtros: `especialidad`, `fecha`, `modalidad`. |
 | `POST` | `/api/v1/appointments` | `ROLE_PACIENTE`, `ROLE_ADMINISTRADOR` | Reserva atómica de un slot libre. Maneja colisiones concurrentes (`409 Conflict`). Vincula triaje opcional. |
 | `GET` | `/api/v1/appointments/{publicId}` | Autenticado (con autorización) | Consulta detallada de una cita médica. Aislada por paciente o profesional responsable. |
 | `PATCH` | `/api/v1/appointments/{publicId}/cancel` | Autenticado (con autorización) | Cancelación de cita. Paciente: hasta 2 horas antes de la cita. Médico o Admin: sin restricción de 2 horas. |
@@ -130,21 +130,10 @@ Todas las respuestas de error utilizan la estructura canónica sin trazas de dep
 
 > **Restricción Universal:** Todos los endpoints bajo `/api/v1/admin/` exigen `@PreAuthorize("hasAuthority('ROLE_ADMINISTRADOR')")`. Ninguno de estos endpoints expone ni procesa contenido clínico.
 
-### Instituciones de Salud
-* `POST /api/v1/admin/institutions`: Alta de institución de salud con NIT y Razón Social.
-* `GET /api/v1/admin/institutions`: Listado paginado de instituciones con filtros por estado.
-* `GET /api/v1/admin/institutions/{id}`: Detalle de institución.
-* `PUT /api/v1/admin/institutions/{id}`: Edición de razón social.
-* `PATCH /api/v1/admin/institutions/{id}/deactivate`: Desactivación lógica de institución.
-* `PATCH /api/v1/admin/institutions/{id}/activate`: Activación lógica.
-
-### Sedes Asistenciales
-* `POST /api/v1/admin/sites`: Alta de sede vinculada a una institución activa preexistente.
-* `GET /api/v1/admin/sites`: Listado paginado con filtro por institución y estado.
-* `GET /api/v1/admin/sites/{id}`: Detalle de sede.
-* `PUT /api/v1/admin/sites/{id}`: Edición de nombre, dirección y ciudad.
-* `PATCH /api/v1/admin/sites/{id}/deactivate`: Desactivación lógica.
-* `PATCH /api/v1/admin/sites/{id}/activate`: Activación lógica.
+### Hospital único (sin sedes ni instituciones)
+MediTriaje atiende un único hospital. No existen endpoints de administración de sedes ni de instituciones:
+la sede única y los datos de la institución (tabla `CONFIGURACION_HOSPITAL`) se configuran en la base de datos
+(migraciones V023-V025) y el servidor resuelve la sede en cada operación. Ningún endpoint recibe `sedePublicId`.
 
 ### Especialidades Médicas
 * `POST /api/v1/admin/specialties`: Alta de especialidad médica con duración por defecto de turno (5 a 240 min).
@@ -164,7 +153,7 @@ Todas las respuestas de error utilizan la estructura canónica sin trazas de dep
 
 ### Generador y Gestión de Slots
 * `POST /api/v1/admin/slots/generate`: Generación masiva de turnos de atención continua en zona `America/Bogota` por rango de fechas, franja horaria diaria, días seleccionados y modalidad (Presencial/Telemedicina). Previene solapes atómicamente.
-* `GET /api/v1/admin/slots`: Consulta paginada de turnos con filtros por profesional, sede, fechas y estado (`LIBRE`, `BLOQUEADO`, `OCUPADO`).
+* `GET /api/v1/admin/slots`: Consulta paginada de turnos con filtros por profesional, fechas y estado (`LIBRE`, `BLOQUEADO`, `OCUPADO`).
 * `GET /api/v1/admin/slots/{id}`: Detalle del slot.
 * `PATCH /api/v1/admin/slots/{id}/block`: Bloqueo administrativo de slot libre.
 * `PATCH /api/v1/admin/slots/{id}/unblock`: Desbloqueo de slot.

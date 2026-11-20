@@ -96,13 +96,4 @@ public class PharmacyDispensationController {
         );
         return ResponseEntity.ok(response);
     }
-
-    /**
-     * Lista de sedes asistenciales activas para selección en ventanilla de farmacia.
-     */
-    @GetMapping("/sites")
-    public ResponseEntity<List<com.meditriaje.dto.admin.SedeResponse>> listarSedes() {
-        List<com.meditriaje.dto.admin.SedeResponse> response = dispensationService.listarSedesActivas();
-        return ResponseEntity.ok(response);
-    }
 }

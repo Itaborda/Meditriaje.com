@@ -14,9 +14,6 @@ public record RegistrarDispensacionRequest(
         @NotBlank(message = "El identificador de la receta es obligatorio.")
         String recetaPublicId,
 
-        @NotBlank(message = "El identificador de la sede es obligatorio.")
-        String sedePublicId,
-
         @Size(max = 500, message = "Las observaciones no pueden exceder 500 caracteres.")
         String observaciones,
 

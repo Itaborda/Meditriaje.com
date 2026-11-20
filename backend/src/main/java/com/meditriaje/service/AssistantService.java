@@ -236,14 +236,14 @@ public class AssistantService {
 
         if (contieneAlguno(normalizado, "sede", "institucion", "ips", "clinica", "hospital", "nit")) {
             return new RespuestaAsistenteResponse(
-                    "Administración de Infraestructura Hospitalaria:\n"
-                    + "• Instituciones: Registro de entidades jurídicas de salud con NIT.\n"
-                    + "• Sedes: Centros de atención por ciudad y dirección física para citas presenciales.",
+                    "Infraestructura Hospitalaria:\n"
+                    + "• MediTriaje opera para un único hospital: la sede y los datos de la institución se configuran en la base de datos.\n"
+                    + "• Desde el panel puedes gestionar camas, áreas, especialidades y profesionales.",
                     false,
                     "INFRAESTRUCTURA_ADMIN",
                     List.of(
-                            new SugerenciaAccionDto("Sedes Hospitalarias", "#/admin/sites", "map-pin"),
-                            new SugerenciaAccionDto("Instituciones", "#/admin/institutions", "hospital")
+                            new SugerenciaAccionDto("Especialidades", "#/admin/specialties", "hospital"),
+                            new SugerenciaAccionDto("Ver Profesionales", "#/admin/professionals", "users")
                     ),
                     AVISO_LEGAL
             );
@@ -252,7 +252,7 @@ public class AssistantService {
         if (contieneAlguno(normalizado, "slot", "disponibilidad", "turno", "generar", "horario")) {
             return new RespuestaAsistenteResponse(
                     "Generador de Slots de Disponibilidad:\n"
-                    + "• Genera turnos para profesionales en sedes específicas con rango de fechas y horario.\n"
+                    + "• Genera turnos para profesionales del hospital con rango de fechas y horario.\n"
                     + "• Duración configurable o por defecto de la especialidad (20, 30 o 45 min).\n"
                     + "• Validación automática anti-solapes en base de datos bajo zona horaria America/Bogota.",
                     false,
@@ -282,7 +282,7 @@ public class AssistantService {
 
         if (contieneAlguno(normalizado, "cita", "agendar", "triaje", "sintoma")) {
             return new RespuestaAsistenteResponse(
-                    "Como Administrador del sistema, no realizas triajes clínicos personales ni agendas citas de pacientes. Tu rol es habilitar la oferta: gestionar sedes, especialidades, profesionales y generar los slots de disponibilidad horaria.",
+                    "Como Administrador del sistema, no realizas triajes clínicos personales ni agendas citas de pacientes. Tu rol es habilitar la oferta: gestionar especialidades, profesionales y generar los slots de disponibilidad horaria.",
                     false,
                     "ADMIN_ORIENTACION",
                     List.of(
@@ -296,7 +296,7 @@ public class AssistantService {
 
         return new RespuestaAsistenteResponse(
                 "👋 ¡Hola, Administrador! Estás en la consola de gestión de **MediTriaje 2.0**.\n\n"
-                + "Puedes consultarme sobre la generación de turnos, alta de profesionales (ReTHUS), supervisión de sedes, reportes operativos o auditoría de seguridad.",
+                + "Puedes consultarme sobre la generación de turnos, alta de profesionales (ReTHUS), supervisión hospitalaria, reportes operativos o auditoría de seguridad.",
                 false,
                 "GENERAL_ADMIN",
                 List.of(

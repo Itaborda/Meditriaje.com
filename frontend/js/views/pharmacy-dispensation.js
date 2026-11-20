@@ -11,8 +11,6 @@ import { router } from '../router.js';
 import { ui, esc } from '../ui.js';
 
 let pharmacyState = {
-  sedes: [],
-  selectedSedePublicId: '',
   searchQuery: '',
   prescriptions: [],
   page: 0,
@@ -95,15 +93,7 @@ export async function pharmacyDispensationView(container) {
           <p class="text-sm text-muted m-0">Dispensación y entrega controlada de medicamentos con trazabilidad de lote y control de saldos</p>
         </div>
 
-        <!-- Selector de Sede Farmacéutica -->
-        <div class="form-group m-0" style="min-width: 260px;">
-          <label for="pharmacySiteSelect" class="form-label text-xs font-bold uppercase tracking-wider text-muted">
-            Sede de Entrega <span class="text-danger">*</span>
-          </label>
-          <select id="pharmacySiteSelect" class="form-select text-sm">
-            <option value="">Cargando sedes...</option>
-          </select>
-        </div>
+        <!-- Hospital único: el servidor registra la entrega en la única sede -->
       </div>
 
       <!-- Área de Búsqueda de Recetas -->
@@ -150,9 +140,6 @@ export async function pharmacyDispensationView(container) {
     </div>
   `;
 
-  // Cargar sedes activas
-  await loadSedes(container);
-
   // Listeners de búsqueda
   const form = container.querySelector('#pharmacySearchForm');
   const searchInput = container.querySelector('#pharmacySearchInput');
@@ -172,39 +159,6 @@ export async function pharmacyDispensationView(container) {
     pharmacyState.prescriptions = [];
     renderInitialState(container);
   });
-}
-
-/**
- * Carga las sedes activas en el selector
- */
-async function loadSedes(container) {
-  const siteSelect = container.querySelector('#pharmacySiteSelect');
-  if (!siteSelect) return;
-
-  try {
-    const sedes = await pharmacyApi.listarSedes();
-    pharmacyState.sedes = sedes || [];
-
-    if (pharmacyState.sedes.length === 0) {
-      siteSelect.innerHTML = '<option value="">Sin sedes disponibles</option>';
-      return;
-    }
-
-    siteSelect.innerHTML = pharmacyState.sedes.map((s, idx) => `
-      <option value="${s.publicId}" ${idx === 0 ? 'selected' : ''}>
-        ${esc(s.nombre)} (${esc(s.ciudad)})
-      </option>
-    `).join('');
-
-    pharmacyState.selectedSedePublicId = siteSelect.value;
-
-    siteSelect.addEventListener('change', () => {
-      pharmacyState.selectedSedePublicId = siteSelect.value;
-    });
-  } catch (err) {
-    siteSelect.innerHTML = '<option value="">Error cargando sedes</option>';
-    ui.showToast('No fue posible cargar el listado de sedes.', 'danger');
-  }
 }
 
 /**
@@ -650,15 +604,6 @@ async function processDispensation(container) {
   const r = pharmacyState.selectedReceta;
   if (!r) return;
 
-  const siteSelect = container.querySelector('#pharmacySiteSelect');
-  const sedePublicId = siteSelect?.value || pharmacyState.selectedSedePublicId;
-
-  if (!sedePublicId) {
-    ui.showToast('Por favor selecciona una sede de entrega en el selector superior.', 'warning');
-    siteSelect?.focus();
-    return;
-  }
-
   // Recolectar cantidades de entrega
   const rows = container.querySelectorAll('.item-row');
   const detalles = [];
@@ -716,7 +661,6 @@ async function processDispensation(container) {
       try {
         const payload = {
           recetaPublicId: r.recetaPublicId,
-          sedePublicId: sedePublicId,
           observaciones: observaciones || null,
           detalles: detalles
         };

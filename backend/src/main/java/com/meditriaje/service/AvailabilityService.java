@@ -46,7 +46,6 @@ public class AvailabilityService {
      * Consulta disponibilidad de slots libres futuros con filtros opcionales y paginación.
      *
      * @param especialidadPublicId UUID público de la especialidad (opcional)
-     * @param sedePublicId UUID público de la sede (opcional)
      * @param modalidad Modalidad de atención ('PRESENCIAL' o 'TELEMEDICINA', opcional)
      * @param fecha Fecha específica a consultar en zona horaria America/Bogota (opcional)
      * @param page Número de página (>= 0)
@@ -55,13 +54,12 @@ public class AvailabilityService {
      */
     public PaginatedResponse<DisponibilidadSlotResponse> consultarDisponibilidad(
             String especialidadPublicId,
-            String sedePublicId,
             String modalidad,
             LocalDate fecha,
             int page,
             int size
     ) {
-        return consultarDisponibilidad(especialidadPublicId, null, sedePublicId, modalidad, fecha, page, size);
+        return consultarDisponibilidad(especialidadPublicId, null, modalidad, fecha, page, size);
     }
 
     /**
@@ -70,7 +68,6 @@ public class AvailabilityService {
     public PaginatedResponse<DisponibilidadSlotResponse> consultarDisponibilidad(
             String especialidadPublicId,
             String profesionalPublicId,
-            String sedePublicId,
             String modalidad,
             LocalDate fecha,
             int page,
@@ -101,9 +98,8 @@ public class AvailabilityService {
         String profFiltro = (profesionalPublicId != null && !profesionalPublicId.isBlank())
                 ? profesionalPublicId.trim()
                 : null;
-        String sedeFiltro = (sedePublicId != null && !sedePublicId.isBlank())
-                ? sedePublicId.trim()
-                : null;
+        // Hospital único: no hay filtro de sede.
+        String sedeFiltro = null;
 
         Instant now = clock.instant();
         Instant fechaDesde;
