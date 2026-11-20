@@ -8,8 +8,7 @@
 -- =============================================================================
 -- Contenido:
 --   1. Usuario Administrador de plataforma (admin@meditriaje.com / Admin12345*)
---   2. 1 Institución prestadora de salud (IPS MediSalud Valledupar)
---   3. 2 Sedes asistenciales (Sede Centro, Sede Norte)
+--   2-3. Hospital único: reutiliza la institución y la sede creadas por V024 (nunca inserta otra)
 --   4. 4 Especialidades médicas (Medicina General, Pediatría, Med. Interna, Odontología)
 --   5. 4 Profesionales de salud con usuarios y rol ROLE_PROFESIONAL
 --   6. Slots de disponibilidad para los próximos 14 días hábiles (America/Bogota)
@@ -71,38 +70,25 @@ BEGIN
     END;
 
     -- -------------------------------------------------------------------------
-    -- 2. INSTITUCIÓN DE SALUD (1)
+    -- 2-3. HOSPITAL ÚNICO: se reutilizan la institución y la sede creadas por V024.
+    -- Nunca se inserta una segunda sede ni institución (TR_SEDE_UNICA / TR_INSTITUCION_UNICA, ORA-20060).
+    -- Si aún tienen los datos de marcador de posición de V024, se renombran con los datos de demostración.
     -- -------------------------------------------------------------------------
-    BEGIN
-        SELECT ID INTO v_inst_id FROM INSTITUCION WHERE NIT = '900123456-1';
-    EXCEPTION
-        WHEN NO_DATA_FOUND THEN
-            INSERT INTO INSTITUCION (PUBLIC_ID, NIT, RAZON_SOCIAL, ESTADO)
-            VALUES ('inst-medisalud-valledupar-001', '900123456-1', 'IPS MediSalud Valledupar S.A.S.', 'ACTIVO')
-            RETURNING ID INTO v_inst_id;
-            DBMS_OUTPUT.PUT_LINE('Institución creada: IPS MediSalud Valledupar');
-    END;
+    SELECT ID INTO v_inst_id FROM INSTITUCION;
+    SELECT ID INTO v_sede_centro_id FROM SEDE;
+    v_sede_norte_id := v_sede_centro_id;
 
-    -- -------------------------------------------------------------------------
-    -- 3. SEDES ASISTENCIALES (2)
-    -- -------------------------------------------------------------------------
-    BEGIN
-        SELECT ID INTO v_sede_centro_id FROM SEDE WHERE PUBLIC_ID = 'sede-centro-valledupar-001';
-    EXCEPTION
-        WHEN NO_DATA_FOUND THEN
-            INSERT INTO SEDE (INSTITUCION_ID, PUBLIC_ID, NOMBRE, DIRECCION, CIUDAD, ESTADO)
-            VALUES (v_inst_id, 'sede-centro-valledupar-001', 'Sede Centro Valledupar', 'Calle 16 # 12-45', 'Valledupar', 'ACTIVO')
-            RETURNING ID INTO v_sede_centro_id;
-    END;
-
-    BEGIN
-        SELECT ID INTO v_sede_norte_id FROM SEDE WHERE PUBLIC_ID = 'sede-norte-valledupar-002';
-    EXCEPTION
-        WHEN NO_DATA_FOUND THEN
-            INSERT INTO SEDE (INSTITUCION_ID, PUBLIC_ID, NOMBRE, DIRECCION, CIUDAD, ESTADO)
-            VALUES (v_inst_id, 'sede-norte-valledupar-002', 'Sede Norte Valledupar', 'Carrera 19D # 5-30', 'Valledupar', 'ACTIVO')
-            RETURNING ID INTO v_sede_norte_id;
-    END;
+    UPDATE INSTITUCION
+       SET NIT = '900123456-1', RAZON_SOCIAL = 'IPS MediSalud Valledupar S.A.S.'
+     WHERE ID = v_inst_id AND RAZON_SOCIAL = 'HOSPITAL PENDING CONFIGURATION';
+    UPDATE SEDE
+       SET NOMBRE = 'Sede Centro Valledupar', DIRECCION = 'Calle 16 # 12-45', CIUDAD = 'Valledupar'
+     WHERE ID = v_sede_centro_id AND DIRECCION = 'N/A';
+    UPDATE CONFIGURACION_HOSPITAL
+       SET NIT = '900123456-1', RAZON_SOCIAL = 'IPS MediSalud Valledupar S.A.S.',
+           DIRECCION = 'Calle 16 # 12-45', CIUDAD = 'Valledupar', UPDATED_AT = SYSTIMESTAMP
+     WHERE ID = 1 AND RAZON_SOCIAL = 'HOSPITAL PENDING CONFIGURATION';
+    DBMS_OUTPUT.PUT_LINE('Hospital único reutilizado (sede ID ' || v_sede_centro_id || ').');
 
     -- -------------------------------------------------------------------------
     -- 4. ESPECIALIDADES MÉDICAS (4)
@@ -260,7 +246,7 @@ BEGIN
                 END;
             END LOOP;
 
-            -- Prof 3 (Medicina Interna - 30 min en Sede Norte, Telemedicina)
+            -- Prof 3 (Medicina Interna - 30 min, Telemedicina)
             FOR h IN 0..1 LOOP
                 v_slot_inicio := FROM_TZ(CAST(v_curr_date + (14 + h * 0.5) / 24 AS TIMESTAMP), 'America/Bogota');
                 v_slot_fin    := v_slot_inicio + NUMTODSINTERVAL(30, 'MINUTE');
@@ -272,7 +258,7 @@ BEGIN
                 END;
             END LOOP;
 
-            -- Prof 4 (Odontología - 30 min en Sede Norte)
+            -- Prof 4 (Odontología - 30 min)
             FOR h IN 0..1 LOOP
                 v_slot_inicio := FROM_TZ(CAST(v_curr_date + (15 + h * 0.5) / 24 AS TIMESTAMP), 'America/Bogota');
                 v_slot_fin    := v_slot_inicio + NUMTODSINTERVAL(30, 'MINUTE');

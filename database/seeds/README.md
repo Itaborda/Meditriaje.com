@@ -17,11 +17,10 @@ El script [`dev_seeds_m3.sql`](file:///C:/Users/JUAN/Antigravity%20IDE/MediTraje
 - **Obligación de cambio de clave:** No (`DEBE_CAMBIAR_PASSWORD = 0`)
 
 ### 2. Estructura Asistencial
-- **Institución:**
-  - `IPS MediSalud Valledupar S.A.S.` (NIT: `900123456-1`)
-- **Sedes:**
-  - `Sede Centro Valledupar` (`Calle 16 # 12-45`, Valledupar)
-  - `Sede Norte Valledupar` (`Carrera 19D # 5-30`, Valledupar)
+- **Hospital único** (la institución y la sede las crea la migración V024; el script las reutiliza y, si aún
+  tienen los datos de marcador de posición, las renombra; nunca inserta otra sede: V025 lo rechaza con ORA-20060):
+  - Institución `IPS MediSalud Valledupar S.A.S.` (NIT: `900123456-1`)
+  - Sede `Sede Centro Valledupar` (`Calle 16 # 12-45`, Valledupar)
 - **Especialidades:**
   - `Medicina General` (duración turno: 20 min)
   - `Pediatría` (duración turno: 30 min)
@@ -37,8 +36,8 @@ Todos creados con rol `ROLE_PROFESIONAL` y contraseña temporal inicial:
 |---|---|---|---|---|
 | Dr. Carlos Alberto Mendoza Vega | `RM-102938` | Medicina General | Sede Centro | `carlos.mendoza@meditriaje.com` |
 | Dra. Laura Sofia Gómez Rueda | `RM-203948` | Pediatría | Sede Centro | `laura.gomez@meditriaje.com` |
-| Dr. Andrés Felipe Castro Ortiz | `RM-304958` | Medicina Interna | Sede Norte | `andres.castro@meditriaje.com` |
-| Dra. Marcela Patricia Morales Díaz | `RM-405968` | Odontología | Sede Norte | `marcela.morales@meditriaje.com` |
+| Dr. Andrés Felipe Castro Ortiz | `RM-304958` | Medicina Interna | Sede Centro | `andres.castro@meditriaje.com` |
+| Dra. Marcela Patricia Morales Díaz | `RM-405968` | Odontología | Sede Centro | `marcela.morales@meditriaje.com` |
 
 ### 4. Disponibilidad Horaria (Slots)
 - Generados para los próximos 14 días hábiles (lunes a viernes).
