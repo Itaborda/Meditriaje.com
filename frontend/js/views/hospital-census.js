@@ -9,6 +9,7 @@ import { auth } from '../auth.js';
 import { motion } from '../motion.js';
 import { router } from '../router.js';
 import { ui, esc } from '../ui.js';
+import { openUniversalQrScanner } from '../components/qr-scanner-modal.js';
 
 let censusState = {
   censusData: null,
@@ -51,6 +52,11 @@ export async function hospitalCensusView(container) {
         <div class="flex flex-wrap items-center gap-3">
           <!-- Hospital único: el servidor resuelve la sede; solo se muestra su nombre -->
           <span id="censusHospitalName" class="text-sm font-semibold text-muted"></span>
+
+          <button type="button" id="btnCensusScanQr" class="btn btn-secondary btn--sm flex items-center gap-1" title="Escanear código QR con cámara o imagen">
+            ${ui.icon('camera', 'icon icon--sm')}
+            <span>Escanear QR</span>
+          </button>
 
           <button type="button" id="btnRefreshCensus" class="btn btn-ghost btn--sm flex items-center gap-1">
             ${ui.icon('refresh-cw', 'icon icon--sm')}
@@ -141,6 +147,10 @@ export async function hospitalCensusView(container) {
   motion.staggerCards(container.querySelectorAll('#censusKpiGrid > .card'), { root: container });
 
   await loadData();
+
+  document.getElementById('btnCensusScanQr')?.addEventListener('click', () => {
+    openUniversalQrScanner();
+  });
 
   document.getElementById('btnRefreshCensus').addEventListener('click', async () => {
     await loadData();

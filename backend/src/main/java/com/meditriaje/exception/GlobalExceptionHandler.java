@@ -114,13 +114,43 @@ public class GlobalExceptionHandler {
 
     /**
      * Captura cualquier excepción no manejada explícitamente.
-     * Logea el error internamente pero nunca expone el mensaje al cliente.
+     * Logea el error internamente (tipo, causa raíz y código ORA sin exponer mensajes ni PHI) pero nunca expone el detalle al cliente.
      */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> handleGeneric(Exception ex) {
-        log.error("Error inesperado: tipo={}", ex.getClass().getSimpleName());
+        Throwable root = rootCauseOf(ex);
+        int oraCode = extractSqlErrorCode(ex);
+        if (oraCode != 0) {
+            log.error("Error inesperado: tipo={}, causa={}, oraCode={}",
+                    ex.getClass().getSimpleName(),
+                    root.getClass().getSimpleName(),
+                    oraCode);
+        } else {
+            log.error("Error inesperado: tipo={}, causa={}",
+                    ex.getClass().getSimpleName(),
+                    root.getClass().getSimpleName());
+        }
         return ResponseEntity
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ApiError.of("ERROR_INTERNO", "Ocurrio un error interno. Intente mas tarde.", null));
+    }
+
+    private static Throwable rootCauseOf(Throwable failure) {
+        Throwable current = failure;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        return current;
+    }
+
+    private static int extractSqlErrorCode(Throwable failure) {
+        Throwable current = failure;
+        while (current != null) {
+            if (current instanceof java.sql.SQLException sql && sql.getErrorCode() != 0) {
+                return sql.getErrorCode();
+            }
+            current = current.getCause();
+        }
+        return 0;
     }
 }

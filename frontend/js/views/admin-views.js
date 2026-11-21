@@ -16,6 +16,7 @@ import { renderAdminAppointments } from './admin-appointments.js';
 import { renderAffiliationImport } from './affiliation-import.js';
 import { hospitalCensusView } from './hospital-census.js';
 import { renderOperationalDashboard } from './operational-dashboard.js';
+import { openUniversalQrScanner } from '../components/qr-scanner-modal.js';
 
 /** Fecha de hoy en formato YYYY-MM-DD en zona America/Bogota. */
 function todayBogota() {
@@ -133,6 +134,10 @@ async function renderAdminDashboardHome(container) {
             ${ui.icon('sliders', 'icon icon--sm')}
             <span>Centro de Mando En Vivo</span>
           </a>
+          <button type="button" id="btnAdminScanQr" class="btn btn-secondary btn--sm" title="Escanear código QR con cámara o imagen">
+            ${ui.icon('camera', 'icon icon--sm')}
+            <span>Escanear QR</span>
+          </button>
           <button type="button" id="btnAdminMfa" class="btn btn-primary btn--sm">
             ${ui.icon('shield', 'icon icon--sm')}
             <span>Seguridad MFA</span>
@@ -380,6 +385,11 @@ async function renderAdminDashboardHome(container) {
       </div>
     </div>
   `;
+
+  // Listener para escáner QR con cámara
+  container.querySelector('#btnAdminScanQr')?.addEventListener('click', () => {
+    openUniversalQrScanner();
+  });
 
   // Listener para configuración MFA
   container.querySelector('#btnAdminMfa')?.addEventListener('click', () => {

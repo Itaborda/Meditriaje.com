@@ -7,6 +7,7 @@
 import { api } from '../api.js';
 import { router } from '../router.js';
 import { ui, esc } from '../ui.js';
+import { openUniversalQrScanner } from '../components/qr-scanner-modal.js';
 
 /**
  * Formatea una fecha ISO a hora y fecha de Bogotá
@@ -482,12 +483,22 @@ function renderAccesoInvalido(container, verificacion) {
           </p>
         </div>
 
-        <a href="#/" class="btn btn-primary">
-          <span>Ir al inicio de MediTriaje</span>
-        </a>
+        <div class="flex flex-wrap items-center justify-center gap-3">
+          <button type="button" id="btnScanAnotherEmergencyQr" class="btn btn-secondary">
+            ${ui.icon('camera', 'icon icon--sm')}
+            <span>Escanear otro QR</span>
+          </button>
+          <a href="#/" class="btn btn-primary">
+            <span>Ir al inicio de MediTriaje</span>
+          </a>
+        </div>
       </div>
     </div>
   `;
+
+  container.querySelector('#btnScanAnotherEmergencyQr')?.addEventListener('click', () => {
+    openUniversalQrScanner();
+  });
 }
 
 /**
@@ -504,10 +515,20 @@ function renderError(container, mensaje) {
         </div>
         <h2 class="text-xl font-bold mb-2">Error de Acceso</h2>
         <p class="text-muted text-sm mb-4">${esc(mensaje)}</p>
-        <a href="#/" class="btn btn-secondary btn--sm">
-          <span>Volver al inicio</span>
-        </a>
+        <div class="flex flex-wrap items-center justify-center gap-3">
+          <button type="button" id="btnScanAnotherEmergencyQr" class="btn btn-secondary btn--sm">
+            ${ui.icon('camera', 'icon icon--sm')}
+            <span>Escanear otro QR</span>
+          </button>
+          <a href="#/" class="btn btn-secondary btn--sm">
+            <span>Volver al inicio</span>
+          </a>
+        </div>
       </div>
     </div>
   `;
+
+  container.querySelector('#btnScanAnotherEmergencyQr')?.addEventListener('click', () => {
+    openUniversalQrScanner();
+  });
 }

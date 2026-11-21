@@ -10,6 +10,7 @@ import { auth } from '../auth.js';
 import { motion } from '../motion.js';
 import { router } from '../router.js';
 import { ui, esc } from '../ui.js';
+import { openUniversalQrScanner } from '../components/qr-scanner-modal.js';
 
 let dashboardState = {
   filterEstado: '',
@@ -83,6 +84,11 @@ export async function nursingDashboardView(container) {
             ${ui.icon('bar-chart-2', 'icon icon--sm')}
             <span>Mando</span>
           </a>
+
+          <button type="button" id="btnNursingScanQr" class="btn btn-secondary btn--sm flex items-center gap-1" title="Escanear código QR con cámara o imagen">
+            ${ui.icon('camera', 'icon icon--sm')}
+            <span>Escanear QR</span>
+          </button>
 
           <a href="#/nursing/admission" class="btn btn-primary btn--sm flex items-center gap-2">
             ${ui.icon('plus', 'icon icon--sm')}
@@ -190,6 +196,10 @@ export async function nursingDashboardView(container) {
   refreshBtn.addEventListener('click', async () => {
     await loadQueue();
     ui.showToast('Cola actualizada.', 'info');
+  });
+
+  document.getElementById('btnNursingScanQr')?.addEventListener('click', () => {
+    openUniversalQrScanner();
   });
 }
 
