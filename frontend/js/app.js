@@ -98,6 +98,38 @@ function updateBottomNavActive() {
   });
 }
 
+function updateLandingNavbarState() {
+  const hash = window.location.hash || '#/';
+  const isLanding = !auth.isAuthenticated && (hash === '' || hash === '#' || hash === '#/');
+  document.body.classList.toggle('is-landing-view', isLanding);
+
+  const navLanding = document.getElementById('nav-landing-links');
+  if (navLanding) {
+    navLanding.classList.toggle('is-visible', isLanding);
+  }
+}
+
+function initLandingNavbarLinks() {
+  const navLanding = document.getElementById('nav-landing-links');
+  if (!navLanding) return;
+
+  navLanding.querySelectorAll('[data-landing-target]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      navLanding.querySelectorAll('.nav-landing-link').forEach((item) => {
+        item.classList.remove('is-active');
+      });
+      btn.classList.add('is-active');
+
+      const targetId = btn.getAttribute('data-landing-target');
+      if (targetId === 'landing-top') {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else if (targetId) {
+        document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth' });
+      }
+    });
+  });
+}
+
 // Actualización de la barra de navegación según el estado de la sesión
 function updateNavbar() {
   const navContainer = document.getElementById('nav-auth-links');
@@ -174,8 +206,14 @@ function updateNavbar() {
 
     if (navContainer) {
       navContainer.innerHTML = `
-        <a href="#/login" class="nav-link font-medium">Iniciar sesión</a>
-        <a href="#/register" class="btn btn-primary btn--sm">Registrarme</a>
+        <a href="#/login" class="btn btn-secondary btn--sm nav-guest-login">
+          ${ui.icon('user', 'icon icon--xs')}
+          <span>Ingresar</span>
+        </a>
+        <a href="#/register" class="btn btn-primary btn--sm nav-guest-cta">
+          ${ui.icon('activity', 'icon icon--xs')}
+          <span>Comenzar ahora</span>
+        </a>
       `;
     }
 
@@ -184,6 +222,8 @@ function updateNavbar() {
       document.body.classList.remove('has-bottom-nav');
     }
   }
+
+  updateLandingNavbarState();
 
   // Sincronizar el estado del menú lateral accesible
   updateSidebar();
@@ -306,7 +346,12 @@ async function bootstrap() {
     updateNavbar();
   });
 
-  window.addEventListener('hashchange', updateBottomNavActive);
+  window.addEventListener('hashchange', () => {
+    updateBottomNavActive();
+    updateLandingNavbarState();
+  });
+
+  initLandingNavbarLinks();
 
   // Restaurar sesión activa de forma transparente
   await auth.init();

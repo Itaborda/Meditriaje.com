@@ -394,12 +394,17 @@ export function pulseSubtle(el) {
 export function heroEntrance(container) {
   if (!container || isMotionReduced()) return;
 
-  const badge = container.querySelector('.landing-hero .hero-badge');
-  const title = container.querySelector('.landing-hero h1');
-  const lead = container.querySelector('.landing-hero > p');
-  const flexRows = Array.from(container.querySelectorAll('.landing-hero > .flex'));
-  const preview = container.querySelector('.landing-hero .hero-preview-window');
-  const ecgSvgs = container.querySelectorAll('.landing-hero .btn-primary svg, .hero-showcase-visual svg, .hero-preview-window .card svg');
+  const pill = container.querySelector('.landing-pill');
+  const title = container.querySelector('.landing-headline');
+  const lead = container.querySelector('.landing-lead');
+  const ctaRow = container.querySelector('.landing-cta-row');
+  const trustRow = container.querySelector('.landing-trust-row');
+  const laptop = container.querySelector('.hero-laptop');
+  const phone = container.querySelector('.hero-phone');
+  const doctor = container.querySelector('.hero-doctor-wrap');
+  const floatingPill = container.querySelector('.hero-floating-pill');
+  const featureCards = Array.from(container.querySelectorAll('.hero-feature-strip .hero-feature-card'));
+  const ecgSvgs = container.querySelectorAll('.hero-ecg-wave, .landing-cta-primary svg');
 
   runInScope(container, () => {
     const tl = createTimeline({
@@ -407,24 +412,44 @@ export function heroEntrance(container) {
       onComplete: cleanStyles
     });
 
-    if (badge) {
-      tl.add(badge, { opacity: [0, 1], translateY: [8, 0], duration: 220 }, 0);
+    if (pill) {
+      tl.add(pill, { opacity: [0, 1], translateY: [8, 0], duration: 220 }, 0);
     }
     if (title) {
-      tl.add(title, { opacity: [0, 1], translateY: [10, 0], duration: 280 }, 40);
+      tl.add(title, { opacity: [0, 1], translateY: [12, 0], duration: 280 }, 35);
     }
     if (lead) {
-      tl.add(lead, { opacity: [0, 1], translateY: [10, 0], duration: 260 }, 90);
+      tl.add(lead, { opacity: [0, 1], translateY: [10, 0], duration: 260 }, 85);
     }
-    if (flexRows.length > 0) {
-      tl.add(flexRows, { opacity: [0, 1], translateY: [8, 0], duration: 240, delay: stagger(40) }, 130);
+    if (ctaRow) {
+      tl.add(ctaRow, { opacity: [0, 1], translateY: [8, 0], duration: 240 }, 125);
     }
-    if (preview) {
-      tl.add(preview, { opacity: [0, 1], translateY: [14, 0], duration: 340 }, 170);
+    if (trustRow) {
+      tl.add(trustRow, { opacity: [0, 1], translateY: [6, 0], duration: 220 }, 160);
+    }
+    if (laptop) {
+      tl.add(laptop, { opacity: [0, 1], translateY: [14, 0], duration: 320 }, 110);
+    }
+    if (phone) {
+      tl.add(phone, { opacity: [0, 1], translateY: [16, 0], duration: 300 }, 175);
+    }
+    if (doctor) {
+      tl.add(doctor, { opacity: [0, 1], translateY: [12, 0], duration: 320 }, 140);
+    }
+    if (floatingPill) {
+      tl.add(floatingPill, { opacity: [0, 1], translateY: [10, 0], duration: 240 }, 240);
+    }
+    if (featureCards.length > 0) {
+      tl.add(featureCards, {
+        opacity: [0, 1],
+        translateY: [12, 0],
+        duration: 260,
+        delay: stagger(40)
+      }, 220);
     }
 
     if (ecgSvgs.length > 0) {
-      drawSvg(ecgSvgs, { duration: 650, delay: 120, root: container });
+      drawSvg(ecgSvgs, { duration: 750, delay: 160, root: container });
     }
   });
 }

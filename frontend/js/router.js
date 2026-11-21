@@ -141,6 +141,7 @@ class Router {
 
     // Ejecutar renderizado de la vista
     try {
+      document.body.classList.toggle('is-landing-view', path === '/' && !auth.isAuthenticated);
       motion.resetViewScope();
       if (this.appContainer) {
         this.appContainer.innerHTML = '';
