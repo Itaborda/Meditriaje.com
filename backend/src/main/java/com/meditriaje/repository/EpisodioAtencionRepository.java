@@ -3,41 +3,40 @@ package com.meditriaje.repository;
 import com.meditriaje.dto.emergency.EpisodioUrgenciaResponse;
 import com.meditriaje.dto.emergency.ItemColaUrgenciaResponse;
 import com.meditriaje.model.EpisodioAtencion;
-import org.springframework.dao.EmptyResultDataAccessException;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
-import org.springframework.stereotype.Repository;
-
-import java.sql.PreparedStatement;
-import java.sql.Statement;
+import com.meditriaje.repository.plsql.PackageGateway;
+import com.meditriaje.repository.plsql.ProcedureSpec;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.stereotype.Repository;
 
 /**
- * Repositorio JDBC para {@code EPISODIO_ATENCION} (Fase U, ADR-022, U02, U05).
+ * Episodios de atención ({@code EPISODIO_ATENCION}, Fase U, ADR-022, U02, U05) a través de {@code PKG_EMERGENCY}.
+ * No contiene SQL.
  */
 @Repository
 public class EpisodioAtencionRepository {
 
-    private final JdbcTemplate jdbcTemplate;
+    static final String PACKAGE = "PKG_EMERGENCY";
 
-    private final RowMapper<EpisodioAtencion> rowMapper = (rs, rowNum) -> {
+    static final RowMapper<EpisodioAtencion> ROW_MAPPER = (rs, rowNum) -> {
         Timestamp tsIngreso = rs.getTimestamp("INGRESO_AT");
         Timestamp tsEgreso = rs.getTimestamp("EGRESO_AT");
         Timestamp tsCreated = rs.getTimestamp("CREADO_AT");
         Timestamp tsUpdated = rs.getTimestamp("UPDATED_AT");
         long pacId = rs.getLong("PACIENTE_ID");
+        Long pacienteId = rs.wasNull() ? null : pacId;
 
         return new EpisodioAtencion(
                 rs.getLong("ID"),
                 rs.getString("PUBLIC_ID"),
-                rs.wasNull() ? null : pacId,
+                pacienteId,
                 rs.getString("TIPO"),
                 rs.getLong("SEDE_ID"),
                 rs.getString("ESTADO"),
@@ -45,39 +44,124 @@ public class EpisodioAtencionRepository {
                 tsEgreso != null ? tsEgreso.toInstant() : null,
                 rs.getString("MOTIVO_INGRESO"),
                 tsCreated != null ? tsCreated.toInstant() : null,
-                tsUpdated != null ? tsUpdated.toInstant() : null
-        );
+                tsUpdated != null ? tsUpdated.toInstant() : null);
     };
 
-    public EpisodioAtencionRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "jdbcTemplate no puede ser nulo");
+    static final RowMapper<EpisodioUrgenciaResponse> DETAIL_MAPPER = (rs, rowNum) -> {
+        Timestamp tsIngreso = rs.getTimestamp("INGRESO_AT");
+        Timestamp tsEgreso = rs.getTimestamp("EGRESO_AT");
+        Timestamp tsCreado = rs.getTimestamp("CREADO_AT");
+        String codProv = rs.getString("CODIGO_PROVISIONAL");
+
+        return new EpisodioUrgenciaResponse(
+                rs.getString("EPISODIO_PUB_ID"),
+                rs.getString("PACIENTE_PUB_ID"),
+                rs.getString("PACIENTE_NOMBRE"),
+                rs.getString("SEDE_PUB_ID"),
+                rs.getString("SEDE_NOMBRE"),
+                rs.getString("TIPO"),
+                rs.getString("ESTADO"),
+                codProv != null,
+                codProv,
+                rs.getString("IDENTIDAD_ESTADO"),
+                rs.getString("MEDIO_LLEGADA"),
+                rs.getString("MOTIVO_RESUMIDO"),
+                rs.getString("NIVEL_TRIAJE") != null ? rs.getString("NIVEL_TRIAJE") : "PENDIENTE_VALORACION",
+                rs.getString("MEDICO_TRATANTE_NOMBRE"),
+                tsIngreso != null ? tsIngreso.toInstant() : null,
+                tsEgreso != null ? tsEgreso.toInstant() : null,
+                tsCreado != null ? tsCreado.toInstant() : null);
+    };
+
+    static final RowMapper<ItemColaUrgenciaResponse> QUEUE_MAPPER = (rs, rowNum) -> {
+        Timestamp tsIngreso = rs.getTimestamp("INGRESO_AT");
+        long minutos = rs.getLong("MINUTOS_ESPERA");
+        if (minutos < 0) minutos = 0;
+
+        return new ItemColaUrgenciaResponse(
+                rs.getString("EPISODIO_PUB_ID"),
+                rs.getString("PACIENTE_PUB_ID"),
+                rs.getString("IDENTIFICADOR_VISIBLE"),
+                rs.getString("CODIGO_PROVISIONAL"),
+                rs.getString("SEDE_PUB_ID"),
+                rs.getString("SEDE_NOMBRE"),
+                rs.getString("TIPO"),
+                rs.getString("ESTADO"),
+                rs.getString("NIVEL_TRIAJE"),
+                rs.getString("MOTIVO_LLEGADA"),
+                minutos,
+                tsIngreso != null ? tsIngreso.toInstant() : null,
+                rs.getString("MEDICO_TRATANTE_NOMBRE"));
+    };
+
+    static final ProcedureSpec CREATE_EPISODE = ProcedureSpec.procedure(PACKAGE, "create_episode")
+            .in("p_public_id", Types.VARCHAR)
+            .in("p_patient_id", Types.NUMERIC)
+            .in("p_type", Types.VARCHAR)
+            .in("p_status", Types.VARCHAR)
+            .in("p_admitted_at", Types.TIMESTAMP)
+            .in("p_reason", Types.VARCHAR)
+            .out("o_id", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec GET_EPISODE_BY_ID = ProcedureSpec.procedure(PACKAGE, "get_episode_by_id")
+            .in("p_id", Types.NUMERIC)
+            .cursor("o_row", ROW_MAPPER)
+            .build();
+
+    static final ProcedureSpec GET_EPISODE_BY_PUBLIC_ID =
+            ProcedureSpec.procedure(PACKAGE, "get_episode_by_public_id")
+                    .in("p_public_id", Types.VARCHAR)
+                    .cursor("o_row", ROW_MAPPER)
+                    .build();
+
+    static final ProcedureSpec UPDATE_EPISODE_STATUS = ProcedureSpec.procedure(PACKAGE, "update_episode_status")
+            .in("p_id", Types.NUMERIC)
+            .in("p_status", Types.VARCHAR)
+            .out("o_updated", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec LINK_PATIENT = ProcedureSpec.procedure(PACKAGE, "link_patient")
+            .in("p_id", Types.NUMERIC)
+            .in("p_patient_id", Types.NUMERIC)
+            .out("o_updated", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec CLOSE_EPISODE = ProcedureSpec.procedure(PACKAGE, "close_episode")
+            .in("p_id", Types.NUMERIC)
+            .in("p_discharged_at", Types.TIMESTAMP)
+            .out("o_updated", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec GET_EPISODE_DETAIL = ProcedureSpec.procedure(PACKAGE, "get_episode_detail")
+            .in("p_public_id", Types.VARCHAR)
+            .cursor("o_row", DETAIL_MAPPER)
+            .build();
+
+    static final ProcedureSpec LIST_EMERGENCY_QUEUE = ProcedureSpec.procedure(PACKAGE, "list_emergency_queue")
+            .in("p_site_id", Types.NUMERIC)
+            .in("p_status", Types.VARCHAR)
+            .cursor("o_rows", QUEUE_MAPPER)
+            .build();
+
+    private final PackageGateway gateway;
+
+    public EpisodioAtencionRepository(PackageGateway gateway) {
+        this.gateway = Objects.requireNonNull(gateway, "gateway no puede ser nulo");
     }
 
+    /** Registra el episodio en la única sede del hospital (la resuelve el paquete). */
     public EpisodioAtencion guardar(EpisodioAtencion episodio) {
-        String sql = """
-                INSERT INTO EPISODIO_ATENCION (
-                    PUBLIC_ID, PACIENTE_ID, TIPO, SEDE_ID, ESTADO, INGRESO_AT, MOTIVO_INGRESO
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """;
+        Instant ingresoAt = episodio.ingresoAt() != null ? episodio.ingresoAt() : Instant.now();
+        Map<String, Object> out = gateway.execute(CREATE_EPISODE, new MapSqlParameterSource()
+                .addValue("p_public_id", episodio.publicId(), Types.VARCHAR)
+                .addValue("p_patient_id", episodio.pacienteId(), Types.NUMERIC)
+                .addValue("p_type", episodio.tipo(), Types.VARCHAR)
+                .addValue("p_status", episodio.estado(), Types.VARCHAR)
+                .addValue("p_admitted_at", Timestamp.from(ingresoAt), Types.TIMESTAMP)
+                .addValue("p_reason", episodio.motivoIngreso(), Types.VARCHAR));
 
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(sql, new String[]{"ID"});
-            ps.setString(1, episodio.publicId());
-            if (episodio.pacienteId() != null) {
-                ps.setLong(2, episodio.pacienteId());
-            } else {
-                ps.setNull(2, java.sql.Types.NUMERIC);
-            }
-            ps.setString(3, episodio.tipo());
-            ps.setLong(4, episodio.sedeId());
-            ps.setString(5, episodio.estado());
-            ps.setTimestamp(6, episodio.ingresoAt() != null ? Timestamp.from(episodio.ingresoAt()) : Timestamp.from(Instant.now()));
-            ps.setString(7, episodio.motivoIngreso());
-            return ps;
-        }, keyHolder);
-
-        Number id = keyHolder.getKey();
+        Number id = (Number) out.get("o_id");
         Long generatedId = id != null ? id.longValue() : null;
 
         return new EpisodioAtencion(
@@ -91,186 +175,60 @@ public class EpisodioAtencionRepository {
                 episodio.egresoAt(),
                 episodio.motivoIngreso(),
                 Instant.now(),
-                Instant.now()
-        );
+                Instant.now());
     }
 
     public Optional<EpisodioAtencion> buscarPorId(Long id) {
-        String sql = "SELECT * FROM EPISODIO_ATENCION WHERE ID = ?";
-        try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(sql, rowMapper, id));
-        } catch (EmptyResultDataAccessException e) {
-            return Optional.empty();
-        }
+        return first(gateway.list(GET_EPISODE_BY_ID, new MapSqlParameterSource("p_id", id), "o_row"));
     }
 
     public Optional<EpisodioAtencion> buscarPorPublicId(String publicId) {
-        String sql = "SELECT * FROM EPISODIO_ATENCION WHERE PUBLIC_ID = ?";
-        try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(sql, rowMapper, publicId));
-        } catch (EmptyResultDataAccessException e) {
-            return Optional.empty();
-        }
+        return first(gateway.list(GET_EPISODE_BY_PUBLIC_ID, new MapSqlParameterSource("p_public_id", publicId), "o_row"));
     }
 
     public int actualizarEstado(Long id, String nuevoEstado) {
-        String sql = "UPDATE EPISODIO_ATENCION SET ESTADO = ?, UPDATED_AT = CURRENT_TIMESTAMP WHERE ID = ?";
-        return jdbcTemplate.update(sql, nuevoEstado, id);
+        return updated(gateway.execute(UPDATE_EPISODE_STATUS, new MapSqlParameterSource()
+                .addValue("p_id", id)
+                .addValue("p_status", nuevoEstado)));
     }
 
     public int vincularPaciente(Long id, Long pacienteId) {
-        String sql = "UPDATE EPISODIO_ATENCION SET PACIENTE_ID = ?, UPDATED_AT = CURRENT_TIMESTAMP WHERE ID = ?";
-        return jdbcTemplate.update(sql, pacienteId, id);
+        return updated(gateway.execute(LINK_PATIENT, new MapSqlParameterSource()
+                .addValue("p_id", id, Types.NUMERIC)
+                .addValue("p_patient_id", pacienteId, Types.NUMERIC)));
     }
 
     public int cerrarEpisodio(Long id, Instant egresoAt) {
-        String sql = "UPDATE EPISODIO_ATENCION SET ESTADO = 'EGRESADO', EGRESO_AT = ?, UPDATED_AT = CURRENT_TIMESTAMP WHERE ID = ?";
-        return jdbcTemplate.update(sql, Timestamp.from(egresoAt != null ? egresoAt : Instant.now()), id);
+        return updated(gateway.execute(CLOSE_EPISODE, new MapSqlParameterSource()
+                .addValue("p_id", id)
+                .addValue("p_discharged_at", Timestamp.from(egresoAt != null ? egresoAt : Instant.now()))));
     }
 
     /**
      * Consulta detallada del episodio con joins a paciente, sede, triaje actual y equipo asistencial.
      */
     public Optional<EpisodioUrgenciaResponse> buscarDetallePorPublicId(String publicId) {
-        String sql = """
-                SELECT e.PUBLIC_ID AS EPISODIO_PUB_ID,
-                       p.PUBLIC_ID AS PACIENTE_PUB_ID,
-                       CASE WHEN p.ID IS NOT NULL THEN (p.NOMBRES || ' ' || p.APELLIDOS) ELSE NULL END AS PACIENTE_NOMBRE,
-                       s.PUBLIC_ID AS SEDE_PUB_ID,
-                       s.NOMBRE AS SEDE_NOMBRE,
-                       e.TIPO,
-                       e.ESTADO,
-                       ip.CODIGO_PROVISIONAL,
-                       ip.ESTADO AS IDENTIDAD_ESTADO,
-                       iu.MEDIO_LLEGADA,
-                       iu.MOTIVO_RESUMIDO,
-                       (SELECT vt.NIVEL FROM VALORACION_TRIAJE vt WHERE vt.EPISODIO_ID = e.ID ORDER BY vt.VERSION DESC FETCH FIRST 1 ROWS ONLY) AS NIVEL_TRIAJE,
-                       (SELECT prof.NOMBRES || ' ' || prof.APELLIDOS FROM ASIGNACION_ASISTENCIAL aa
-                        JOIN PROFESIONAL prof ON aa.PROFESIONAL_ID = prof.ID
-                        WHERE aa.EPISODIO_ID = e.ID AND aa.ACTIVO = 1 AND aa.FUNCION = 'MEDICO_TRATANTE'
-                        FETCH FIRST 1 ROWS ONLY) AS MEDICO_TRATANTE_NOMBRE,
-                       e.INGRESO_AT,
-                       e.EGRESO_AT,
-                       e.CREADO_AT
-                FROM EPISODIO_ATENCION e
-                JOIN SEDE s ON e.SEDE_ID = s.ID
-                LEFT JOIN PACIENTE p ON e.PACIENTE_ID = p.ID
-                LEFT JOIN INGRESO_URGENCIA iu ON e.ID = iu.EPISODIO_ID
-                LEFT JOIN IDENTIDAD_PROVISIONAL ip ON e.ID = ip.EPISODIO_ID
-                WHERE e.PUBLIC_ID = ?
-                """;
-
-        try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(sql, (rs, rowNum) -> {
-                Timestamp tsIngreso = rs.getTimestamp("INGRESO_AT");
-                Timestamp tsEgreso = rs.getTimestamp("EGRESO_AT");
-                Timestamp tsCreado = rs.getTimestamp("CREADO_AT");
-                String codProv = rs.getString("CODIGO_PROVISIONAL");
-
-                return new EpisodioUrgenciaResponse(
-                        rs.getString("EPISODIO_PUB_ID"),
-                        rs.getString("PACIENTE_PUB_ID"),
-                        rs.getString("PACIENTE_NOMBRE"),
-                        rs.getString("SEDE_PUB_ID"),
-                        rs.getString("SEDE_NOMBRE"),
-                        rs.getString("TIPO"),
-                        rs.getString("ESTADO"),
-                        codProv != null,
-                        codProv,
-                        rs.getString("IDENTIDAD_ESTADO"),
-                        rs.getString("MEDIO_LLEGADA"),
-                        rs.getString("MOTIVO_RESUMIDO"),
-                        rs.getString("NIVEL_TRIAJE") != null ? rs.getString("NIVEL_TRIAJE") : "PENDIENTE_VALORACION",
-                        rs.getString("MEDICO_TRATANTE_NOMBRE"),
-                        tsIngreso != null ? tsIngreso.toInstant() : null,
-                        tsEgreso != null ? tsEgreso.toInstant() : null,
-                        tsCreado != null ? tsCreado.toInstant() : null
-                );
-            }, publicId));
-        } catch (EmptyResultDataAccessException e) {
-            return Optional.empty();
-        }
+        return first(gateway.list(GET_EPISODE_DETAIL, new MapSqlParameterSource("p_public_id", publicId), "o_row"));
     }
 
     /**
      * Consulta la cola priorizada de urgencias por sede (U05).
      * Orden: Prioridad I > II > III > IV > V > PENDIENTE_VALORACION, y luego por menor tiempo de llegada.
+     * Ambos filtros son opcionales (nulo o en blanco = sin filtro).
      */
     public List<ItemColaUrgenciaResponse> listarColaUrgenciaPorSede(Long sedeId, String estadoFiltro) {
-        StringBuilder sql = new StringBuilder("""
-                SELECT e.PUBLIC_ID AS EPISODIO_PUB_ID,
-                       p.PUBLIC_ID AS PACIENTE_PUB_ID,
-                       CASE 
-                         WHEN p.ID IS NOT NULL THEN (p.NOMBRES || ' ' || p.APELLIDOS)
-                         WHEN ip.CODIGO_PROVISIONAL IS NOT NULL THEN ('NN (' || ip.CODIGO_PROVISIONAL || ')')
-                         ELSE 'Paciente no identificado'
-                       END AS IDENTIFICADOR_VISIBLE,
-                       ip.CODIGO_PROVISIONAL,
-                       s.PUBLIC_ID AS SEDE_PUB_ID,
-                       s.NOMBRE AS SEDE_NOMBRE,
-                       e.TIPO,
-                       e.ESTADO,
-                       COALESCE((SELECT vt.NIVEL FROM VALORACION_TRIAJE vt WHERE vt.EPISODIO_ID = e.ID ORDER BY vt.VERSION DESC FETCH FIRST 1 ROWS ONLY), 'PENDIENTE_VALORACION') AS NIVEL_TRIAJE,
-                       COALESCE(iu.MOTIVO_RESUMIDO, e.MOTIVO_INGRESO) AS MOTIVO_LLEGADA,
-                       ROUND((CAST(CURRENT_TIMESTAMP AS DATE) - CAST(e.INGRESO_AT AS DATE)) * 1440) AS MINUTOS_ESPERA,
-                       e.INGRESO_AT,
-                       (SELECT prof.NOMBRES || ' ' || prof.APELLIDOS FROM ASIGNACION_ASISTENCIAL aa
-                        JOIN PROFESIONAL prof ON aa.PROFESIONAL_ID = prof.ID
-                        WHERE aa.EPISODIO_ID = e.ID AND aa.ACTIVO = 1 AND aa.FUNCION = 'MEDICO_TRATANTE'
-                        FETCH FIRST 1 ROWS ONLY) AS MEDICO_TRATANTE_NOMBRE
-                FROM EPISODIO_ATENCION e
-                JOIN SEDE s ON e.SEDE_ID = s.ID
-                LEFT JOIN PACIENTE p ON e.PACIENTE_ID = p.ID
-                LEFT JOIN INGRESO_URGENCIA iu ON e.ID = iu.EPISODIO_ID
-                LEFT JOIN IDENTIDAD_PROVISIONAL ip ON e.ID = ip.EPISODIO_ID
-                WHERE e.TIPO = 'URGENCIA'
-                  AND e.ESTADO NOT IN ('EGRESADO', 'CANCELADO')
-                """);
+        String estado = estadoFiltro != null && !estadoFiltro.isBlank() ? estadoFiltro : null;
+        return gateway.list(LIST_EMERGENCY_QUEUE, new MapSqlParameterSource()
+                .addValue("p_site_id", sedeId, Types.NUMERIC)
+                .addValue("p_status", estado, Types.VARCHAR), "o_rows");
+    }
 
-        List<Object> params = new ArrayList<>();
-        if (sedeId != null) {
-            sql.append(" AND e.SEDE_ID = ? ");
-            params.add(sedeId);
-        }
-        if (estadoFiltro != null && !estadoFiltro.isBlank()) {
-            sql.append(" AND e.ESTADO = ? ");
-            params.add(estadoFiltro);
-        }
+    private static int updated(Map<String, Object> out) {
+        Number rows = (Number) out.get("o_updated");
+        return rows != null ? rows.intValue() : 0;
+    }
 
-        // Orden de clasificación clínica según Resolución 5596/2015
-        sql.append("""
-                ORDER BY 
-                  CASE 
-                    WHEN (SELECT vt.NIVEL FROM VALORACION_TRIAJE vt WHERE vt.EPISODIO_ID = e.ID ORDER BY vt.VERSION DESC FETCH FIRST 1 ROWS ONLY) = 'I' THEN 1
-                    WHEN (SELECT vt.NIVEL FROM VALORACION_TRIAJE vt WHERE vt.EPISODIO_ID = e.ID ORDER BY vt.VERSION DESC FETCH FIRST 1 ROWS ONLY) = 'II' THEN 2
-                    WHEN (SELECT vt.NIVEL FROM VALORACION_TRIAJE vt WHERE vt.EPISODIO_ID = e.ID ORDER BY vt.VERSION DESC FETCH FIRST 1 ROWS ONLY) = 'III' THEN 3
-                    WHEN (SELECT vt.NIVEL FROM VALORACION_TRIAJE vt WHERE vt.EPISODIO_ID = e.ID ORDER BY vt.VERSION DESC FETCH FIRST 1 ROWS ONLY) = 'IV' THEN 4
-                    WHEN (SELECT vt.NIVEL FROM VALORACION_TRIAJE vt WHERE vt.EPISODIO_ID = e.ID ORDER BY vt.VERSION DESC FETCH FIRST 1 ROWS ONLY) = 'V' THEN 5
-                    ELSE 6
-                  END ASC,
-                  e.INGRESO_AT ASC
-                """);
-
-        return jdbcTemplate.query(sql.toString(), (rs, rowNum) -> {
-            Timestamp tsIngreso = rs.getTimestamp("INGRESO_AT");
-            long minutos = rs.getLong("MINUTOS_ESPERA");
-            if (minutos < 0) minutos = 0;
-
-            return new ItemColaUrgenciaResponse(
-                    rs.getString("EPISODIO_PUB_ID"),
-                    rs.getString("PACIENTE_PUB_ID"),
-                    rs.getString("IDENTIFICADOR_VISIBLE"),
-                    rs.getString("CODIGO_PROVISIONAL"),
-                    rs.getString("SEDE_PUB_ID"),
-                    rs.getString("SEDE_NOMBRE"),
-                    rs.getString("TIPO"),
-                    rs.getString("ESTADO"),
-                    rs.getString("NIVEL_TRIAJE"),
-                    rs.getString("MOTIVO_LLEGADA"),
-                    minutos,
-                    tsIngreso != null ? tsIngreso.toInstant() : null,
-                    rs.getString("MEDICO_TRATANTE_NOMBRE")
-            );
-        }, params.toArray());
+    private static <T> Optional<T> first(List<T> rows) {
+        return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
     }
 }
