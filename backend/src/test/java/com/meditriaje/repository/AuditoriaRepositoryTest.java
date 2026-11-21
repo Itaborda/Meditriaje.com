@@ -1,116 +1,72 @@
 package com.meditriaje.repository;
 
-import com.meditriaje.dto.audit.RegistroAuditoriaResponse;
-import com.meditriaje.model.AccionAuditable;
-import com.meditriaje.model.EventoAuditoria;
-import com.meditriaje.model.ResultadoAuditoria;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
-
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
-import java.time.Instant;
-import java.util.List;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/**
- * Pruebas unitarias para {@link AuditoriaRepository}.
- * Verifica que el repositorio es estrictamente insert-only para mutaciones,
- * expone consultas seguras y parametrizadas para supervisión (ADR-019),
- * y utiliza consultas SQL parametrizadas.
- */
-@ExtendWith(MockitoExtension.class)
+import com.meditriaje.model.AccionAuditable;
+import com.meditriaje.model.EventoAuditoria;
+import com.meditriaje.model.ResultadoAuditoria;
+import com.meditriaje.repository.plsql.PackageGateway;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.namedparam.SqlParameterSource;
+
+/** Bitácora de auditoría vía PKG_AUDIT (sin SQL en Java). */
 class AuditoriaRepositoryTest {
 
-    @Mock
-    private JdbcTemplate jdbcTemplate;
-
-    @InjectMocks
-    private AuditoriaRepository auditoriaRepository;
+    private final PackageGateway gateway = mock(PackageGateway.class);
+    private final AuditoriaRepository repository = new AuditoriaRepository(gateway);
 
     @Test
-    void registrar_ejecutaInsertConSqlParametrizado() {
-        EventoAuditoria evento = new EventoAuditoria(
-                10L,
-                AccionAuditable.REGISTRO_PACIENTE,
-                "PACIENTE",
-                "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-                ResultadoAuditoria.EXITO,
-                "192.168.0.1"
-        );
+    void registrar_enviaLosNombresDeLosEnumerados() {
+        AccionAuditable accion = AccionAuditable.values()[0];
+        repository.registrar(new EventoAuditoria(5L, accion, "PACIENTE", "pub", ResultadoAuditoria.EXITO, "127.0.0.1"));
 
-        auditoriaRepository.registrar(evento);
-
-        verify(jdbcTemplate).update(
-                eq("""
-                    INSERT INTO AUDITORIA (USUARIO_ID, ACCION, TIPO_RECURSO, RECURSO_PUBLIC_ID, RESULTADO, IP_ORIGEN)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """),
-                eq(10L),
-                eq("REGISTRO_PACIENTE"),
-                eq("PACIENTE"),
-                eq("a1b2c3d4-e5f6-7890-abcd-ef1234567890"),
-                eq("EXITO"),
-                eq("192.168.0.1")
-        );
+        verify(gateway).execute(eq(AuditoriaRepository.INSERT_AUDIT_EVENT), argThat((SqlParameterSource p) ->
+                accion.name().equals(p.getValue("p_action"))
+                        && "EXITO".equals(p.getValue("p_result"))
+                        && Long.valueOf(5L).equals(p.getValue("p_user_id"))));
     }
 
     @Test
-    @DisplayName("listarEventos - ejecuta consulta paginada con filtros opcionales")
-    @SuppressWarnings("unchecked")
-    void listarEventos_conFiltros_ejecutaQueryParametrizado() {
-        Instant desde = Instant.parse("2026-10-01T00:00:00Z");
-        Instant hasta = Instant.parse("2026-10-04T23:59:59Z");
-        RegistroAuditoriaResponse mockItem = new RegistroAuditoriaResponse(
-                1L, "admin@meditriaje.com", "LOGIN_EXITOSO", "USUARIO", "u-1", "EXITO", "127.0.0.1", Instant.now()
-        );
+    void listarEventos_normalizaFiltrosYCalculaElDesplazamiento() {
+        when(gateway.list(eq(AuditoriaRepository.LIST_AUDIT_EVENTS), any(SqlParameterSource.class), eq("o_rows")))
+                .thenReturn(List.of());
 
-        when(jdbcTemplate.query(anyString(), any(RowMapper.class), any(Object[].class)))
-                .thenReturn(List.of(mockItem));
+        repository.listarEventos(Instant.now(), null, " login ", "  ", 2, 10);
 
-        List<RegistroAuditoriaResponse> eventos = auditoriaRepository.listarEventos(
-                desde, hasta, "LOGIN_EXITOSO", "EXITO", 0, 10
-        );
-
-        assertThat(eventos).hasSize(1);
-        assertThat(eventos.get(0).accion()).isEqualTo("LOGIN_EXITOSO");
-        verify(jdbcTemplate).query(contains("FROM AUDITORIA a"), any(RowMapper.class), any(Object[].class));
+        verify(gateway).list(eq(AuditoriaRepository.LIST_AUDIT_EVENTS), argThat((SqlParameterSource p) ->
+                "LOGIN".equals(p.getValue("p_action"))
+                        && p.getValue("p_result") == null
+                        && p.getValue("p_to") == null
+                        && p.getValue("p_from") != null
+                        && Integer.valueOf(20).equals(p.getValue("p_offset"))
+                        && Integer.valueOf(10).equals(p.getValue("p_size"))), eq("o_rows"));
     }
 
     @Test
-    @DisplayName("contarEventos - ejecuta conteo con filtros")
-    void contarEventos_conFiltros_retornaTotal() {
-        when(jdbcTemplate.queryForObject(anyString(), eq(Long.class), any(Object[].class)))
-                .thenReturn(42L);
+    void contarEventos_retornaTotal() {
+        when(gateway.callFunction(eq(AuditoriaRepository.COUNT_AUDIT_EVENTS), any(SqlParameterSource.class)))
+                .thenReturn(new BigDecimal("42"));
 
-        long total = auditoriaRepository.contarEventos(null, null, null, null);
-
-        assertThat(total).isEqualTo(42L);
-        verify(jdbcTemplate).queryForObject(contains("COUNT(*)"), eq(Long.class), any(Object[].class));
+        assertThat(repository.contarEventos(null, null, null, null)).isEqualTo(42L);
     }
 
     @Test
     void repositorio_esEstrictamenteInsertOnly() {
         // ADR-011, ADR-012, ADR-019: AuditoriaRepository no debe exponer métodos de modificación ni borrado
-        List<String> operacionesProhibidas = List.of(
-                "update", "delete", "remove", "modify", "drop", "truncate"
-        );
+        List<String> operacionesProhibidas = List.of("update", "delete", "remove", "modify", "drop", "truncate");
 
-        Method[] methods = AuditoriaRepository.class.getDeclaredMethods();
-        for (Method method : methods) {
+        for (Method method : AuditoriaRepository.class.getDeclaredMethods()) {
             if (Modifier.isPublic(method.getModifiers())) {
                 String methodNameLower = method.getName().toLowerCase();
                 for (String prohibida : operacionesProhibidas) {

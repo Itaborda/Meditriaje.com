@@ -2,30 +2,30 @@ package com.meditriaje.repository;
 
 import com.meditriaje.dto.clinical.AccesoBreakGlassResponse;
 import com.meditriaje.model.AccesoBreakGlass;
-import org.springframework.dao.EmptyResultDataAccessException;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.meditriaje.repository.plsql.PackageGateway;
+import com.meditriaje.repository.plsql.ProcedureSpec;
 import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.stereotype.Repository;
 
-import java.sql.PreparedStatement;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Repositorio JDBC para registros de acceso de emergencia Break-Glass (ADR-017).
- * SQL 100% parametrizado e inserciones inmutables.
+ * Repositorio para registros de acceso de emergencia Break-Glass (ADR-017). Inserciones inmutables mediante
+ * {@code PKG_AUDIT}; no contiene SQL.
  */
 @Repository
 public class BreakGlassRepository {
 
-    private final JdbcTemplate jdbcTemplate;
+    static final String PACKAGE = "PKG_AUDIT";
 
-    private final RowMapper<AccesoBreakGlass> entityRowMapper = (rs, rowNum) -> {
+    static final RowMapper<AccesoBreakGlass> ENTITY_MAPPER = (rs, rowNum) -> {
         Timestamp expTs = rs.getTimestamp("FECHA_EXPIRACION");
         Timestamp crTs = rs.getTimestamp("CREATED_AT");
         return new AccesoBreakGlass(
@@ -39,8 +39,63 @@ public class BreakGlassRepository {
         );
     };
 
-    public BreakGlassRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "jdbcTemplate no puede ser nulo");
+    /** La columna ACTIVO la calcula el paquete comparando la expiración con el instante recibido. */
+    static final RowMapper<AccesoBreakGlassResponse> RESPONSE_MAPPER = (rs, rowNum) -> {
+        Timestamp expTs = rs.getTimestamp("FECHA_EXPIRACION");
+        Timestamp crTs = rs.getTimestamp("CREATED_AT");
+        return new AccesoBreakGlassResponse(
+                rs.getString("PUBLIC_ID"),
+                rs.getString("PROF_PUB_ID"),
+                rs.getString("PROF_NOMBRE") != null ? rs.getString("PROF_NOMBRE").trim() : "",
+                rs.getString("PAC_PUB_ID"),
+                rs.getString("PAC_NOMBRE") != null ? rs.getString("PAC_NOMBRE").trim() : "",
+                rs.getString("MOTIVO"),
+                expTs != null ? expTs.toInstant() : null,
+                crTs != null ? crTs.toInstant() : null,
+                rs.getInt("ACTIVO") == 1
+        );
+    };
+
+    static final ProcedureSpec CREATE_BREAK_GLASS_ACCESS =
+            ProcedureSpec.procedure(PACKAGE, "create_break_glass_access")
+                    .in("p_public_id", Types.VARCHAR)
+                    .in("p_professional_id", Types.NUMERIC)
+                    .in("p_patient_id", Types.NUMERIC)
+                    .in("p_reason", Types.VARCHAR)
+                    .in("p_expires_at", Types.TIMESTAMP)
+                    .in("p_created_at", Types.TIMESTAMP)
+                    .out("o_access_id", Types.NUMERIC)
+                    .build();
+
+    static final ProcedureSpec COUNT_ACTIVE_BREAK_GLASS =
+            ProcedureSpec.function(PACKAGE, "count_active_break_glass", "result", Types.NUMERIC)
+                    .in("p_professional_id", Types.NUMERIC)
+                    .in("p_patient_id", Types.NUMERIC)
+                    .in("p_now", Types.TIMESTAMP)
+                    .build();
+
+    static final ProcedureSpec GET_BREAK_GLASS_BY_PUBLIC_ID =
+            ProcedureSpec.procedure(PACKAGE, "get_break_glass_by_public_id")
+                    .in("p_public_id", Types.VARCHAR)
+                    .cursor("o_access", ENTITY_MAPPER)
+                    .build();
+
+    static final ProcedureSpec GET_BREAK_GLASS_DETAIL = ProcedureSpec.procedure(PACKAGE, "get_break_glass_detail")
+            .in("p_public_id", Types.VARCHAR)
+            .in("p_now", Types.TIMESTAMP)
+            .cursor("o_access", RESPONSE_MAPPER)
+            .build();
+
+    static final ProcedureSpec LIST_ACTIVE_BREAK_GLASS = ProcedureSpec.procedure(PACKAGE, "list_active_break_glass")
+            .in("p_professional_id", Types.NUMERIC)
+            .in("p_now", Types.TIMESTAMP)
+            .cursor("o_rows", RESPONSE_MAPPER)
+            .build();
+
+    private final PackageGateway gateway;
+
+    public BreakGlassRepository(PackageGateway gateway) {
+        this.gateway = Objects.requireNonNull(gateway, "gateway no puede ser nulo");
     }
 
     /**
@@ -51,23 +106,15 @@ public class BreakGlassRepository {
      */
     public Long registrarAcceso(AccesoBreakGlass acceso) {
         Objects.requireNonNull(acceso, "acceso no puede ser nulo");
-        String sql = """
-                INSERT INTO ACCESO_BREAK_GLASS (PUBLIC_ID, PROFESIONAL_ID, PACIENTE_ID, MOTIVO, FECHA_EXPIRACION, CREATED_AT)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """;
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(sql, new String[]{"ID"});
-            ps.setString(1, acceso.publicId());
-            ps.setLong(2, acceso.profesionalId());
-            ps.setLong(3, acceso.pacienteId());
-            ps.setString(4, acceso.motivo());
-            ps.setTimestamp(5, Timestamp.from(acceso.fechaExpiracion()));
-            ps.setTimestamp(6, Timestamp.from(acceso.createdAt() != null ? acceso.createdAt() : Instant.now()));
-            return ps;
-        }, keyHolder);
-
-        Number key = keyHolder.getKey();
+        Map<String, Object> out = gateway.execute(CREATE_BREAK_GLASS_ACCESS, new MapSqlParameterSource()
+                .addValue("p_public_id", acceso.publicId())
+                .addValue("p_professional_id", acceso.profesionalId())
+                .addValue("p_patient_id", acceso.pacienteId())
+                .addValue("p_reason", acceso.motivo())
+                .addValue("p_expires_at", Timestamp.from(acceso.fechaExpiracion()))
+                .addValue("p_created_at",
+                        Timestamp.from(acceso.createdAt() != null ? acceso.createdAt() : Instant.now())));
+        Number key = (Number) out.get("o_access_id");
         if (key == null) {
             throw new IllegalStateException("No se pudo obtener el ID generado para ACCESO_BREAK_GLASS");
         }
@@ -81,12 +128,11 @@ public class BreakGlassRepository {
         if (profesionalId == null || pacienteId == null || ahora == null) {
             return false;
         }
-        String sql = """
-                SELECT COUNT(*) FROM ACCESO_BREAK_GLASS
-                WHERE PROFESIONAL_ID = ? AND PACIENTE_ID = ? AND FECHA_EXPIRACION > ?
-                """;
-        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, profesionalId, pacienteId, Timestamp.from(ahora));
-        return count != null && count > 0;
+        Number count = gateway.callFunction(COUNT_ACTIVE_BREAK_GLASS, new MapSqlParameterSource()
+                .addValue("p_professional_id", profesionalId)
+                .addValue("p_patient_id", pacienteId)
+                .addValue("p_now", Timestamp.from(ahora)));
+        return count != null && count.longValue() > 0;
     }
 
     /**
@@ -96,12 +142,8 @@ public class BreakGlassRepository {
         if (publicId == null || publicId.isBlank()) {
             return Optional.empty();
         }
-        String sql = "SELECT ID, PUBLIC_ID, PROFESIONAL_ID, PACIENTE_ID, MOTIVO, FECHA_EXPIRACION, CREATED_AT FROM ACCESO_BREAK_GLASS WHERE PUBLIC_ID = ?";
-        try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(sql, entityRowMapper, publicId));
-        } catch (EmptyResultDataAccessException e) {
-            return Optional.empty();
-        }
+        return gateway.single(
+                GET_BREAK_GLASS_BY_PUBLIC_ID, new MapSqlParameterSource("p_public_id", publicId), "o_access");
     }
 
     /**
@@ -111,41 +153,9 @@ public class BreakGlassRepository {
         if (publicId == null || publicId.isBlank()) {
             return Optional.empty();
         }
-        String sql = """
-                SELECT bg.PUBLIC_ID,
-                       prof.PUBLIC_ID AS PROF_PUB_ID,
-                       (prof.NOMBRES || ' ' || prof.APELLIDOS) AS PROF_NOMBRE,
-                       pac.PUBLIC_ID AS PAC_PUB_ID,
-                       (pac.NOMBRES || ' ' || pac.APELLIDOS) AS PAC_NOMBRE,
-                       bg.MOTIVO,
-                       bg.FECHA_EXPIRACION,
-                       bg.CREATED_AT
-                FROM ACCESO_BREAK_GLASS bg
-                JOIN PROFESIONAL prof ON bg.PROFESIONAL_ID = prof.ID
-                JOIN PACIENTE pac ON bg.PACIENTE_ID = pac.ID
-                WHERE bg.PUBLIC_ID = ?
-                """;
-        try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(sql, (rs, rowNum) -> {
-                Timestamp expTs = rs.getTimestamp("FECHA_EXPIRACION");
-                Timestamp crTs = rs.getTimestamp("CREATED_AT");
-                Instant expInstant = expTs != null ? expTs.toInstant() : null;
-                boolean activo = expInstant != null && ahora != null && ahora.isBefore(expInstant);
-                return new AccesoBreakGlassResponse(
-                        rs.getString("PUBLIC_ID"),
-                        rs.getString("PROF_PUB_ID"),
-                        rs.getString("PROF_NOMBRE") != null ? rs.getString("PROF_NOMBRE").trim() : "",
-                        rs.getString("PAC_PUB_ID"),
-                        rs.getString("PAC_NOMBRE") != null ? rs.getString("PAC_NOMBRE").trim() : "",
-                        rs.getString("MOTIVO"),
-                        expInstant,
-                        crTs != null ? crTs.toInstant() : null,
-                        activo
-                );
-            }, publicId));
-        } catch (EmptyResultDataAccessException e) {
-            return Optional.empty();
-        }
+        return gateway.single(GET_BREAK_GLASS_DETAIL, new MapSqlParameterSource()
+                .addValue("p_public_id", publicId, Types.VARCHAR)
+                .addValue("p_now", ahora != null ? Timestamp.from(ahora) : null, Types.TIMESTAMP), "o_access");
     }
 
     /**
@@ -155,36 +165,8 @@ public class BreakGlassRepository {
         if (profesionalId == null || ahora == null) {
             return List.of();
         }
-        String sql = """
-                SELECT bg.PUBLIC_ID,
-                       prof.PUBLIC_ID AS PROF_PUB_ID,
-                       (prof.NOMBRES || ' ' || prof.APELLIDOS) AS PROF_NOMBRE,
-                       pac.PUBLIC_ID AS PAC_PUB_ID,
-                       (pac.NOMBRES || ' ' || pac.APELLIDOS) AS PAC_NOMBRE,
-                       bg.MOTIVO,
-                       bg.FECHA_EXPIRACION,
-                       bg.CREATED_AT
-                FROM ACCESO_BREAK_GLASS bg
-                JOIN PROFESIONAL prof ON bg.PROFESIONAL_ID = prof.ID
-                JOIN PACIENTE pac ON bg.PACIENTE_ID = pac.ID
-                WHERE bg.PROFESIONAL_ID = ? AND bg.FECHA_EXPIRACION > ?
-                ORDER BY bg.FECHA_EXPIRACION DESC
-                """;
-        return jdbcTemplate.query(sql, (rs, rowNum) -> {
-            Timestamp expTs = rs.getTimestamp("FECHA_EXPIRACION");
-            Timestamp crTs = rs.getTimestamp("CREATED_AT");
-            Instant expInstant = expTs != null ? expTs.toInstant() : null;
-            return new AccesoBreakGlassResponse(
-                    rs.getString("PUBLIC_ID"),
-                    rs.getString("PROF_PUB_ID"),
-                    rs.getString("PROF_NOMBRE") != null ? rs.getString("PROF_NOMBRE").trim() : "",
-                    rs.getString("PAC_PUB_ID"),
-                    rs.getString("PAC_NOMBRE") != null ? rs.getString("PAC_NOMBRE").trim() : "",
-                    rs.getString("MOTIVO"),
-                    expInstant,
-                    crTs != null ? crTs.toInstant() : null,
-                    true
-            );
-        }, profesionalId, Timestamp.from(ahora));
+        return gateway.list(LIST_ACTIVE_BREAK_GLASS, new MapSqlParameterSource()
+                .addValue("p_professional_id", profesionalId)
+                .addValue("p_now", Timestamp.from(ahora)), "o_rows");
     }
 }
