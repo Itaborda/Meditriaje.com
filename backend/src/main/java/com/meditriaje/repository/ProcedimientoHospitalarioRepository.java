@@ -2,25 +2,26 @@ package com.meditriaje.repository;
 
 import com.meditriaje.dto.hospital.ProcedimientoResponse;
 import com.meditriaje.model.ProcedimientoHospitalario;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
-import org.springframework.stereotype.Repository;
-
-import java.sql.PreparedStatement;
+import com.meditriaje.repository.plsql.PackageGateway;
+import com.meditriaje.repository.plsql.ProcedureSpec;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.stereotype.Repository;
 
+/** Procedimientos hospitalarios a través de {@code PKG_HOSPITAL}. No contiene SQL. */
 @Repository
 public class ProcedimientoHospitalarioRepository {
 
-    private final JdbcTemplate jdbcTemplate;
+    static final String PACKAGE = "PKG_HOSPITAL";
 
-    private final RowMapper<ProcedimientoHospitalario> rowMapper = (rs, rowNum) -> {
+    static final RowMapper<ProcedimientoHospitalario> ROW_MAPPER = (rs, rowNum) -> {
         Timestamp tsInicio = rs.getTimestamp("INICIO_AT");
         Timestamp tsFin = rs.getTimestamp("FIN_AT");
         Timestamp tsCreado = rs.getTimestamp("CREADO_AT");
@@ -36,11 +37,10 @@ public class ProcedimientoHospitalarioRepository {
                 tsInicio != null ? tsInicio.toInstant() : null,
                 tsFin != null ? tsFin.toInstant() : null,
                 rs.getString("OBSERVACIONES"),
-                tsCreado != null ? tsCreado.toInstant() : null
-        );
+                tsCreado != null ? tsCreado.toInstant() : null);
     };
 
-    private final RowMapper<ProcedimientoResponse> responseRowMapper = (rs, rowNum) -> {
+    static final RowMapper<ProcedimientoResponse> RESPONSE_MAPPER = (rs, rowNum) -> {
         Timestamp tsInicio = rs.getTimestamp("INICIO_AT");
         Timestamp tsFin = rs.getTimestamp("FIN_AT");
         Timestamp tsCreado = rs.getTimestamp("CREADO_AT");
@@ -55,81 +55,95 @@ public class ProcedimientoHospitalarioRepository {
                 tsInicio != null ? tsInicio.toInstant() : null,
                 tsFin != null ? tsFin.toInstant() : null,
                 rs.getString("OBSERVACIONES"),
-                tsCreado != null ? tsCreado.toInstant() : null
-        );
+                tsCreado != null ? tsCreado.toInstant() : null);
     };
 
-    public ProcedimientoHospitalarioRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "jdbcTemplate no puede ser nulo");
+    static final ProcedureSpec CREATE_PROCEDURE = ProcedureSpec.procedure(PACKAGE, "create_procedure")
+            .in("p_public_id", Types.VARCHAR)
+            .in("p_episode_id", Types.NUMERIC)
+            .in("p_procedure_type", Types.VARCHAR)
+            .in("p_description", Types.VARCHAR)
+            .in("p_professional_id", Types.NUMERIC)
+            .in("p_room_id", Types.NUMERIC)
+            .in("p_status", Types.VARCHAR)
+            .in("p_start_at", Types.TIMESTAMP)
+            .in("p_observations", Types.VARCHAR)
+            .out("o_id", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec GET_PROCEDURE_BY_ID = ProcedureSpec.procedure(PACKAGE, "get_procedure_by_id")
+            .in("p_id", Types.NUMERIC)
+            .cursor("o_row", ROW_MAPPER)
+            .build();
+
+    static final ProcedureSpec GET_PROCEDURE_BY_PUBLIC_ID =
+            ProcedureSpec.procedure(PACKAGE, "get_procedure_by_public_id")
+                    .in("p_public_id", Types.VARCHAR)
+                    .cursor("o_row", ROW_MAPPER)
+                    .build();
+
+    static final ProcedureSpec UPDATE_PROCEDURE_STATUS =
+            ProcedureSpec.procedure(PACKAGE, "update_procedure_status")
+                    .in("p_id", Types.NUMERIC)
+                    .in("p_status", Types.VARCHAR)
+                    .in("p_end_at", Types.TIMESTAMP)
+                    .in("p_observations", Types.VARCHAR)
+                    .build();
+
+    static final ProcedureSpec LIST_PROCEDURES_BY_EPISODE =
+            ProcedureSpec.procedure(PACKAGE, "list_procedures_by_episode")
+                    .in("p_episode_id", Types.NUMERIC)
+                    .cursor("o_rows", RESPONSE_MAPPER)
+                    .build();
+
+    private final PackageGateway gateway;
+
+    public ProcedimientoHospitalarioRepository(PackageGateway gateway) {
+        this.gateway = Objects.requireNonNull(gateway, "gateway no puede ser nulo");
     }
 
     public ProcedimientoHospitalario guardar(ProcedimientoHospitalario p) {
-        String sql = """
-                INSERT INTO PROCEDIMIENTO_HOSPITALARIO (
-                    PUBLIC_ID, EPISODIO_ID, TIPO_PROCEDIMIENTO, DESCRIPCION,
-                    PROFESIONAL_ID, SALA_ID, ESTADO, INICIO_AT, OBSERVACIONES
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """;
-
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(sql, new String[]{"ID"});
-            ps.setString(1, p.publicId());
-            ps.setLong(2, p.episodioId());
-            ps.setString(3, p.tipoProcedimiento());
-            ps.setString(4, p.descripcion());
-            ps.setLong(5, p.profesionalId());
-            if (p.salaId() != null) ps.setLong(6, p.salaId()); else ps.setNull(6, java.sql.Types.NUMERIC);
-            ps.setString(7, p.estado() != null ? p.estado() : "PROGRAMADO");
-            if (p.inicioAt() != null) ps.setTimestamp(8, Timestamp.from(p.inicioAt())); else ps.setNull(8, java.sql.Types.TIMESTAMP);
-            ps.setString(9, p.observaciones());
-            return ps;
-        }, keyHolder);
-
-        Number key = keyHolder.getKey();
+        Map<String, Object> out = gateway.execute(CREATE_PROCEDURE, new MapSqlParameterSource()
+                .addValue("p_public_id", p.publicId(), Types.VARCHAR)
+                .addValue("p_episode_id", p.episodioId(), Types.NUMERIC)
+                .addValue("p_procedure_type", p.tipoProcedimiento(), Types.VARCHAR)
+                .addValue("p_description", p.descripcion(), Types.VARCHAR)
+                .addValue("p_professional_id", p.profesionalId(), Types.NUMERIC)
+                .addValue("p_room_id", p.salaId(), Types.NUMERIC)
+                .addValue("p_status", p.estado() != null ? p.estado() : "PROGRAMADO", Types.VARCHAR)
+                .addValue("p_start_at", p.inicioAt() != null ? Timestamp.from(p.inicioAt()) : null, Types.TIMESTAMP)
+                .addValue("p_observations", p.observaciones(), Types.VARCHAR));
+        Number key = (Number) out.get("o_id");
         Long id = key != null ? key.longValue() : null;
-        return buscarPorId(id).orElseThrow(() -> new IllegalStateException("Error al recuperar procedimiento recién guardado"));
+        return buscarPorId(id)
+                .orElseThrow(() -> new IllegalStateException("Error al recuperar procedimiento recién guardado"));
     }
 
     public Optional<ProcedimientoHospitalario> buscarPorId(Long id) {
         if (id == null) return Optional.empty();
-        String sql = "SELECT * FROM PROCEDIMIENTO_HOSPITALARIO WHERE ID = ?";
-        List<ProcedimientoHospitalario> list = jdbcTemplate.query(sql, rowMapper, id);
-        return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
+        return first(gateway.list(GET_PROCEDURE_BY_ID, new MapSqlParameterSource("p_id", id), "o_row"));
     }
 
     public Optional<ProcedimientoHospitalario> buscarPorPublicId(String publicId) {
         if (publicId == null || publicId.isBlank()) return Optional.empty();
-        String sql = "SELECT * FROM PROCEDIMIENTO_HOSPITALARIO WHERE PUBLIC_ID = ?";
-        List<ProcedimientoHospitalario> list = jdbcTemplate.query(sql, rowMapper, publicId);
-        return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
+        return first(gateway.list(
+                GET_PROCEDURE_BY_PUBLIC_ID, new MapSqlParameterSource("p_public_id", publicId), "o_row"));
     }
 
     public void actualizarEstado(Long id, String nuevoEstado, Instant finAt, String observaciones) {
-        String sql = "UPDATE PROCEDIMIENTO_HOSPITALARIO SET ESTADO = ?, FIN_AT = ?, OBSERVACIONES = COALESCE(?, OBSERVACIONES) WHERE ID = ?";
-        jdbcTemplate.update(sql, nuevoEstado, finAt != null ? Timestamp.from(finAt) : null, observaciones, id);
+        gateway.execute(UPDATE_PROCEDURE_STATUS, new MapSqlParameterSource()
+                .addValue("p_id", id, Types.NUMERIC)
+                .addValue("p_status", nuevoEstado, Types.VARCHAR)
+                .addValue("p_end_at", finAt != null ? Timestamp.from(finAt) : null, Types.TIMESTAMP)
+                .addValue("p_observations", observaciones, Types.VARCHAR));
     }
 
     public List<ProcedimientoResponse> listarPorEpisodioId(Long episodioId) {
-        String sql = """
-                SELECT ph.PUBLIC_ID,
-                       e.PUBLIC_ID AS EPISODIO_PUB_ID,
-                       ph.TIPO_PROCEDIMIENTO,
-                       ph.DESCRIPCION,
-                       (prof.NOMBRES || ' ' || prof.APELLIDOS) AS PROFESIONAL_NOMBRE,
-                       hs.CODIGO AS SALA_CODIGO,
-                       ph.ESTADO,
-                       ph.INICIO_AT,
-                       ph.FIN_AT,
-                       ph.OBSERVACIONES,
-                       ph.CREADO_AT
-                FROM PROCEDIMIENTO_HOSPITALARIO ph
-                JOIN EPISODIO_ATENCION e ON ph.EPISODIO_ID = e.ID
-                JOIN PROFESIONAL prof ON ph.PROFESIONAL_ID = prof.ID
-                LEFT JOIN HABITACION_SALA hs ON ph.SALA_ID = hs.ID
-                WHERE ph.EPISODIO_ID = ?
-                ORDER BY ph.CREADO_AT DESC
-                """;
-        return jdbcTemplate.query(sql, responseRowMapper, episodioId);
+        return gateway.list(
+                LIST_PROCEDURES_BY_EPISODE, new MapSqlParameterSource("p_episode_id", episodioId), "o_rows");
+    }
+
+    private static <T> Optional<T> first(List<T> rows) {
+        return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
     }
 }

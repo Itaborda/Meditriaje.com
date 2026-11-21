@@ -1,25 +1,27 @@
 package com.meditriaje.repository;
 
 import com.meditriaje.model.OcupacionCama;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
-import org.springframework.stereotype.Repository;
-
-import java.sql.PreparedStatement;
+import com.meditriaje.repository.plsql.PackageGateway;
+import com.meditriaje.repository.plsql.ProcedureSpec;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.stereotype.Repository;
 
+/** Ocupación de camas a través de {@code PKG_HOSPITAL}. No contiene SQL. */
 @Repository
 public class OcupacionCamaRepository {
 
-    private final JdbcTemplate jdbcTemplate;
+    static final String PACKAGE = "PKG_HOSPITAL";
 
-    private final RowMapper<OcupacionCama> rowMapper = (rs, rowNum) -> {
+    static final RowMapper<OcupacionCama> ROW_MAPPER = (rs, rowNum) -> {
         Timestamp tsInicio = rs.getTimestamp("INICIO_AT");
         Timestamp tsFin = rs.getTimestamp("FIN_AT");
         Timestamp tsCreado = rs.getTimestamp("CREADO_AT");
@@ -33,60 +35,91 @@ public class OcupacionCamaRepository {
                 rs.getString("ESTADO"),
                 rs.getLong("ASIGNADO_POR_USUARIO_ID"),
                 rs.getString("MOTIVO_ASIGNACION"),
-                tsCreado != null ? tsCreado.toInstant() : null
-        );
+                tsCreado != null ? tsCreado.toInstant() : null);
     };
 
-    public OcupacionCamaRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "jdbcTemplate no puede ser nulo");
+    static final ProcedureSpec CREATE_OCCUPANCY = ProcedureSpec.procedure(PACKAGE, "create_occupancy")
+            .in("p_public_id", Types.VARCHAR)
+            .in("p_episode_id", Types.NUMERIC)
+            .in("p_bed_id", Types.NUMERIC)
+            .in("p_start_at", Types.TIMESTAMP)
+            .in("p_status", Types.VARCHAR)
+            .in("p_assigned_by_user_id", Types.NUMERIC)
+            .in("p_reason", Types.VARCHAR)
+            .out("o_id", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec GET_OCCUPANCY_BY_ID = ProcedureSpec.procedure(PACKAGE, "get_occupancy_by_id")
+            .in("p_id", Types.NUMERIC)
+            .cursor("o_row", ROW_MAPPER)
+            .build();
+
+    static final ProcedureSpec GET_ACTIVE_OCCUPANCY_BY_BED =
+            ProcedureSpec.procedure(PACKAGE, "get_active_occupancy_by_bed")
+                    .in("p_bed_id", Types.NUMERIC)
+                    .cursor("o_row", ROW_MAPPER)
+                    .build();
+
+    static final ProcedureSpec GET_ACTIVE_OCCUPANCY_BY_EPISODE =
+            ProcedureSpec.procedure(PACKAGE, "get_active_occupancy_by_episode")
+                    .in("p_episode_id", Types.NUMERIC)
+                    .cursor("o_row", ROW_MAPPER)
+                    .build();
+
+    static final ProcedureSpec FINISH_OCCUPANCY = ProcedureSpec.procedure(PACKAGE, "finish_occupancy")
+            .in("p_occupancy_id", Types.NUMERIC)
+            .in("p_end_at", Types.TIMESTAMP)
+            .build();
+
+    private final PackageGateway gateway;
+
+    public OcupacionCamaRepository(PackageGateway gateway) {
+        this.gateway = Objects.requireNonNull(gateway, "gateway no puede ser nulo");
     }
 
+    /**
+     * Registra la ocupación. Si un índice único de ocupación activa la rechaza, el paquete devuelve el ID nulo y
+     * aquí se lanza {@link DuplicateKeyException} (una {@code DataIntegrityViolationException}), igual que antes,
+     * para que el servicio aplique su compensación.
+     */
     public OcupacionCama guardar(OcupacionCama ocupacion) {
-        String sql = """
-                INSERT INTO OCUPACION_CAMA (
-                    PUBLIC_ID, EPISODIO_ID, CAMA_ID, INICIO_AT, ESTADO, ASIGNADO_POR_USUARIO_ID, MOTIVO_ASIGNACION
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """;
-
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(sql, new String[]{"ID"});
-            ps.setString(1, ocupacion.publicId());
-            ps.setLong(2, ocupacion.episodioId());
-            ps.setLong(3, ocupacion.camaId());
-            ps.setTimestamp(4, Timestamp.from(ocupacion.inicioAt()));
-            ps.setString(5, ocupacion.estado() != null ? ocupacion.estado() : "ACTIVA");
-            ps.setLong(6, ocupacion.asignadoPorUsuarioId());
-            ps.setString(7, ocupacion.motivoAsignacion());
-            return ps;
-        }, keyHolder);
-
-        Number key = keyHolder.getKey();
-        Long id = key != null ? key.longValue() : null;
-        return buscarPorId(id).orElseThrow(() -> new IllegalStateException("Error al recuperar ocupación recién guardada"));
+        Map<String, Object> out = gateway.execute(CREATE_OCCUPANCY, new MapSqlParameterSource()
+                .addValue("p_public_id", ocupacion.publicId(), Types.VARCHAR)
+                .addValue("p_episode_id", ocupacion.episodioId(), Types.NUMERIC)
+                .addValue("p_bed_id", ocupacion.camaId(), Types.NUMERIC)
+                .addValue("p_start_at", Timestamp.from(ocupacion.inicioAt()), Types.TIMESTAMP)
+                .addValue("p_status", ocupacion.estado() != null ? ocupacion.estado() : "ACTIVA", Types.VARCHAR)
+                .addValue("p_assigned_by_user_id", ocupacion.asignadoPorUsuarioId(), Types.NUMERIC)
+                .addValue("p_reason", ocupacion.motivoAsignacion(), Types.VARCHAR));
+        Number key = (Number) out.get("o_id");
+        if (key == null) {
+            throw new DuplicateKeyException("La cama o el episodio ya tienen una ocupación activa.");
+        }
+        return buscarPorId(key.longValue())
+                .orElseThrow(() -> new IllegalStateException("Error al recuperar ocupación recién guardada"));
     }
 
     public Optional<OcupacionCama> buscarPorId(Long id) {
         if (id == null) return Optional.empty();
-        String sql = "SELECT * FROM OCUPACION_CAMA WHERE ID = ?";
-        List<OcupacionCama> resultados = jdbcTemplate.query(sql, rowMapper, id);
-        return resultados.isEmpty() ? Optional.empty() : Optional.of(resultados.get(0));
+        return first(gateway.list(GET_OCCUPANCY_BY_ID, new MapSqlParameterSource("p_id", id), "o_row"));
     }
 
     public Optional<OcupacionCama> buscarActivaPorCamaId(Long camaId) {
-        String sql = "SELECT * FROM OCUPACION_CAMA WHERE CAMA_ID = ? AND ESTADO = 'ACTIVA'";
-        List<OcupacionCama> resultados = jdbcTemplate.query(sql, rowMapper, camaId);
-        return resultados.isEmpty() ? Optional.empty() : Optional.of(resultados.get(0));
+        return first(gateway.list(GET_ACTIVE_OCCUPANCY_BY_BED, new MapSqlParameterSource("p_bed_id", camaId), "o_row"));
     }
 
     public Optional<OcupacionCama> buscarActivaPorEpisodioId(Long episodioId) {
-        String sql = "SELECT * FROM OCUPACION_CAMA WHERE EPISODIO_ID = ? AND ESTADO = 'ACTIVA'";
-        List<OcupacionCama> resultados = jdbcTemplate.query(sql, rowMapper, episodioId);
-        return resultados.isEmpty() ? Optional.empty() : Optional.of(resultados.get(0));
+        return first(gateway.list(
+                GET_ACTIVE_OCCUPANCY_BY_EPISODE, new MapSqlParameterSource("p_episode_id", episodioId), "o_row"));
     }
 
     public void finalizarOcupacion(Long ocupacionId, Instant finAt) {
-        String sql = "UPDATE OCUPACION_CAMA SET ESTADO = 'FINALIZADA', FIN_AT = ? WHERE ID = ?";
-        jdbcTemplate.update(sql, Timestamp.from(finAt), ocupacionId);
+        gateway.execute(FINISH_OCCUPANCY, new MapSqlParameterSource()
+                .addValue("p_occupancy_id", ocupacionId)
+                .addValue("p_end_at", Timestamp.from(finAt)));
+    }
+
+    private static <T> Optional<T> first(List<T> rows) {
+        return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
     }
 }

@@ -149,7 +149,7 @@ public class HospitalService {
         );
         try {
             ocupacionRepository.guardar(nuevaOcupacion);
-        } catch (DataIntegrityViolationException ex) {
+        } catch (DataIntegrityViolationException | ConflictoOperacionException ex) {
             // Revertir la reserva de la cama si la base de datos detecta ocupación concurrente
             camaRepository.actualizarEstado(cama.id(), "DISPONIBLE");
             throw new ConflictoOperacionException("Conflicto de concurrencia: La cama o el episodio ya tienen una ocupación activa.");
@@ -258,7 +258,7 @@ public class HospitalService {
         );
         try {
             ocupacionRepository.guardar(nuevaOcupacion);
-        } catch (DataIntegrityViolationException ex) {
+        } catch (DataIntegrityViolationException | ConflictoOperacionException ex) {
             camaRepository.actualizarEstado(camaDestino.id(), "DISPONIBLE");
             throw new ConflictoOperacionException("Conflicto de concurrencia: La cama de destino o el episodio ya cuentan con ocupación activa.");
         }

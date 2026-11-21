@@ -2,24 +2,25 @@ package com.meditriaje.repository;
 
 import com.meditriaje.dto.hospital.CamaDetalleResponse;
 import com.meditriaje.model.CamaHospitalaria;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
-import org.springframework.stereotype.Repository;
-
-import java.sql.PreparedStatement;
+import com.meditriaje.repository.plsql.PackageGateway;
+import com.meditriaje.repository.plsql.ProcedureSpec;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.stereotype.Repository;
 
+/** Camas hospitalarias y censo de camas a través de {@code PKG_HOSPITAL}. No contiene SQL. */
 @Repository
 public class CamaHospitalariaRepository {
 
-    private final JdbcTemplate jdbcTemplate;
+    static final String PACKAGE = "PKG_HOSPITAL";
 
-    private final RowMapper<CamaHospitalaria> rowMapper = (rs, rowNum) -> {
+    static final RowMapper<CamaHospitalaria> ROW_MAPPER = (rs, rowNum) -> {
         Timestamp tsCreated = rs.getTimestamp("CREADO_AT");
         Timestamp tsUpdated = rs.getTimestamp("UPDATED_AT");
         return new CamaHospitalaria(
@@ -29,11 +30,10 @@ public class CamaHospitalariaRepository {
                 rs.getString("CODIGO"),
                 rs.getString("ESTADO"),
                 tsCreated != null ? tsCreated.toInstant() : null,
-                tsUpdated != null ? tsUpdated.toInstant() : null
-        );
+                tsUpdated != null ? tsUpdated.toInstant() : null);
     };
 
-    private final RowMapper<CamaDetalleResponse> detalleRowMapper = (rs, rowNum) -> new CamaDetalleResponse(
+    static final RowMapper<CamaDetalleResponse> DETAIL_MAPPER = (rs, rowNum) -> new CamaDetalleResponse(
             rs.getString("CAMA_PUB_ID"),
             rs.getString("HAB_PUB_ID"),
             rs.getString("HAB_CODIGO"),
@@ -45,52 +45,80 @@ public class CamaHospitalariaRepository {
             rs.getString("ESTADO"),
             rs.getString("EPISODIO_PUB_ID"),
             rs.getString("PACIENTE_NOMBRE"),
-            rs.getString("OCUPACION_PUB_ID")
-    );
+            rs.getString("OCUPACION_PUB_ID"));
 
-    public CamaHospitalariaRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "jdbcTemplate no puede ser nulo");
+    static final ProcedureSpec CREATE_BED = ProcedureSpec.procedure(PACKAGE, "create_bed")
+            .in("p_public_id", Types.VARCHAR)
+            .in("p_room_id", Types.NUMERIC)
+            .in("p_code", Types.VARCHAR)
+            .in("p_status", Types.VARCHAR)
+            .out("o_id", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec GET_BED_BY_ID = ProcedureSpec.procedure(PACKAGE, "get_bed_by_id")
+            .in("p_id", Types.NUMERIC)
+            .cursor("o_row", ROW_MAPPER)
+            .build();
+
+    static final ProcedureSpec GET_BED_BY_PUBLIC_ID = ProcedureSpec.procedure(PACKAGE, "get_bed_by_public_id")
+            .in("p_public_id", Types.VARCHAR)
+            .cursor("o_row", ROW_MAPPER)
+            .build();
+
+    static final ProcedureSpec UPDATE_BED_STATUS = ProcedureSpec.procedure(PACKAGE, "update_bed_status")
+            .in("p_bed_id", Types.NUMERIC)
+            .in("p_status", Types.VARCHAR)
+            .build();
+
+    static final ProcedureSpec RESERVE_BED_IF_AVAILABLE =
+            ProcedureSpec.procedure(PACKAGE, "reserve_bed_if_available")
+                    .in("p_bed_id", Types.NUMERIC)
+                    .out("o_reserved", Types.NUMERIC)
+                    .build();
+
+    static final ProcedureSpec LIST_BED_DETAILS_BY_SITE =
+            ProcedureSpec.procedure(PACKAGE, "list_bed_details_by_site")
+                    .in("p_site_id", Types.NUMERIC)
+                    .cursor("o_rows", DETAIL_MAPPER)
+                    .build();
+
+    static final ProcedureSpec GET_BED_DETAIL_BY_PUBLIC_ID =
+            ProcedureSpec.procedure(PACKAGE, "get_bed_detail_by_public_id")
+                    .in("p_public_id", Types.VARCHAR)
+                    .cursor("o_row", DETAIL_MAPPER)
+                    .build();
+
+    private final PackageGateway gateway;
+
+    public CamaHospitalariaRepository(PackageGateway gateway) {
+        this.gateway = Objects.requireNonNull(gateway, "gateway no puede ser nulo");
     }
 
     public CamaHospitalaria guardar(CamaHospitalaria cama) {
-        String sql = """
-                INSERT INTO CAMA_HOSPITALARIA (
-                    PUBLIC_ID, HABITACION_ID, CODIGO, ESTADO
-                ) VALUES (?, ?, ?, ?)
-                """;
-
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(sql, new String[]{"ID"});
-            ps.setString(1, cama.publicId());
-            ps.setLong(2, cama.habitacionId());
-            ps.setString(3, cama.codigo());
-            ps.setString(4, cama.estado() != null ? cama.estado() : "DISPONIBLE");
-            return ps;
-        }, keyHolder);
-
-        Number key = keyHolder.getKey();
+        Map<String, Object> out = gateway.execute(CREATE_BED, new MapSqlParameterSource()
+                .addValue("p_public_id", cama.publicId())
+                .addValue("p_room_id", cama.habitacionId())
+                .addValue("p_code", cama.codigo())
+                .addValue("p_status", cama.estado() != null ? cama.estado() : "DISPONIBLE"));
+        Number key = (Number) out.get("o_id");
         Long id = key != null ? key.longValue() : null;
         return buscarPorId(id).orElseThrow(() -> new IllegalStateException("Error al recuperar cama recién guardada"));
     }
 
     public Optional<CamaHospitalaria> buscarPorId(Long id) {
         if (id == null) return Optional.empty();
-        String sql = "SELECT * FROM CAMA_HOSPITALARIA WHERE ID = ?";
-        List<CamaHospitalaria> resultados = jdbcTemplate.query(sql, rowMapper, id);
-        return resultados.isEmpty() ? Optional.empty() : Optional.of(resultados.get(0));
+        return first(gateway.list(GET_BED_BY_ID, new MapSqlParameterSource("p_id", id), "o_row"));
     }
 
     public Optional<CamaHospitalaria> buscarPorPublicId(String publicId) {
         if (publicId == null || publicId.isBlank()) return Optional.empty();
-        String sql = "SELECT * FROM CAMA_HOSPITALARIA WHERE PUBLIC_ID = ?";
-        List<CamaHospitalaria> resultados = jdbcTemplate.query(sql, rowMapper, publicId);
-        return resultados.isEmpty() ? Optional.empty() : Optional.of(resultados.get(0));
+        return first(gateway.list(GET_BED_BY_PUBLIC_ID, new MapSqlParameterSource("p_public_id", publicId), "o_row"));
     }
 
     public void actualizarEstado(Long camaId, String nuevoEstado) {
-        String sql = "UPDATE CAMA_HOSPITALARIA SET ESTADO = ?, UPDATED_AT = CURRENT_TIMESTAMP WHERE ID = ?";
-        jdbcTemplate.update(sql, nuevoEstado, camaId);
+        gateway.execute(UPDATE_BED_STATUS, new MapSqlParameterSource()
+                .addValue("p_bed_id", camaId)
+                .addValue("p_status", nuevoEstado));
     }
 
     /**
@@ -98,71 +126,22 @@ public class CamaHospitalariaRepository {
      * Retorna true si se reservó exitosamente (1 fila afectada), o false si ya no estaba DISPONIBLE (O-03).
      */
     public boolean reservarCamaSiDisponible(Long camaId) {
-        String sql = "UPDATE CAMA_HOSPITALARIA SET ESTADO = 'OCUPADA', UPDATED_AT = CURRENT_TIMESTAMP WHERE ID = ? AND ESTADO = 'DISPONIBLE'";
-        return jdbcTemplate.update(sql, camaId) == 1;
+        Map<String, Object> out =
+                gateway.execute(RESERVE_BED_IF_AVAILABLE, new MapSqlParameterSource("p_bed_id", camaId));
+        Number reserved = (Number) out.get("o_reserved");
+        return reserved != null && reserved.intValue() == 1;
     }
 
     public List<CamaDetalleResponse> listarDetallePorSedeId(Long sedeId) {
-        String sql = """
-                SELECT c.PUBLIC_ID AS CAMA_PUB_ID,
-                       c.CODIGO AS CAMA_CODIGO,
-                       c.ESTADO,
-                       h.PUBLIC_ID AS HAB_PUB_ID,
-                       h.CODIGO AS HAB_CODIGO,
-                       a.PUBLIC_ID AS AREA_PUB_ID,
-                       a.NOMBRE AS AREA_NOMBRE,
-                       s.PUBLIC_ID AS SEDE_PUB_ID,
-                       s.NOMBRE AS SEDE_NOMBRE,
-                       ep.PUBLIC_ID AS EPISODIO_PUB_ID,
-                       CASE
-                           WHEN p.ID IS NOT NULL THEN (p.NOMBRES || ' ' || p.APELLIDOS)
-                           WHEN ip.CODIGO_PROVISIONAL IS NOT NULL THEN ('NN (' || ip.CODIGO_PROVISIONAL || ')')
-                           ELSE NULL
-                       END AS PACIENTE_NOMBRE,
-                       oc.PUBLIC_ID AS OCUPACION_PUB_ID
-                FROM CAMA_HOSPITALARIA c
-                JOIN HABITACION_SALA h ON c.HABITACION_ID = h.ID
-                JOIN AREA_HOSPITALARIA a ON h.AREA_ID = a.ID
-                JOIN SEDE s ON a.SEDE_ID = s.ID
-                LEFT JOIN OCUPACION_CAMA oc ON oc.CAMA_ID = c.ID AND oc.ESTADO = 'ACTIVA'
-                LEFT JOIN EPISODIO_ATENCION ep ON oc.EPISODIO_ID = ep.ID
-                LEFT JOIN PACIENTE p ON ep.PACIENTE_ID = p.ID
-                LEFT JOIN IDENTIDAD_PROVISIONAL ip ON ip.EPISODIO_ID = ep.ID AND ip.ESTADO = 'PROVISIONAL'
-                WHERE s.ID = ?
-                ORDER BY a.CODIGO, h.CODIGO, c.CODIGO
-                """;
-        return jdbcTemplate.query(sql, detalleRowMapper, sedeId);
+        return gateway.list(LIST_BED_DETAILS_BY_SITE, new MapSqlParameterSource("p_site_id", sedeId), "o_rows");
     }
 
     public Optional<CamaDetalleResponse> buscarDetallePorPublicId(String publicId) {
-        String sql = """
-                SELECT c.PUBLIC_ID AS CAMA_PUB_ID,
-                       c.CODIGO AS CAMA_CODIGO,
-                       c.ESTADO,
-                       h.PUBLIC_ID AS HAB_PUB_ID,
-                       h.CODIGO AS HAB_CODIGO,
-                       a.PUBLIC_ID AS AREA_PUB_ID,
-                       a.NOMBRE AS AREA_NOMBRE,
-                       s.PUBLIC_ID AS SEDE_PUB_ID,
-                       s.NOMBRE AS SEDE_NOMBRE,
-                       ep.PUBLIC_ID AS EPISODIO_PUB_ID,
-                       CASE
-                           WHEN p.ID IS NOT NULL THEN (p.NOMBRES || ' ' || p.APELLIDOS)
-                           WHEN ip.CODIGO_PROVISIONAL IS NOT NULL THEN ('NN (' || ip.CODIGO_PROVISIONAL || ')')
-                           ELSE NULL
-                       END AS PACIENTE_NOMBRE,
-                       oc.PUBLIC_ID AS OCUPACION_PUB_ID
-                FROM CAMA_HOSPITALARIA c
-                JOIN HABITACION_SALA h ON c.HABITACION_ID = h.ID
-                JOIN AREA_HOSPITALARIA a ON h.AREA_ID = a.ID
-                JOIN SEDE s ON a.SEDE_ID = s.ID
-                LEFT JOIN OCUPACION_CAMA oc ON oc.CAMA_ID = c.ID AND oc.ESTADO = 'ACTIVA'
-                LEFT JOIN EPISODIO_ATENCION ep ON oc.EPISODIO_ID = ep.ID
-                LEFT JOIN PACIENTE p ON ep.PACIENTE_ID = p.ID
-                LEFT JOIN IDENTIDAD_PROVISIONAL ip ON ip.EPISODIO_ID = ep.ID AND ip.ESTADO = 'PROVISIONAL'
-                WHERE c.PUBLIC_ID = ?
-                """;
-        List<CamaDetalleResponse> list = jdbcTemplate.query(sql, detalleRowMapper, publicId);
-        return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
+        return first(gateway.list(
+                GET_BED_DETAIL_BY_PUBLIC_ID, new MapSqlParameterSource("p_public_id", publicId), "o_row"));
+    }
+
+    private static <T> Optional<T> first(List<T> rows) {
+        return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
     }
 }
