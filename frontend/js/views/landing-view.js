@@ -451,21 +451,6 @@ export async function landingView(container) {
       </div>
     </section>
 
-    <!-- 9. Aviso Médico y Responsabilidad Legal (ADR-009) -->
-    <div class="card mb-16" style="border-left: 4px solid var(--warning); background-color: var(--warning-bg); color: var(--on-warning-bg); padding: var(--space-5);">
-      <div class="flex items-start gap-4">
-        <div style="flex-shrink: 0; margin-top: 2px;">
-          ${ui.icon('alert-triangle', 'icon icon--md text-warning')}
-        </div>
-        <div>
-          <h4 class="font-bold text-md mb-1" style="color: var(--on-warning-bg);">Aviso de Prototipo y Responsabilidad Médica (ADR-009)</h4>
-          <p class="text-sm" style="line-height: 1.5; margin: 0;">
-            MediTriaje 2.0 es una plataforma tecnológica asistencial académica. Sus algoritmos de triaje automatizado orientan el flujo de agendamiento y priorización operativa, pero <strong>no reemplazan bajo ninguna circunstancia el criterio clínico de un profesional de la salud matriculado</strong>. Ante dolor opresivo en el pecho, dificultad respiratoria súbita o pérdida del conocimiento, <strong>comunícate de inmediato a la Línea de Emergencias 123</strong> o acude al servicio de urgencias más cercano.
-          </p>
-        </div>
-      </div>
-    </div>
-
     <!-- 10. Preguntas Frecuentes (Radix UI Accordion Style) -->
     <section class="mb-16">
       <div class="text-center mb-8">
