@@ -4,30 +4,27 @@ import com.meditriaje.dto.prescription.RecetaDetalleResponse;
 import com.meditriaje.dto.prescription.RecetaResponse;
 import com.meditriaje.model.Receta;
 import com.meditriaje.model.RecetaDetalle;
-import org.springframework.jdbc.core.BatchPreparedStatementSetter;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
-import org.springframework.stereotype.Repository;
-
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
+import com.meditriaje.repository.plsql.PackageGateway;
+import com.meditriaje.repository.plsql.ProcedureSpec;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.stereotype.Repository;
 
 /**
- * Repositorio JDBC para la entidad {@code RECETA} y sus ítems {@code RECETA_DETALLE}.
- * Persistencia y consultas inmutables con SQL 100% parametrizado (ADR-001, ADR-007, ADR-008, HU-08).
+ * Repositorio de {@code RECETA} y {@code RECETA_DETALLE} a través de {@code PKG_PHARMACY}
+ * (ADR-001, ADR-007, ADR-008, HU-08). No contiene SQL: declara las rutinas del paquete y delega en
+ * {@link PackageGateway}.
  */
 @Repository
 public class RecetaRepository {
 
-    private final JdbcTemplate jdbcTemplate;
-
-    private final RowMapper<Receta> recetaRowMapper = (rs, rowNum) -> {
+    static final RowMapper<Receta> PRESCRIPTION_MAPPER = (rs, rowNum) -> {
         Timestamp ts = rs.getTimestamp("CREATED_AT");
         return new Receta(
                 rs.getLong("ID"),
@@ -36,12 +33,105 @@ public class RecetaRepository {
                 rs.getLong("PACIENTE_ID"),
                 rs.getLong("PROFESIONAL_ID"),
                 rs.getInt("VIGENCIA_DIAS"),
-                ts != null ? ts.toInstant() : null
-        );
+                ts != null ? ts.toInstant() : null);
     };
 
-    public RecetaRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "jdbcTemplate no puede ser nulo");
+    /** Cabecera de vista sin detalles; se completan tras cerrar el cursor. */
+    record PrescriptionHeaderRow(Long prescriptionId, RecetaResponse base) {}
+
+    static final RowMapper<PrescriptionHeaderRow> HEADER_MAPPER = (rs, rowNum) -> {
+        Timestamp tsCreated = rs.getTimestamp("CREATED_AT");
+        return new PrescriptionHeaderRow(rs.getLong("RECETA_ID"), new RecetaResponse(
+                rs.getString("RECETA_PUBLIC_ID"),
+                rs.getString("ATENCION_PUBLIC_ID"),
+                rs.getString("PACIENTE_PUBLIC_ID"),
+                rs.getString("PACIENTE_NOMBRE"),
+                rs.getString("PROFESIONAL_PUBLIC_ID"),
+                rs.getString("PROFESIONAL_NOMBRE"),
+                rs.getString("ESPECIALIDAD_NOMBRE"),
+                rs.getInt("VIGENCIA_DIAS"),
+                tsCreated != null ? tsCreated.toInstant() : null,
+                List.of()));
+    };
+
+    static final RowMapper<RecetaDetalleResponse> ITEM_MAPPER = (rs, rowNum) -> new RecetaDetalleResponse(
+            rs.getString("MEDICAMENTO_PUBLIC_ID"),
+            rs.getString("MEDICAMENTO_CODIGO"),
+            rs.getString("SNAPSHOT_NOMBRE"),
+            rs.getString("SNAPSHOT_PRINCIPIO_ACTIVO"),
+            rs.getString("SNAPSHOT_PRESENTACION"),
+            rs.getString("SNAPSHOT_CONCENTRACION"),
+            rs.getString("DOSIS"),
+            rs.getString("FRECUENCIA"),
+            rs.getInt("DURACION_DIAS"),
+            rs.getInt("CANTIDAD"),
+            rs.getString("INDICACIONES"));
+
+    static final ProcedureSpec CREATE_PRESCRIPTION = ProcedureSpec.procedure(
+                    MedicamentoRepository.PACKAGE, "create_prescription")
+            .in("p_public_id", Types.VARCHAR)
+            .in("p_encounter_id", Types.NUMERIC)
+            .in("p_patient_id", Types.NUMERIC)
+            .in("p_professional_id", Types.NUMERIC)
+            .in("p_validity_days", Types.NUMERIC)
+            .out("o_id", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec CREATE_PRESCRIPTION_ITEM = ProcedureSpec.procedure(
+                    MedicamentoRepository.PACKAGE, "create_prescription_item")
+            .in("p_prescription_id", Types.NUMERIC)
+            .in("p_medication_id", Types.NUMERIC)
+            .in("p_snapshot_name", Types.VARCHAR)
+            .in("p_snapshot_active_ingredient", Types.VARCHAR)
+            .in("p_snapshot_presentation", Types.VARCHAR)
+            .in("p_snapshot_concentration", Types.VARCHAR)
+            .in("p_dose", Types.VARCHAR)
+            .in("p_frequency", Types.VARCHAR)
+            .in("p_duration_days", Types.NUMERIC)
+            .in("p_quantity", Types.NUMERIC)
+            .in("p_instructions", Types.VARCHAR)
+            .build();
+
+    static final ProcedureSpec GET_PRESCRIPTION_VIEW_BY_PUBLIC_ID = ProcedureSpec.procedure(
+                    MedicamentoRepository.PACKAGE, "get_prescription_view_by_public_id")
+            .in("p_public_id", Types.VARCHAR)
+            .cursor("o_row", HEADER_MAPPER)
+            .build();
+
+    static final ProcedureSpec GET_PRESCRIPTION_BY_PUBLIC_ID = ProcedureSpec.procedure(
+                    MedicamentoRepository.PACKAGE, "get_prescription_by_public_id")
+            .in("p_public_id", Types.VARCHAR)
+            .cursor("o_row", PRESCRIPTION_MAPPER)
+            .build();
+
+    static final ProcedureSpec LIST_PRESCRIPTION_ITEMS = ProcedureSpec.procedure(
+                    MedicamentoRepository.PACKAGE, "list_prescription_items")
+            .in("p_prescription_id", Types.NUMERIC)
+            .cursor("o_rows", ITEM_MAPPER)
+            .build();
+
+    static final ProcedureSpec COUNT_PRESCRIPTIONS_BY_ENCOUNTER = ProcedureSpec.function(
+                    MedicamentoRepository.PACKAGE, "count_prescriptions_by_encounter", "result", Types.NUMERIC)
+            .in("p_encounter_id", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec LIST_PRESCRIPTIONS_BY_PATIENT = ProcedureSpec.procedure(
+                    MedicamentoRepository.PACKAGE, "list_prescriptions_by_patient")
+            .in("p_patient_id", Types.NUMERIC)
+            .in("p_offset", Types.NUMERIC)
+            .in("p_size", Types.NUMERIC)
+            .cursor("o_rows", HEADER_MAPPER)
+            .build();
+
+    static final ProcedureSpec COUNT_PRESCRIPTIONS_BY_PATIENT = ProcedureSpec.function(
+                    MedicamentoRepository.PACKAGE, "count_prescriptions_by_patient", "result", Types.NUMERIC)
+            .in("p_patient_id", Types.NUMERIC)
+            .build();
+
+    private final PackageGateway gateway;
+
+    public RecetaRepository(PackageGateway gateway) {
+        this.gateway = Objects.requireNonNull(gateway, "gateway no puede ser nulo");
     }
 
     /**
@@ -53,23 +143,14 @@ public class RecetaRepository {
     public Long crearReceta(Receta receta) {
         Objects.requireNonNull(receta, "receta no puede ser nula");
 
-        String sql = """
-            INSERT INTO RECETA (PUBLIC_ID, ATENCION_ID, PACIENTE_ID, PROFESIONAL_ID, VIGENCIA_DIAS)
-            VALUES (?, ?, ?, ?, ?)
-            """;
+        Map<String, Object> out = gateway.execute(CREATE_PRESCRIPTION, new MapSqlParameterSource()
+                .addValue("p_public_id", receta.publicId())
+                .addValue("p_encounter_id", Objects.requireNonNull(receta.atencionId()))
+                .addValue("p_patient_id", Objects.requireNonNull(receta.pacienteId()))
+                .addValue("p_professional_id", Objects.requireNonNull(receta.profesionalId()))
+                .addValue("p_validity_days", receta.vigenciaDias() > 0 ? receta.vigenciaDias() : 30));
 
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(sql, new String[]{"ID"});
-            ps.setString(1, receta.publicId());
-            ps.setLong(2, receta.atencionId());
-            ps.setLong(3, receta.pacienteId());
-            ps.setLong(4, receta.profesionalId());
-            ps.setInt(5, receta.vigenciaDias() > 0 ? receta.vigenciaDias() : 30);
-            return ps;
-        }, keyHolder);
-
-        Number key = keyHolder.getKey();
+        Number key = (Number) out.get("o_id");
         if (key == null) {
             throw new IllegalStateException("No se pudo obtener el ID autogenerado para la receta.");
         }
@@ -77,7 +158,7 @@ public class RecetaRepository {
     }
 
     /**
-     * Guarda por lotes los ítems prescritos en RECETA_DETALLE congelando los snapshots de fármaco.
+     * Guarda los ítems prescritos en RECETA_DETALLE congelando los snapshots de fármaco.
      *
      * @param recetaId Identificador interno de la receta cabecera
      * @param detalles Lista de detalles con datos históricos
@@ -87,36 +168,20 @@ public class RecetaRepository {
             return;
         }
 
-        String sql = """
-            INSERT INTO RECETA_DETALLE (
-                RECETA_ID, MEDICAMENTO_ID, SNAPSHOT_NOMBRE, SNAPSHOT_PRINCIPIO_ACTIVO,
-                SNAPSHOT_PRESENTACION, SNAPSHOT_CONCENTRACION, DOSIS, FRECUENCIA,
-                DURACION_DIAS, CANTIDAD, INDICACIONES
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """;
-
-        jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
-            @Override
-            public void setValues(PreparedStatement ps, int i) throws SQLException {
-                RecetaDetalle d = detalles.get(i);
-                ps.setLong(1, recetaId != null ? recetaId : d.recetaId());
-                ps.setLong(2, d.medicamentoId());
-                ps.setString(3, d.snapshotNombre());
-                ps.setString(4, d.snapshotPrincipioActivo());
-                ps.setString(5, d.snapshotPresentacion());
-                ps.setString(6, d.snapshotConcentracion());
-                ps.setString(7, d.dosis());
-                ps.setString(8, d.frecuencia());
-                ps.setInt(9, d.duracionDias());
-                ps.setInt(10, d.cantidad());
-                ps.setString(11, d.indicaciones());
-            }
-
-            @Override
-            public int getBatchSize() {
-                return detalles.size();
-            }
-        });
+        for (RecetaDetalle d : detalles) {
+            gateway.execute(CREATE_PRESCRIPTION_ITEM, new MapSqlParameterSource()
+                    .addValue("p_prescription_id", recetaId != null ? recetaId : d.recetaId())
+                    .addValue("p_medication_id", d.medicamentoId())
+                    .addValue("p_snapshot_name", d.snapshotNombre())
+                    .addValue("p_snapshot_active_ingredient", d.snapshotPrincipioActivo())
+                    .addValue("p_snapshot_presentation", d.snapshotPresentacion())
+                    .addValue("p_snapshot_concentration", d.snapshotConcentracion())
+                    .addValue("p_dose", d.dosis())
+                    .addValue("p_frequency", d.frecuencia())
+                    .addValue("p_duration_days", d.duracionDias())
+                    .addValue("p_quantity", d.cantidad())
+                    .addValue("p_instructions", d.indicaciones(), Types.VARCHAR));
+        }
     }
 
     /**
@@ -129,48 +194,9 @@ public class RecetaRepository {
         if (publicId == null || publicId.isBlank()) {
             return Optional.empty();
         }
-
-        String sql = """
-            SELECT r.ID AS RECETA_ID,
-                   r.PUBLIC_ID AS RECETA_PUBLIC_ID,
-                   a.PUBLIC_ID AS ATENCION_PUBLIC_ID,
-                   p.PUBLIC_ID AS PACIENTE_PUBLIC_ID,
-                   TRIM(p.NOMBRES || ' ' || p.APELLIDOS) AS PACIENTE_NOMBRE,
-                   pr.PUBLIC_ID AS PROFESIONAL_PUBLIC_ID,
-                   TRIM(pr.NOMBRES || ' ' || pr.APELLIDOS) AS PROFESIONAL_NOMBRE,
-                   e.NOMBRE AS ESPECIALIDAD_NOMBRE,
-                   r.VIGENCIA_DIAS,
-                   r.CREATED_AT
-            FROM RECETA r
-            JOIN ATENCION a ON r.ATENCION_ID = a.ID
-            JOIN PACIENTE p ON r.PACIENTE_ID = p.ID
-            JOIN PROFESIONAL pr ON r.PROFESIONAL_ID = pr.ID
-            JOIN CITA c ON a.CITA_ID = c.ID
-            JOIN DISPONIBILIDAD_SLOT s ON c.SLOT_ID = s.ID
-            JOIN ESPECIALIDAD e ON s.ESPECIALIDAD_ID = e.ID
-            WHERE r.PUBLIC_ID = ?
-            """;
-
-        List<RecetaResponse> lista = jdbcTemplate.query(sql, (rs, rowNum) -> {
-            Long recetaId = rs.getLong("RECETA_ID");
-            List<RecetaDetalleResponse> detalles = buscarDetallesPorRecetaId(recetaId);
-            Timestamp tsCreated = rs.getTimestamp("CREATED_AT");
-
-            return new RecetaResponse(
-                    rs.getString("RECETA_PUBLIC_ID"),
-                    rs.getString("ATENCION_PUBLIC_ID"),
-                    rs.getString("PACIENTE_PUBLIC_ID"),
-                    rs.getString("PACIENTE_NOMBRE"),
-                    rs.getString("PROFESIONAL_PUBLIC_ID"),
-                    rs.getString("PROFESIONAL_NOMBRE"),
-                    rs.getString("ESPECIALIDAD_NOMBRE"),
-                    rs.getInt("VIGENCIA_DIAS"),
-                    tsCreated != null ? tsCreated.toInstant() : null,
-                    detalles
-            );
-        }, publicId.trim());
-
-        return lista.stream().findFirst();
+        return gateway.<PrescriptionHeaderRow>single(GET_PRESCRIPTION_VIEW_BY_PUBLIC_ID,
+                        new MapSqlParameterSource("p_public_id", publicId.trim()), "o_row")
+                .map(this::complete);
     }
 
     /**
@@ -183,15 +209,8 @@ public class RecetaRepository {
         if (publicId == null || publicId.isBlank()) {
             return Optional.empty();
         }
-
-        String sql = """
-            SELECT ID, PUBLIC_ID, ATENCION_ID, PACIENTE_ID, PROFESIONAL_ID, VIGENCIA_DIAS, CREATED_AT
-            FROM RECETA
-            WHERE PUBLIC_ID = ?
-            """;
-
-        List<Receta> lista = jdbcTemplate.query(sql, recetaRowMapper, publicId.trim());
-        return lista.stream().findFirst();
+        return gateway.single(GET_PRESCRIPTION_BY_PUBLIC_ID,
+                new MapSqlParameterSource("p_public_id", publicId.trim()), "o_row");
     }
 
     /**
@@ -205,38 +224,8 @@ public class RecetaRepository {
         if (recetaId == null) {
             return List.of();
         }
-
-        String sql = """
-            SELECT m.PUBLIC_ID AS MEDICAMENTO_PUBLIC_ID,
-                   m.CODIGO AS MEDICAMENTO_CODIGO,
-                   rd.SNAPSHOT_NOMBRE,
-                   rd.SNAPSHOT_PRINCIPIO_ACTIVO,
-                   rd.SNAPSHOT_PRESENTACION,
-                   rd.SNAPSHOT_CONCENTRACION,
-                   rd.DOSIS,
-                   rd.FRECUENCIA,
-                   rd.DURACION_DIAS,
-                   rd.CANTIDAD,
-                   rd.INDICACIONES
-            FROM RECETA_DETALLE rd
-            JOIN MEDICAMENTO m ON rd.MEDICAMENTO_ID = m.ID
-            WHERE rd.RECETA_ID = ?
-            ORDER BY rd.ID ASC
-            """;
-
-        return jdbcTemplate.query(sql, (rs, rowNum) -> new RecetaDetalleResponse(
-                rs.getString("MEDICAMENTO_PUBLIC_ID"),
-                rs.getString("MEDICAMENTO_CODIGO"),
-                rs.getString("SNAPSHOT_NOMBRE"),
-                rs.getString("SNAPSHOT_PRINCIPIO_ACTIVO"),
-                rs.getString("SNAPSHOT_PRESENTACION"),
-                rs.getString("SNAPSHOT_CONCENTRACION"),
-                rs.getString("DOSIS"),
-                rs.getString("FRECUENCIA"),
-                rs.getInt("DURACION_DIAS"),
-                rs.getInt("CANTIDAD"),
-                rs.getString("INDICACIONES")
-        ), recetaId);
+        return gateway.list(LIST_PRESCRIPTION_ITEMS,
+                new MapSqlParameterSource("p_prescription_id", recetaId), "o_rows");
     }
 
     /**
@@ -249,10 +238,9 @@ public class RecetaRepository {
         if (atencionId == null) {
             return false;
         }
-
-        String sql = "SELECT COUNT(*) FROM RECETA WHERE ATENCION_ID = ?";
-        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, atencionId);
-        return count != null && count > 0;
+        Number count = gateway.callFunction(COUNT_PRESCRIPTIONS_BY_ENCOUNTER,
+                new MapSqlParameterSource("p_encounter_id", atencionId));
+        return count != null && count.longValue() > 0;
     }
 
     /**
@@ -272,47 +260,11 @@ public class RecetaRepository {
         int safeSize = Math.max(1, Math.min(size, 100));
         int offset = safePage * safeSize;
 
-        String sql = """
-            SELECT r.ID AS RECETA_ID,
-                   r.PUBLIC_ID AS RECETA_PUBLIC_ID,
-                   a.PUBLIC_ID AS ATENCION_PUBLIC_ID,
-                   p.PUBLIC_ID AS PACIENTE_PUBLIC_ID,
-                   TRIM(p.NOMBRES || ' ' || p.APELLIDOS) AS PACIENTE_NOMBRE,
-                   pr.PUBLIC_ID AS PROFESIONAL_PUBLIC_ID,
-                   TRIM(pr.NOMBRES || ' ' || pr.APELLIDOS) AS PROFESIONAL_NOMBRE,
-                   e.NOMBRE AS ESPECIALIDAD_NOMBRE,
-                   r.VIGENCIA_DIAS,
-                   r.CREATED_AT
-            FROM RECETA r
-            JOIN ATENCION a ON r.ATENCION_ID = a.ID
-            JOIN PACIENTE p ON r.PACIENTE_ID = p.ID
-            JOIN PROFESIONAL pr ON r.PROFESIONAL_ID = pr.ID
-            JOIN CITA c ON a.CITA_ID = c.ID
-            JOIN DISPONIBILIDAD_SLOT s ON c.SLOT_ID = s.ID
-            JOIN ESPECIALIDAD e ON s.ESPECIALIDAD_ID = e.ID
-            WHERE r.PACIENTE_ID = ?
-            ORDER BY r.CREATED_AT DESC, r.ID DESC
-            OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
-            """;
-
-        return jdbcTemplate.query(sql, (rs, rowNum) -> {
-            Long recetaId = rs.getLong("RECETA_ID");
-            List<RecetaDetalleResponse> detalles = buscarDetallesPorRecetaId(recetaId);
-            Timestamp tsCreated = rs.getTimestamp("CREATED_AT");
-
-            return new RecetaResponse(
-                    rs.getString("RECETA_PUBLIC_ID"),
-                    rs.getString("ATENCION_PUBLIC_ID"),
-                    rs.getString("PACIENTE_PUBLIC_ID"),
-                    rs.getString("PACIENTE_NOMBRE"),
-                    rs.getString("PROFESIONAL_PUBLIC_ID"),
-                    rs.getString("PROFESIONAL_NOMBRE"),
-                    rs.getString("ESPECIALIDAD_NOMBRE"),
-                    rs.getInt("VIGENCIA_DIAS"),
-                    tsCreated != null ? tsCreated.toInstant() : null,
-                    detalles
-            );
-        }, pacienteId, offset, safeSize);
+        List<PrescriptionHeaderRow> rows = gateway.list(LIST_PRESCRIPTIONS_BY_PATIENT, new MapSqlParameterSource()
+                .addValue("p_patient_id", pacienteId)
+                .addValue("p_offset", offset)
+                .addValue("p_size", safeSize), "o_rows");
+        return rows.stream().map(this::complete).toList();
     }
 
     /**
@@ -325,9 +277,24 @@ public class RecetaRepository {
         if (pacienteId == null) {
             return 0;
         }
+        Number count = gateway.callFunction(COUNT_PRESCRIPTIONS_BY_PATIENT,
+                new MapSqlParameterSource("p_patient_id", pacienteId));
+        return count != null ? count.intValue() : 0;
+    }
 
-        String sql = "SELECT COUNT(*) FROM RECETA WHERE PACIENTE_ID = ?";
-        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, pacienteId);
-        return count != null ? count : 0;
+    private RecetaResponse complete(PrescriptionHeaderRow row) {
+        RecetaResponse b = row.base();
+        List<RecetaDetalleResponse> detalles = buscarDetallesPorRecetaId(row.prescriptionId());
+        return new RecetaResponse(
+                b.publicId(),
+                b.atencionPublicId(),
+                b.pacientePublicId(),
+                b.pacienteNombre(),
+                b.profesionalPublicId(),
+                b.profesionalNombre(),
+                b.especialidadNombre(),
+                b.vigenciaDias(),
+                b.createdAt(),
+                detalles);
     }
 }
