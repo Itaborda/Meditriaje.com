@@ -2,24 +2,25 @@ package com.meditriaje.repository;
 
 import com.meditriaje.dto.hospital.MovimientoResponse;
 import com.meditriaje.model.MovimientoPaciente;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
-import org.springframework.stereotype.Repository;
-
-import java.sql.PreparedStatement;
+import com.meditriaje.repository.plsql.PackageGateway;
+import com.meditriaje.repository.plsql.ProcedureSpec;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.stereotype.Repository;
 
+/** Movimientos intrahospitalarios (append-only) a través de {@code PKG_HOSPITAL}. No contiene SQL. */
 @Repository
 public class MovimientoPacienteRepository {
 
-    private final JdbcTemplate jdbcTemplate;
+    static final String PACKAGE = "PKG_HOSPITAL";
 
-    private final RowMapper<MovimientoPaciente> rowMapper = (rs, rowNum) -> {
+    static final RowMapper<MovimientoPaciente> ROW_MAPPER = (rs, rowNum) -> {
         Timestamp tsFecha = rs.getTimestamp("FECHA_MOVIMIENTO");
         Timestamp tsCreado = rs.getTimestamp("CREADO_AT");
         return new MovimientoPaciente(
@@ -33,11 +34,10 @@ public class MovimientoPacienteRepository {
                 tsFecha != null ? tsFecha.toInstant() : null,
                 rs.getString("MOTIVO_TRASLADO"),
                 rs.getLong("REGISTRADO_POR_USUARIO_ID"),
-                tsCreado != null ? tsCreado.toInstant() : null
-        );
+                tsCreado != null ? tsCreado.toInstant() : null);
     };
 
-    private final RowMapper<MovimientoResponse> responseRowMapper = (rs, rowNum) -> {
+    static final RowMapper<MovimientoResponse> RESPONSE_MAPPER = (rs, rowNum) -> {
         Timestamp ts = rs.getTimestamp("FECHA_MOVIMIENTO");
         return new MovimientoResponse(
                 rs.getString("PUBLIC_ID"),
@@ -48,71 +48,63 @@ public class MovimientoPacienteRepository {
                 rs.getString("CAMA_DESTINO_CODIGO"),
                 ts != null ? ts.toInstant() : null,
                 rs.getString("MOTIVO_TRASLADO"),
-                rs.getString("REGISTRADO_POR_NOMBRE")
-        );
+                rs.getString("REGISTRADO_POR_NOMBRE"));
     };
 
-    public MovimientoPacienteRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "jdbcTemplate no puede ser nulo");
+    static final ProcedureSpec CREATE_MOVEMENT = ProcedureSpec.procedure(PACKAGE, "create_movement")
+            .in("p_public_id", Types.VARCHAR)
+            .in("p_episode_id", Types.NUMERIC)
+            .in("p_origin_area_id", Types.NUMERIC)
+            .in("p_target_area_id", Types.NUMERIC)
+            .in("p_origin_bed_id", Types.NUMERIC)
+            .in("p_target_bed_id", Types.NUMERIC)
+            .in("p_moved_at", Types.TIMESTAMP)
+            .in("p_reason", Types.VARCHAR)
+            .in("p_registered_by_user_id", Types.NUMERIC)
+            .out("o_id", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec GET_MOVEMENT_BY_ID = ProcedureSpec.procedure(PACKAGE, "get_movement_by_id")
+            .in("p_id", Types.NUMERIC)
+            .cursor("o_row", ROW_MAPPER)
+            .build();
+
+    static final ProcedureSpec LIST_MOVEMENTS_BY_EPISODE =
+            ProcedureSpec.procedure(PACKAGE, "list_movements_by_episode")
+                    .in("p_episode_id", Types.NUMERIC)
+                    .cursor("o_rows", RESPONSE_MAPPER)
+                    .build();
+
+    private final PackageGateway gateway;
+
+    public MovimientoPacienteRepository(PackageGateway gateway) {
+        this.gateway = Objects.requireNonNull(gateway, "gateway no puede ser nulo");
     }
 
     public MovimientoPaciente guardar(MovimientoPaciente mov) {
-        String sql = """
-                INSERT INTO MOVIMIENTO_PACIENTE (
-                    PUBLIC_ID, EPISODIO_ID, AREA_ORIGEN_ID, AREA_DESTINO_ID,
-                    CAMA_ORIGEN_ID, CAMA_DESTINO_ID, FECHA_MOVIMIENTO,
-                    MOTIVO_TRASLADO, REGISTRADO_POR_USUARIO_ID
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """;
-
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(sql, new String[]{"ID"});
-            ps.setString(1, mov.publicId());
-            ps.setLong(2, mov.episodioId());
-            if (mov.areaOrigenId() != null) ps.setLong(3, mov.areaOrigenId()); else ps.setNull(3, java.sql.Types.NUMERIC);
-            ps.setLong(4, mov.areaDestinoId());
-            if (mov.camaOrigenId() != null) ps.setLong(5, mov.camaOrigenId()); else ps.setNull(5, java.sql.Types.NUMERIC);
-            if (mov.camaDestinoId() != null) ps.setLong(6, mov.camaDestinoId()); else ps.setNull(6, java.sql.Types.NUMERIC);
-            ps.setTimestamp(7, Timestamp.from(mov.fechaMovimiento()));
-            ps.setString(8, mov.motivoTraslado());
-            ps.setLong(9, mov.registradoPorUsuarioId());
-            return ps;
-        }, keyHolder);
-
-        Number key = keyHolder.getKey();
+        Map<String, Object> out = gateway.execute(CREATE_MOVEMENT, new MapSqlParameterSource()
+                .addValue("p_public_id", mov.publicId(), Types.VARCHAR)
+                .addValue("p_episode_id", mov.episodioId(), Types.NUMERIC)
+                .addValue("p_origin_area_id", mov.areaOrigenId(), Types.NUMERIC)
+                .addValue("p_target_area_id", mov.areaDestinoId(), Types.NUMERIC)
+                .addValue("p_origin_bed_id", mov.camaOrigenId(), Types.NUMERIC)
+                .addValue("p_target_bed_id", mov.camaDestinoId(), Types.NUMERIC)
+                .addValue("p_moved_at", Timestamp.from(mov.fechaMovimiento()), Types.TIMESTAMP)
+                .addValue("p_reason", mov.motivoTraslado(), Types.VARCHAR)
+                .addValue("p_registered_by_user_id", mov.registradoPorUsuarioId(), Types.NUMERIC));
+        Number key = (Number) out.get("o_id");
         Long id = key != null ? key.longValue() : null;
         return buscarPorId(id).orElseThrow(() -> new IllegalStateException("Error al recuperar movimiento recién guardado"));
     }
 
     public Optional<MovimientoPaciente> buscarPorId(Long id) {
         if (id == null) return Optional.empty();
-        String sql = "SELECT * FROM MOVIMIENTO_PACIENTE WHERE ID = ?";
-        List<MovimientoPaciente> list = jdbcTemplate.query(sql, rowMapper, id);
+        List<MovimientoPaciente> list = gateway.list(GET_MOVEMENT_BY_ID, new MapSqlParameterSource("p_id", id), "o_row");
         return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
     }
 
     public List<MovimientoResponse> listarPorEpisodioId(Long episodioId) {
-        String sql = """
-                SELECT m.PUBLIC_ID,
-                       e.PUBLIC_ID AS EPISODIO_PUB_ID,
-                       ao.NOMBRE AS AREA_ORIGEN_NOMBRE,
-                       ad.NOMBRE AS AREA_DESTINO_NOMBRE,
-                       co.CODIGO AS CAMA_ORIGEN_CODIGO,
-                       cd.CODIGO AS CAMA_DESTINO_CODIGO,
-                       m.FECHA_MOVIMIENTO,
-                       m.MOTIVO_TRASLADO,
-                       u.EMAIL AS REGISTRADO_POR_NOMBRE
-                FROM MOVIMIENTO_PACIENTE m
-                JOIN EPISODIO_ATENCION e ON m.EPISODIO_ID = e.ID
-                LEFT JOIN AREA_HOSPITALARIA ao ON m.AREA_ORIGEN_ID = ao.ID
-                JOIN AREA_HOSPITALARIA ad ON m.AREA_DESTINO_ID = ad.ID
-                LEFT JOIN CAMA_HOSPITALARIA co ON m.CAMA_ORIGEN_ID = co.ID
-                LEFT JOIN CAMA_HOSPITALARIA cd ON m.CAMA_DESTINO_ID = cd.ID
-                JOIN USUARIO u ON m.REGISTRADO_POR_USUARIO_ID = u.ID
-                WHERE m.EPISODIO_ID = ?
-                ORDER BY m.FECHA_MOVIMIENTO ASC
-                """;
-        return jdbcTemplate.query(sql, responseRowMapper, episodioId);
+        return gateway.list(
+                LIST_MOVEMENTS_BY_EPISODE, new MapSqlParameterSource("p_episode_id", episodioId), "o_rows");
     }
 }

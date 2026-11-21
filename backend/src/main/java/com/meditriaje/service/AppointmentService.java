@@ -268,7 +268,7 @@ public class AppointmentService {
         Long citaIdGenerado;
         try {
             citaIdGenerado = citaRepository.crear(cita);
-        } catch (DataIntegrityViolationException ex) {
+        } catch (DataIntegrityViolationException | ConflictoOperacionException ex) {
             throw new CitaNoDisponibleException("El slot de atencion ya cuenta con una cita activa.");
         }
 
@@ -729,7 +729,7 @@ public class AppointmentService {
         Long nuevaCitaId;
         try {
             nuevaCitaId = citaRepository.crear(nuevaCita);
-        } catch (DataIntegrityViolationException ex) {
+        } catch (DataIntegrityViolationException | ConflictoOperacionException ex) {
             disponibilidadSlotRepository.liberarSlot(nuevoSlot.id());
             throw new CitaNoDisponibleException("El nuevo slot de atencion ya cuenta con una cita activa.");
         }

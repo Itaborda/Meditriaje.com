@@ -1,30 +1,30 @@
 package com.meditriaje.repository;
 
 import com.meditriaje.model.IngresoUrgencia;
-import org.springframework.dao.EmptyResultDataAccessException;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
-import org.springframework.stereotype.Repository;
-
-import java.sql.PreparedStatement;
+import com.meditriaje.repository.plsql.PackageGateway;
+import com.meditriaje.repository.plsql.ProcedureSpec;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.stereotype.Repository;
 
 /**
- * Repositorio JDBC para {@code INGRESO_URGENCIA} (Fase U, ADR-022, U02).
+ * Ingresos a urgencias ({@code INGRESO_URGENCIA}, Fase U, ADR-022, U02) a través de {@code PKG_EMERGENCY}.
+ * No contiene SQL.
  */
 @Repository
 public class IngresoUrgenciaRepository {
 
-    private final JdbcTemplate jdbcTemplate;
+    static final String PACKAGE = "PKG_EMERGENCY";
 
-    private final RowMapper<IngresoUrgencia> rowMapper = (rs, rowNum) -> {
+    static final RowMapper<IngresoUrgencia> ROW_MAPPER = (rs, rowNum) -> {
         Timestamp tsCreated = rs.getTimestamp("CREADO_AT");
-
         return new IngresoUrgencia(
                 rs.getLong("ID"),
                 rs.getString("PUBLIC_ID"),
@@ -35,37 +35,45 @@ public class IngresoUrgenciaRepository {
                 rs.getString("MOTIVO_RESUMIDO"),
                 rs.getString("OBSERVACIONES"),
                 rs.getLong("REGISTRADO_POR_USUARIO_ID"),
-                tsCreated != null ? tsCreated.toInstant() : null
-        );
+                tsCreated != null ? tsCreated.toInstant() : null);
     };
 
-    public IngresoUrgenciaRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "jdbcTemplate no puede ser nulo");
+    static final ProcedureSpec CREATE_ADMISSION = ProcedureSpec.procedure(PACKAGE, "create_admission")
+            .in("p_public_id", Types.VARCHAR)
+            .in("p_episode_id", Types.NUMERIC)
+            .in("p_arrival_mode", Types.VARCHAR)
+            .in("p_companion_name", Types.VARCHAR)
+            .in("p_companion_contact", Types.VARCHAR)
+            .in("p_reason", Types.VARCHAR)
+            .in("p_observations", Types.VARCHAR)
+            .in("p_registered_by_user_id", Types.NUMERIC)
+            .out("o_id", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec GET_ADMISSION_BY_EPISODE =
+            ProcedureSpec.procedure(PACKAGE, "get_admission_by_episode")
+                    .in("p_episode_id", Types.NUMERIC)
+                    .cursor("o_row", ROW_MAPPER)
+                    .build();
+
+    private final PackageGateway gateway;
+
+    public IngresoUrgenciaRepository(PackageGateway gateway) {
+        this.gateway = Objects.requireNonNull(gateway, "gateway no puede ser nulo");
     }
 
     public IngresoUrgencia guardar(IngresoUrgencia ingreso) {
-        String sql = """
-                INSERT INTO INGRESO_URGENCIA (
-                    PUBLIC_ID, EPISODIO_ID, MEDIO_LLEGADA, ACOMPANANTE_NOMBRE, ACOMPANANTE_CONTACTO,
-                    MOTIVO_RESUMIDO, OBSERVACIONES, REGISTRADO_POR_USUARIO_ID
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """;
+        Map<String, Object> out = gateway.execute(CREATE_ADMISSION, new MapSqlParameterSource()
+                .addValue("p_public_id", ingreso.publicId(), Types.VARCHAR)
+                .addValue("p_episode_id", ingreso.episodioId(), Types.NUMERIC)
+                .addValue("p_arrival_mode", ingreso.medioLlegada(), Types.VARCHAR)
+                .addValue("p_companion_name", ingreso.acompananteNombre(), Types.VARCHAR)
+                .addValue("p_companion_contact", ingreso.acompananteContacto(), Types.VARCHAR)
+                .addValue("p_reason", ingreso.motivoResumido(), Types.VARCHAR)
+                .addValue("p_observations", ingreso.observaciones(), Types.VARCHAR)
+                .addValue("p_registered_by_user_id", ingreso.registradoPorUsuarioId(), Types.NUMERIC));
 
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(sql, new String[]{"ID"});
-            ps.setString(1, ingreso.publicId());
-            ps.setLong(2, ingreso.episodioId());
-            ps.setString(3, ingreso.medioLlegada());
-            ps.setString(4, ingreso.acompananteNombre());
-            ps.setString(5, ingreso.acompananteContacto());
-            ps.setString(6, ingreso.motivoResumido());
-            ps.setString(7, ingreso.observaciones());
-            ps.setLong(8, ingreso.registradoPorUsuarioId());
-            return ps;
-        }, keyHolder);
-
-        Number id = keyHolder.getKey();
+        Number id = (Number) out.get("o_id");
         Long generatedId = id != null ? id.longValue() : null;
 
         return new IngresoUrgencia(
@@ -78,16 +86,12 @@ public class IngresoUrgenciaRepository {
                 ingreso.motivoResumido(),
                 ingreso.observaciones(),
                 ingreso.registradoPorUsuarioId(),
-                Instant.now()
-        );
+                Instant.now());
     }
 
     public Optional<IngresoUrgencia> buscarPorEpisodioId(Long episodioId) {
-        String sql = "SELECT * FROM INGRESO_URGENCIA WHERE EPISODIO_ID = ?";
-        try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(sql, rowMapper, episodioId));
-        } catch (EmptyResultDataAccessException e) {
-            return Optional.empty();
-        }
+        List<IngresoUrgencia> rows = gateway.list(
+                GET_ADMISSION_BY_EPISODE, new MapSqlParameterSource("p_episode_id", episodioId), "o_row");
+        return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
     }
 }

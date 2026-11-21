@@ -38,25 +38,8 @@ class NoSqlOutsideGatewayTest {
     private static final Pattern BLOCK_COMMENT = Pattern.compile("/\\*.*?\\*/", Pattern.DOTALL);
     private static final Pattern LINE_COMMENT = Pattern.compile("(?m)^\\s*//.*$");
 
-    /** Lista congelada de clases heredadas con SQL. SOLO SE PUEDE REDUCIR. */
-    static final Set<String> LEGACY_ALLOWLIST = Set.of(
-            "com/meditriaje/repository/AreaHospitalariaRepository.java",
-            "com/meditriaje/repository/AusenciaMedicaRepository.java",
-            "com/meditriaje/repository/CamaHospitalariaRepository.java",
-            "com/meditriaje/repository/CitaRepository.java",
-            "com/meditriaje/repository/DisponibilidadSlotRepository.java",
-            "com/meditriaje/repository/EgresoHospitalarioRepository.java",
-            "com/meditriaje/repository/EpisodioAtencionRepository.java",
-            "com/meditriaje/repository/HabitacionSalaRepository.java",
-            "com/meditriaje/repository/IngresoUrgenciaRepository.java",
-            "com/meditriaje/repository/MovimientoPacienteRepository.java",
-            "com/meditriaje/repository/OcupacionCamaRepository.java",
-            "com/meditriaje/repository/ProcedimientoHospitalarioRepository.java",
-            "com/meditriaje/repository/RecordatorioCitaRepository.java",
-            "com/meditriaje/repository/TriajeReglasRepository.java",
-            "com/meditriaje/repository/TriajeRepository.java",
-            "com/meditriaje/repository/ValoracionTriajeRepository.java"
-    );
+    /** Lista congelada de clases heredadas con SQL (vacía tras completar la migración a paquetes PL/SQL). */
+    static final Set<String> LEGACY_ALLOWLIST = Set.of();
 
     @Test
     @DisplayName("solo la pasarela PL/SQL (y la lista heredada congelada) accede a la base con JDBC o SQL")

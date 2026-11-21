@@ -1,70 +1,55 @@
 package com.meditriaje.repository;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+import com.meditriaje.repository.plsql.PackageGateway;
 import com.meditriaje.triage.NivelPrioridad;
 import com.meditriaje.triage.ReglaTriaje;
 import com.meditriaje.triage.SintomaTriaje;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
-
 import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.util.List;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.jdbc.core.namedparam.SqlParameterSource;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
-@ExtendWith(MockitoExtension.class)
+/** Carga de síntomas y reglas activas desde PKG_TRIAGE, sin SQL en el repositorio. */
 class TriajeReglasRepositoryTest {
 
-    @Mock
-    private JdbcTemplate jdbcTemplate;
-
-    private TriajeReglasRepository repository;
-
-    @BeforeEach
-    void setUp() {
-        repository = new TriajeReglasRepository(jdbcTemplate);
-    }
+    private final PackageGateway gateway = mock(PackageGateway.class);
+    private final TriajeReglasRepository repository = new TriajeReglasRepository(gateway);
 
     @Test
-    @SuppressWarnings("unchecked")
-    void cargarSintomasActivos_filtraActivosYMapeaAlarma() throws Exception {
-        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        ArgumentCaptor<RowMapper<SintomaTriaje>> mapper = ArgumentCaptor.forClass(RowMapper.class);
-        when(jdbcTemplate.query(anyString(), any(RowMapper.class))).thenReturn(List.of());
+    void cargarSintomasActivos_delegaEnElPaqueteYMapeaAlarma() throws Exception {
+        SintomaTriaje sintoma = new SintomaTriaje("CONVULSIONES", true);
+        when(gateway.<SintomaTriaje>list(
+                        eq(TriajeReglasRepository.LIST_ACTIVE_SYMPTOMS), any(SqlParameterSource.class), eq("o_rows")))
+                .thenReturn(List.of(sintoma));
 
-        repository.cargarSintomasActivos();
+        assertThat(repository.cargarSintomasActivos()).containsExactly(sintoma);
+        assertThat(TriajeReglasRepository.LIST_ACTIVE_SYMPTOMS.qualifiedName())
+                .isEqualTo("PKG_TRIAGE.list_active_symptoms");
 
-        verify(jdbcTemplate).query(sql.capture(), mapper.capture());
-        assertThat(sql.getValue()).contains("ESTADO = 'ACTIVO'");
         ResultSet rs = mock(ResultSet.class);
         when(rs.getString("CODIGO")).thenReturn("CONVULSIONES");
         when(rs.getInt("ES_ALARMA")).thenReturn(1);
-        assertThat(mapper.getValue().mapRow(rs, 0)).isEqualTo(new SintomaTriaje("CONVULSIONES", true));
+        assertThat(TriajeReglasRepository.SYMPTOM_MAPPER.mapRow(rs, 0)).isEqualTo(sintoma);
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void cargarReglasActivas_parametrizaVersionYMapeaRegla() throws Exception {
-        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        ArgumentCaptor<RowMapper<ReglaTriaje>> mapper = ArgumentCaptor.forClass(RowMapper.class);
-        when(jdbcTemplate.query(anyString(), any(RowMapper.class), eq("v1-prototipo"))).thenReturn(List.of());
+        ArgumentCaptor<SqlParameterSource> params = ArgumentCaptor.forClass(SqlParameterSource.class);
+        when(gateway.list(eq(TriajeReglasRepository.LIST_ACTIVE_RULES), params.capture(), eq("o_rows")))
+                .thenReturn(List.of());
 
         repository.cargarReglasActivas("v1-prototipo");
 
-        verify(jdbcTemplate).query(sql.capture(), mapper.capture(), eq("v1-prototipo"));
-        assertThat(sql.getValue()).contains("R.VERSION = ?").contains("R.ESTADO = 'ACTIVO'");
+        assertThat(params.getValue().getValue("p_rules_version")).isEqualTo("v1-prototipo");
+
         ResultSet rs = mock(ResultSet.class);
         when(rs.getString("CODIGO")).thenReturn("FIEBRE");
         when(rs.getBigDecimal("DURACION_MIN_HORAS")).thenReturn(BigDecimal.ZERO);
@@ -72,7 +57,7 @@ class TriajeReglasRepositoryTest {
         when(rs.getInt("INTENSIDAD_MIN")).thenReturn(7);
         when(rs.getInt("INTENSIDAD_MAX")).thenReturn(10);
         when(rs.getString("NIVEL_PRIORIDAD")).thenReturn("II");
-        assertThat(mapper.getValue().mapRow(rs, 0))
+        assertThat(TriajeReglasRepository.RULE_MAPPER.mapRow(rs, 0))
                 .isEqualTo(new ReglaTriaje("FIEBRE", BigDecimal.ZERO, null, 7, 10, NivelPrioridad.II));
     }
 }

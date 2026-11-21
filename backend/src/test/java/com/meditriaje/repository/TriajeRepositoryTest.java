@@ -1,148 +1,105 @@
 package com.meditriaje.repository;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.meditriaje.dto.triage.CatalogoSintomaResponse;
 import com.meditriaje.dto.triage.TriajeResponse;
 import com.meditriaje.model.Triaje;
 import com.meditriaje.model.TriajeSintoma;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.jdbc.core.BatchPreparedStatementSetter;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.PreparedStatementCreator;
-import org.springframework.jdbc.core.ResultSetExtractor;
-import org.springframework.jdbc.core.RowCallbackHandler;
-import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.support.KeyHolder;
-
+import com.meditriaje.repository.plsql.PackageGateway;
+import com.meditriaje.repository.plsql.ProcedureSpec;
 import java.math.BigDecimal;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.AbstractMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.jdbc.core.namedparam.SqlParameterSource;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
-@ExtendWith(MockitoExtension.class)
+/** El repositorio de triajes no contiene SQL: declara las rutinas de PKG_TRIAGE y delega en la pasarela. */
 class TriajeRepositoryTest {
 
-    @Mock
-    private JdbcTemplate jdbcTemplate;
+    private final PackageGateway gateway = mock(PackageGateway.class);
+    private final TriajeRepository repository = new TriajeRepository(gateway);
 
-    private TriajeRepository repository;
-
-    @BeforeEach
-    void setUp() {
-        repository = new TriajeRepository(jdbcTemplate);
+    @Test
+    void declaraLasRutinasDePkgTriage() {
+        assertThat(TriajeRepository.CREATE_TRIAGE.qualifiedName()).isEqualTo("PKG_TRIAGE.create_triage");
+        assertThat(TriajeRepository.CREATE_TRIAGE.parameters())
+                .extracting(ProcedureSpec.Param::name)
+                .containsExactly("p_public_id", "p_patient_id", "p_rules_version", "p_priority_level",
+                        "p_suggested_route", "p_is_emergency", "p_observations", "o_id");
+        assertThat(TriajeRepository.GET_TRIAGE_DETAIL.qualifiedName()).isEqualTo("PKG_TRIAGE.get_triage_detail");
+        assertThat(TriajeRepository.LIST_ACTIVE_SYMPTOM_IDS.qualifiedName())
+                .isEqualTo("PKG_TRIAGE.list_active_symptom_ids");
     }
 
     @Test
-    void guardarTriaje_insertaFilaYRetornaIdGenerado() throws SQLException {
+    void guardarTriaje_enviaParametrosYRetornaIdGenerado() {
         Triaje triaje = new Triaje(
-                "triaje-uuid-1", 10L, "v1-prototipo", "III", "CITA_PRESENCIAL", false, "Observacion de prueba"
-        );
-
-        Connection connection = mock(Connection.class);
-        PreparedStatement ps = mock(PreparedStatement.class);
-        when(connection.prepareStatement(anyString(), any(String[].class))).thenReturn(ps);
-
-        doAnswer(invocation -> {
-            PreparedStatementCreator psc = invocation.getArgument(0);
-            KeyHolder kh = invocation.getArgument(1);
-            psc.createPreparedStatement(connection);
-            kh.getKeyList().add(Map.of("ID", 777L));
-            return 1;
-        }).when(jdbcTemplate).update(any(PreparedStatementCreator.class), any(KeyHolder.class));
+                "triaje-uuid-1", 10L, "v1-prototipo", "III", "CITA_PRESENCIAL", false, "Observacion de prueba");
+        ArgumentCaptor<SqlParameterSource> params = ArgumentCaptor.forClass(SqlParameterSource.class);
+        when(gateway.execute(eq(TriajeRepository.CREATE_TRIAGE), params.capture()))
+                .thenReturn(Map.of("o_id", new BigDecimal("777")));
 
         Long id = repository.guardarTriaje(triaje);
 
         assertThat(id).isEqualTo(777L);
-        verify(ps).setString(1, "triaje-uuid-1");
-        verify(ps).setLong(2, 10L);
-        verify(ps).setString(3, "v1-prototipo");
-        verify(ps).setString(4, "III");
-        verify(ps).setString(5, "CITA_PRESENCIAL");
-        verify(ps).setInt(6, 0);
-        verify(ps).setString(7, "Observacion de prueba");
+        SqlParameterSource sent = params.getValue();
+        assertThat(sent.getValue("p_public_id")).isEqualTo("triaje-uuid-1");
+        assertThat(sent.getValue("p_patient_id")).isEqualTo(10L);
+        assertThat(sent.getValue("p_rules_version")).isEqualTo("v1-prototipo");
+        assertThat(sent.getValue("p_priority_level")).isEqualTo("III");
+        assertThat(sent.getValue("p_suggested_route")).isEqualTo("CITA_PRESENCIAL");
+        assertThat(sent.getValue("p_is_emergency")).isEqualTo(0);
+        assertThat(sent.getValue("p_observations")).isEqualTo("Observacion de prueba");
     }
 
     @Test
-    void guardarSintomas_ejecutaBatchUpdateConParametros() throws SQLException {
+    void guardarSintomas_registraCadaSintoma() {
         List<TriajeSintoma> sintomas = List.of(
                 new TriajeSintoma(1L, 101L, BigDecimal.valueOf(12.5), 6),
-                new TriajeSintoma(1L, 102L, BigDecimal.valueOf(2.0), 3)
-        );
-
-        PreparedStatement ps = mock(PreparedStatement.class);
-        ArgumentCaptor<BatchPreparedStatementSetter> bpssCaptor = ArgumentCaptor.forClass(BatchPreparedStatementSetter.class);
-
-        when(jdbcTemplate.batchUpdate(anyString(), bpssCaptor.capture())).thenReturn(new int[]{1, 1});
+                new TriajeSintoma(1L, 102L, BigDecimal.valueOf(2.0), 3));
+        ArgumentCaptor<SqlParameterSource> params = ArgumentCaptor.forClass(SqlParameterSource.class);
 
         repository.guardarSintomas(1L, sintomas);
 
-        BatchPreparedStatementSetter bpss = bpssCaptor.getValue();
-        assertThat(bpss.getBatchSize()).isEqualTo(2);
-
-        bpss.setValues(ps, 0);
-        verify(ps).setLong(1, 1L);
-        verify(ps).setLong(2, 101L);
-        verify(ps).setBigDecimal(3, BigDecimal.valueOf(12.5));
-        verify(ps).setInt(4, 6);
-
-        bpss.setValues(ps, 1);
-        verify(ps).setLong(2, 102L);
-        verify(ps).setBigDecimal(3, BigDecimal.valueOf(2.0));
-        verify(ps).setInt(4, 3);
+        verify(gateway, times(2)).execute(eq(TriajeRepository.ADD_TRIAGE_SYMPTOM), params.capture());
+        SqlParameterSource first = params.getAllValues().get(0);
+        assertThat(first.getValue("p_triage_id")).isEqualTo(1L);
+        assertThat(first.getValue("p_symptom_id")).isEqualTo(101L);
+        assertThat(first.getValue("p_duration_hours")).isEqualTo(BigDecimal.valueOf(12.5));
+        assertThat(first.getValue("p_intensity")).isEqualTo(6);
+        assertThat(params.getAllValues().get(1).getValue("p_symptom_id")).isEqualTo(102L);
     }
 
     @Test
-    void guardarSintomas_conListaVacia_noEjecutaUpdate() {
+    void guardarSintomas_conListaVacia_noLlamaAlPaquete() {
         repository.guardarSintomas(1L, List.of());
-        verify(jdbcTemplate, never()).batchUpdate(anyString(), any(BatchPreparedStatementSetter.class));
+        verify(gateway, never()).execute(any(ProcedureSpec.class), any(SqlParameterSource.class));
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void buscarPorPublicId_mapeaTriajeYSintomasCorrectamente() throws SQLException {
-        ResultSet rs = mock(ResultSet.class);
-        when(rs.next()).thenReturn(true, true, false);
-
-        when(rs.getString("TRIAJE_PUBLIC_ID")).thenReturn("triaje-uuid-1");
-        when(rs.getString("PACIENTE_PUBLIC_ID")).thenReturn("pac-uuid-1");
-        when(rs.getString("VERSION_REGLAS")).thenReturn("v1-prototipo");
-        when(rs.getString("NIVEL_PRIORIDAD")).thenReturn("II");
-        when(rs.getString("RUTA_SUGERIDA")).thenReturn("ATENCION_PRIORITARIA");
-        when(rs.getInt("ES_EMERGENCIA")).thenReturn(0);
-        when(rs.getString("OBSERVACIONES")).thenReturn("Fiebre moderada");
-        when(rs.getTimestamp("CREATED_AT")).thenReturn(Timestamp.from(Instant.parse("2026-10-10T12:00:00Z")));
-
-        // Síntoma 1
-        when(rs.getString("SINTOMA_CODIGO")).thenReturn("FIEBRE", "DOLOR_GARGANTA");
-        when(rs.getString("SINTOMA_NOMBRE")).thenReturn("Fiebre", "Dolor de garganta");
-        when(rs.getBigDecimal("DURACION_HORAS")).thenReturn(BigDecimal.valueOf(24.0), BigDecimal.valueOf(12.0));
-        when(rs.getInt("INTENSIDAD")).thenReturn(8, 4);
-        when(rs.getInt("ES_ALARMA")).thenReturn(0, 0);
-
-        doAnswer(invocation -> {
-            ResultSetExtractor<Optional<TriajeResponse>> rse = invocation.getArgument(1);
-            return rse.extractData(rs);
-        }).when(jdbcTemplate).query(anyString(), any(ResultSetExtractor.class), eq("triaje-uuid-1"));
+    void buscarPorPublicId_agrupaLasFilasDelTriajeConSusSintomas() {
+        Instant creado = Instant.parse("2026-10-10T12:00:00Z");
+        List<TriajeRepository.DetailRow> rows = List.of(
+                detalle("FIEBRE", "Fiebre", BigDecimal.valueOf(24.0), 8, false, creado),
+                detalle("DOLOR_TORACICO", "Dolor toracico", BigDecimal.valueOf(1.0), 9, true, creado));
+        when(gateway.<TriajeRepository.DetailRow>list(
+                        eq(TriajeRepository.GET_TRIAGE_DETAIL), any(SqlParameterSource.class), eq("o_rows")))
+                .thenReturn(rows);
 
         Optional<TriajeResponse> resultado = repository.buscarPorPublicId("triaje-uuid-1");
 
@@ -151,91 +108,101 @@ class TriajeRepositoryTest {
         assertThat(resp.publicId()).isEqualTo("triaje-uuid-1");
         assertThat(resp.pacientePublicId()).isEqualTo("pac-uuid-1");
         assertThat(resp.nivelPrioridad()).isEqualTo("II");
-        assertThat(resp.rutaSugerida()).isEqualTo("ATENCION_PRIORITARIA");
         assertThat(resp.esEmergencia()).isFalse();
-        assertThat(resp.sintomas()).hasSize(2);
-        assertThat(resp.sintomas().get(0).codigo()).isEqualTo("FIEBRE");
-        assertThat(resp.sintomas().get(1).codigo()).isEqualTo("DOLOR_GARGANTA");
+        assertThat(resp.createdAt()).isEqualTo(creado);
+        assertThat(resp.sintomas()).extracting(s -> s.codigo()).containsExactly("FIEBRE", "DOLOR_TORACICO");
+        assertThat(resp.sintomasAlarma()).containsExactly("DOLOR_TORACICO");
+    }
+
+    @Test
+    void buscarPorPublicId_triajeSinSintomas_retornaListaVacia() {
+        when(gateway.<TriajeRepository.DetailRow>list(
+                        eq(TriajeRepository.GET_TRIAGE_DETAIL), any(SqlParameterSource.class), eq("o_rows")))
+                .thenReturn(List.of(detalle(null, null, null, 0, false, null)));
+
+        TriajeResponse resp = repository.buscarPorPublicId("triaje-uuid-1").orElseThrow();
+
+        assertThat(resp.sintomas()).isEmpty();
         assertThat(resp.sintomasAlarma()).isEmpty();
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void buscarPorPublicId_inexistente_retornaEmpty() {
-        when(jdbcTemplate.query(anyString(), any(ResultSetExtractor.class), eq("no-existe")))
-                .thenReturn(Optional.empty());
+        when(gateway.list(eq(TriajeRepository.GET_TRIAGE_DETAIL), any(SqlParameterSource.class), eq("o_rows")))
+                .thenReturn(List.of());
 
-        Optional<TriajeResponse> resultado = repository.buscarPorPublicId("no-existe");
-        assertThat(resultado).isEmpty();
+        assertThat(repository.buscarPorPublicId("no-existe")).isEmpty();
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void buscarEntidadPorPublicId_retornaEntidad() {
+    void buscarEntidadPorPublicIdYPorId_retornanLaPrimeraFila() {
         Triaje triaje = new Triaje(
-                1L, "triaje-uuid-1", 10L, "v1-prototipo", "III", "CITA_PRESENCIAL", false, null, Instant.now()
-        );
-        when(jdbcTemplate.query(anyString(), any(RowMapper.class), eq("triaje-uuid-1")))
+                1L, "triaje-uuid-1", 10L, "v1-prototipo", "III", "CITA_PRESENCIAL", false, null, Instant.now());
+        when(gateway.<Triaje>list(eq(TriajeRepository.GET_TRIAGE_BY_PUBLIC_ID), any(SqlParameterSource.class),
+                        eq("o_row")))
+                .thenReturn(List.of(triaje));
+        when(gateway.<Triaje>list(eq(TriajeRepository.GET_TRIAGE_BY_ID), any(SqlParameterSource.class), eq("o_row")))
                 .thenReturn(List.of(triaje));
 
-        Optional<Triaje> resultado = repository.buscarEntidadPorPublicId("triaje-uuid-1");
-        assertThat(resultado).isPresent();
-        assertThat(resultado.get().id()).isEqualTo(1L);
+        assertThat(repository.buscarEntidadPorPublicId("triaje-uuid-1")).contains(triaje);
+        assertThat(repository.buscarEntidadPorId(1L)).contains(triaje);
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void buscarEntidadPorId_retornaEntidad() {
-        Triaje triaje = new Triaje(
-                1L, "triaje-uuid-1", 10L, "v1-prototipo", "III", "CITA_PRESENCIAL", false, null, Instant.now()
-        );
-        when(jdbcTemplate.query(anyString(), any(RowMapper.class), eq(1L)))
-                .thenReturn(List.of(triaje));
+    void listarCatalogoSintomasActivos_mapeaLaFila() throws SQLException {
+        CatalogoSintomaResponse item = new CatalogoSintomaResponse("sintoma-uuid-1", "FIEBRE", "Fiebre", "GENERAL", false);
+        when(gateway.<CatalogoSintomaResponse>list(
+                        eq(TriajeRepository.LIST_ACTIVE_SYMPTOM_CATALOG), any(SqlParameterSource.class), eq("o_rows")))
+                .thenReturn(List.of(item));
 
-        Optional<Triaje> resultado = repository.buscarEntidadPorId(1L);
-        assertThat(resultado).isPresent();
-        assertThat(resultado.get().publicId()).isEqualTo("triaje-uuid-1");
-    }
+        assertThat(repository.listarCatalogoSintomasActivos()).containsExactly(item);
 
-    @Test
-    @SuppressWarnings("unchecked")
-    void listarCatalogoSintomasActivos_retornaLista() throws SQLException {
         ResultSet rs = mock(ResultSet.class);
         when(rs.getString("PUBLIC_ID")).thenReturn("sintoma-uuid-1");
         when(rs.getString("CODIGO")).thenReturn("FIEBRE");
         when(rs.getString("NOMBRE")).thenReturn("Fiebre");
         when(rs.getString("CATEGORIA")).thenReturn("GENERAL");
         when(rs.getInt("ES_ALARMA")).thenReturn(0);
-
-        ArgumentCaptor<RowMapper<CatalogoSintomaResponse>> mapperCaptor = ArgumentCaptor.forClass(RowMapper.class);
-        when(jdbcTemplate.query(anyString(), mapperCaptor.capture())).thenReturn(List.of(
-                new CatalogoSintomaResponse("sintoma-uuid-1", "FIEBRE", "Fiebre", "GENERAL", false)
-        ));
-
-        List<CatalogoSintomaResponse> catalogo = repository.listarCatalogoSintomasActivos();
-        assertThat(catalogo).hasSize(1);
-        assertThat(catalogo.get(0).codigo()).isEqualTo("FIEBRE");
-
-        CatalogoSintomaResponse mapped = mapperCaptor.getValue().mapRow(rs, 0);
-        assertThat(mapped.codigo()).isEqualTo("FIEBRE");
-        assertThat(mapped.esAlarma()).isFalse();
+        assertThat(TriajeRepository.CATALOG_MAPPER.mapRow(rs, 0)).isEqualTo(item);
     }
 
     @Test
-    void obtenerMapaCodigoAIdSintomas_retornaMapeo() throws SQLException {
+    void obtenerMapaCodigoAIdSintomas_retornaMapeo() {
+        when(gateway.<Map.Entry<String, Long>>list(
+                        eq(TriajeRepository.LIST_ACTIVE_SYMPTOM_IDS), any(SqlParameterSource.class), eq("o_rows")))
+                .thenReturn(List.of(
+                        new AbstractMap.SimpleImmutableEntry<>("FIEBRE", 10L),
+                        new AbstractMap.SimpleImmutableEntry<>("TOS", 20L)));
+
+        assertThat(repository.obtenerMapaCodigoAIdSintomas())
+                .containsEntry("FIEBRE", 10L)
+                .containsEntry("TOS", 20L);
+    }
+
+    @Test
+    void detailMapper_leeColumnasDelCursor() throws SQLException {
         ResultSet rs = mock(ResultSet.class);
-        when(rs.getString("CODIGO")).thenReturn("FIEBRE", "TOS");
-        when(rs.getLong("ID")).thenReturn(10L, 20L);
+        Instant creado = Instant.parse("2026-10-10T12:00:00Z");
+        when(rs.getString("TRIAJE_PUBLIC_ID")).thenReturn("triaje-uuid-1");
+        when(rs.getString("RUTA_SUGERIDA")).thenReturn("ATENCION_PRIORITARIA");
+        when(rs.getInt("ES_EMERGENCIA")).thenReturn(1);
+        when(rs.getTimestamp("CREATED_AT")).thenReturn(Timestamp.from(creado));
+        when(rs.getString("SINTOMA_CODIGO")).thenReturn("FIEBRE");
+        when(rs.getInt("ES_ALARMA")).thenReturn(1);
 
-        doAnswer(invocation -> {
-            RowCallbackHandler rch = invocation.getArgument(1);
-            rch.processRow(rs);
-            rch.processRow(rs);
-            return null;
-        }).when(jdbcTemplate).query(anyString(), any(RowCallbackHandler.class));
+        TriajeRepository.DetailRow row = TriajeRepository.DETAIL_MAPPER.mapRow(rs, 0);
 
-        Map<String, Long> mapa = repository.obtenerMapaCodigoAIdSintomas();
-        assertThat(mapa).containsEntry("FIEBRE", 10L);
-        assertThat(mapa).containsEntry("TOS", 20L);
+        assertThat(row.triajePublicId()).isEqualTo("triaje-uuid-1");
+        assertThat(row.esEmergencia()).isTrue();
+        assertThat(row.createdAt()).isEqualTo(creado);
+        assertThat(row.sintomaCodigo()).isEqualTo("FIEBRE");
+        assertThat(row.esAlarma()).isTrue();
+    }
+
+    private static TriajeRepository.DetailRow detalle(
+            String codigo, String nombre, BigDecimal duracion, int intensidad, boolean alarma, Instant creado) {
+        return new TriajeRepository.DetailRow("triaje-uuid-1", "pac-uuid-1", "v1-prototipo", "II",
+                "ATENCION_PRIORITARIA", false, "Fiebre moderada", creado, codigo, nombre, duracion, intensidad,
+                alarma);
     }
 }

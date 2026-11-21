@@ -1,24 +1,25 @@
 package com.meditriaje.repository;
 
 import com.meditriaje.model.EgresoHospitalario;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
-import org.springframework.stereotype.Repository;
-
-import java.sql.PreparedStatement;
+import com.meditriaje.repository.plsql.PackageGateway;
+import com.meditriaje.repository.plsql.ProcedureSpec;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.stereotype.Repository;
 
+/** Egresos hospitalarios a través de {@code PKG_HOSPITAL}. No contiene SQL. */
 @Repository
 public class EgresoHospitalarioRepository {
 
-    private final JdbcTemplate jdbcTemplate;
+    static final String PACKAGE = "PKG_HOSPITAL";
 
-    private final RowMapper<EgresoHospitalario> rowMapper = (rs, rowNum) -> {
+    static final RowMapper<EgresoHospitalario> ROW_MAPPER = (rs, rowNum) -> {
         Timestamp tsEgreso = rs.getTimestamp("FECHA_EGRESO");
         Timestamp tsCreado = rs.getTimestamp("CREADO_AT");
         return new EgresoHospitalario(
@@ -31,51 +32,62 @@ public class EgresoHospitalarioRepository {
                 rs.getString("DIAGNOSTICO_EGRESO"),
                 rs.getString("EPICRISIS_RESUMEN"),
                 rs.getString("PLAN_MANEJO"),
-                tsCreado != null ? tsCreado.toInstant() : null
-        );
+                tsCreado != null ? tsCreado.toInstant() : null);
     };
 
-    public EgresoHospitalarioRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "jdbcTemplate no puede ser nulo");
+    static final ProcedureSpec CREATE_DISCHARGE = ProcedureSpec.procedure(PACKAGE, "create_discharge")
+            .in("p_public_id", Types.VARCHAR)
+            .in("p_episode_id", Types.NUMERIC)
+            .in("p_doctor_id", Types.NUMERIC)
+            .in("p_discharged_at", Types.TIMESTAMP)
+            .in("p_destination_type", Types.VARCHAR)
+            .in("p_diagnosis", Types.VARCHAR)
+            .in("p_epicrisis", Types.VARCHAR)
+            .in("p_care_plan", Types.VARCHAR)
+            .out("o_id", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec GET_DISCHARGE_BY_ID = ProcedureSpec.procedure(PACKAGE, "get_discharge_by_id")
+            .in("p_id", Types.NUMERIC)
+            .cursor("o_row", ROW_MAPPER)
+            .build();
+
+    static final ProcedureSpec GET_DISCHARGE_BY_EPISODE =
+            ProcedureSpec.procedure(PACKAGE, "get_discharge_by_episode")
+                    .in("p_episode_id", Types.NUMERIC)
+                    .cursor("o_row", ROW_MAPPER)
+                    .build();
+
+    private final PackageGateway gateway;
+
+    public EgresoHospitalarioRepository(PackageGateway gateway) {
+        this.gateway = Objects.requireNonNull(gateway, "gateway no puede ser nulo");
     }
 
     public EgresoHospitalario guardar(EgresoHospitalario egreso) {
-        String sql = """
-                INSERT INTO EGRESO_HOSPITALARIO (
-                    PUBLIC_ID, EPISODIO_ID, MEDICO_EGRESO_ID, FECHA_EGRESO,
-                    TIPO_DESTINO, DIAGNOSTICO_EGRESO, EPICRISIS_RESUMEN, PLAN_MANEJO
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """;
-
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(sql, new String[]{"ID"});
-            ps.setString(1, egreso.publicId());
-            ps.setLong(2, egreso.episodioId());
-            ps.setLong(3, egreso.medicoEgresoId());
-            ps.setTimestamp(4, Timestamp.from(egreso.fechaEgreso()));
-            ps.setString(5, egreso.tipoDestino());
-            ps.setString(6, egreso.diagnosticoEgreso());
-            ps.setString(7, egreso.epicrisisResumen());
-            ps.setString(8, egreso.planManejo());
-            return ps;
-        }, keyHolder);
-
-        Number key = keyHolder.getKey();
+        Map<String, Object> out = gateway.execute(CREATE_DISCHARGE, new MapSqlParameterSource()
+                .addValue("p_public_id", egreso.publicId(), Types.VARCHAR)
+                .addValue("p_episode_id", egreso.episodioId(), Types.NUMERIC)
+                .addValue("p_doctor_id", egreso.medicoEgresoId(), Types.NUMERIC)
+                .addValue("p_discharged_at", Timestamp.from(egreso.fechaEgreso()), Types.TIMESTAMP)
+                .addValue("p_destination_type", egreso.tipoDestino(), Types.VARCHAR)
+                .addValue("p_diagnosis", egreso.diagnosticoEgreso(), Types.VARCHAR)
+                .addValue("p_epicrisis", egreso.epicrisisResumen(), Types.VARCHAR)
+                .addValue("p_care_plan", egreso.planManejo(), Types.VARCHAR));
+        Number key = (Number) out.get("o_id");
         Long id = key != null ? key.longValue() : null;
         return buscarPorId(id).orElseThrow(() -> new IllegalStateException("Error al recuperar egreso recién guardado"));
     }
 
     public Optional<EgresoHospitalario> buscarPorId(Long id) {
         if (id == null) return Optional.empty();
-        String sql = "SELECT * FROM EGRESO_HOSPITALARIO WHERE ID = ?";
-        List<EgresoHospitalario> list = jdbcTemplate.query(sql, rowMapper, id);
+        List<EgresoHospitalario> list = gateway.list(GET_DISCHARGE_BY_ID, new MapSqlParameterSource("p_id", id), "o_row");
         return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
     }
 
     public Optional<EgresoHospitalario> buscarPorEpisodioId(Long episodioId) {
-        String sql = "SELECT * FROM EGRESO_HOSPITALARIO WHERE EPISODIO_ID = ?";
-        List<EgresoHospitalario> list = jdbcTemplate.query(sql, rowMapper, episodioId);
+        List<EgresoHospitalario> list = gateway.list(
+                GET_DISCHARGE_BY_EPISODE, new MapSqlParameterSource("p_episode_id", episodioId), "o_row");
         return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
     }
 }

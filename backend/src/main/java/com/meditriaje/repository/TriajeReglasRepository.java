@@ -1,47 +1,58 @@
 package com.meditriaje.repository;
 
+import com.meditriaje.repository.plsql.PackageGateway;
+import com.meditriaje.repository.plsql.ProcedureSpec;
 import com.meditriaje.triage.NivelPrioridad;
 import com.meditriaje.triage.ReglaTriaje;
 import com.meditriaje.triage.SintomaTriaje;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.stereotype.Repository;
-
+import java.sql.Types;
 import java.util.List;
 import java.util.Objects;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.namedparam.EmptySqlParameterSource;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.stereotype.Repository;
 
-/** Carga (solo lectura) del catálogo de síntomas y reglas activas de triaje (ADR-009). */
+/** Carga (solo lectura) del catálogo de síntomas y reglas activas de triaje (ADR-009) a través de {@code PKG_TRIAGE}. */
 @Repository
 public class TriajeReglasRepository {
 
-    private final JdbcTemplate jdbcTemplate;
+    static final String PACKAGE = "PKG_TRIAGE";
 
-    public TriajeReglasRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "JdbcTemplate no puede ser nulo");
+    static final RowMapper<SintomaTriaje> SYMPTOM_MAPPER =
+            (rs, n) -> new SintomaTriaje(rs.getString("CODIGO"), rs.getInt("ES_ALARMA") == 1);
+
+    static final RowMapper<ReglaTriaje> RULE_MAPPER = (rs, n) -> new ReglaTriaje(
+            rs.getString("CODIGO"),
+            rs.getBigDecimal("DURACION_MIN_HORAS"),
+            rs.getBigDecimal("DURACION_MAX_HORAS"),
+            rs.getInt("INTENSIDAD_MIN"),
+            rs.getInt("INTENSIDAD_MAX"),
+            NivelPrioridad.valueOf(rs.getString("NIVEL_PRIORIDAD")));
+
+    static final ProcedureSpec LIST_ACTIVE_SYMPTOMS = ProcedureSpec.procedure(PACKAGE, "list_active_symptoms")
+            .cursor("o_rows", SYMPTOM_MAPPER)
+            .build();
+
+    static final ProcedureSpec LIST_ACTIVE_RULES = ProcedureSpec.procedure(PACKAGE, "list_active_rules")
+            .in("p_rules_version", Types.VARCHAR)
+            .cursor("o_rows", RULE_MAPPER)
+            .build();
+
+    private final PackageGateway gateway;
+
+    public TriajeReglasRepository(PackageGateway gateway) {
+        this.gateway = Objects.requireNonNull(gateway, "PackageGateway no puede ser nulo");
     }
 
     public List<SintomaTriaje> cargarSintomasActivos() {
-        final String sql = "SELECT CODIGO, ES_ALARMA FROM SINTOMA WHERE ESTADO = 'ACTIVO' ORDER BY CODIGO";
-        return jdbcTemplate.query(sql,
-                (rs, n) -> new SintomaTriaje(rs.getString("CODIGO"), rs.getInt("ES_ALARMA") == 1));
+        return gateway.list(LIST_ACTIVE_SYMPTOMS, EmptySqlParameterSource.INSTANCE, "o_rows");
     }
 
     public List<ReglaTriaje> cargarReglasActivas(String version) {
-        final String sql = """
-            SELECT S.CODIGO, R.DURACION_MIN_HORAS, R.DURACION_MAX_HORAS,
-                   R.INTENSIDAD_MIN, R.INTENSIDAD_MAX, R.NIVEL_PRIORIDAD
-              FROM REGLA_TRIAJE R
-              JOIN SINTOMA S ON S.ID = R.SINTOMA_ID
-             WHERE R.VERSION = ? AND R.ESTADO = 'ACTIVO' AND S.ESTADO = 'ACTIVO'
-             ORDER BY S.CODIGO, R.INTENSIDAD_MIN
-            """;
-        return jdbcTemplate.query(sql,
-                (rs, n) -> new ReglaTriaje(
-                        rs.getString("CODIGO"),
-                        rs.getBigDecimal("DURACION_MIN_HORAS"),
-                        rs.getBigDecimal("DURACION_MAX_HORAS"),
-                        rs.getInt("INTENSIDAD_MIN"),
-                        rs.getInt("INTENSIDAD_MAX"),
-                        NivelPrioridad.valueOf(rs.getString("NIVEL_PRIORIDAD"))),
-                version);
+        return gateway.list(
+                LIST_ACTIVE_RULES,
+                new MapSqlParameterSource().addValue("p_rules_version", version, Types.VARCHAR),
+                "o_rows");
     }
 }
