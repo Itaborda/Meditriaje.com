@@ -4,6 +4,7 @@
  */
 
 import { operationalApi } from '../api.js';
+import { motion } from '../motion.js';
 import { ui, esc } from '../ui.js';
 
 let refreshIntervalId = null;
@@ -428,6 +429,8 @@ export async function renderOperationalDashboard(container) {
 
   let isAutoRefreshActive = true;
 
+  motion.staggerCards(container.querySelectorAll('.operational-kpi-card'), { root: container });
+
   // Carga inicial del panel del hospital
   await cargarDatosDashboard();
 
@@ -492,7 +495,7 @@ export async function renderOperationalDashboard(container) {
 
       // 1. KPI Ocupación
       const pct = Math.round(data.tasaOcupacionPorcentaje || 0);
-      kpiOcupacion.textContent = `${pct}%`;
+      motion.animateCounter(kpiOcupacion, pct, { suffix: '%' });
       kpiProgressBar.style.width = `${Math.min(pct, 100)}%`;
       kpiProgressBar.className = 'operational-progress-bar';
       if (pct >= 85) {
@@ -504,22 +507,22 @@ export async function renderOperationalDashboard(container) {
       }
 
       kpiDesglose.textContent = `${data.camasOcupadas || 0} ocupadas de ${data.totalCamas || 0} camas`;
-      kpiLibresVal.textContent = data.camasDisponibles || 0;
-      kpiLimpiezaVal.textContent = data.camasLimpieza || 0;
-      kpiMantVal.textContent = data.camasMantenimiento || 0;
+      motion.animateCounter(kpiLibresVal, data.camasDisponibles || 0);
+      motion.animateCounter(kpiLimpiezaVal, data.camasLimpieza || 0);
+      motion.animateCounter(kpiMantVal, data.camasMantenimiento || 0);
 
       // 2. KPI Urgencias
-      kpiUrgencias.textContent = data.episodiosUrgenciasActivos || 0;
+      motion.animateCounter(kpiUrgencias, data.episodiosUrgenciasActivos || 0);
       const porTriaje = data.episodiosPorNivelTriaje || {};
-      kpiCntT1.textContent = porTriaje['I'] || 0;
-      kpiCntT2.textContent = porTriaje['II'] || 0;
-      kpiCntT3.textContent = porTriaje['III'] || 0;
-      kpiCntT4.textContent = porTriaje['IV'] || 0;
-      kpiCntT5.textContent = porTriaje['V'] || 0;
+      motion.animateCounter(kpiCntT1, porTriaje['I'] || 0);
+      motion.animateCounter(kpiCntT2, porTriaje['II'] || 0);
+      motion.animateCounter(kpiCntT3, porTriaje['III'] || 0);
+      motion.animateCounter(kpiCntT4, porTriaje['IV'] || 0);
+      motion.animateCounter(kpiCntT5, porTriaje['V'] || 0);
 
       // 3. KPI Alertas
       const totalAlertas = (data.alertasActivas || []).length;
-      kpiAlertas.textContent = totalAlertas;
+      motion.animateCounter(kpiAlertas, totalAlertas);
       if (totalAlertas > 0) {
         kpiAlertaStatusPill.className = 'badge badge--cancelled';
         kpiAlertaStatusPill.innerHTML = `${ui.icon('alert-triangle', 'icon icon--sm')} ${totalAlertas} Requiere(n) Intervención`;
@@ -533,7 +536,7 @@ export async function renderOperationalDashboard(container) {
       }
 
       // 4. KPI Camas Libres
-      kpiDisponibles.textContent = data.camasDisponibles || 0;
+      motion.animateCounter(kpiDisponibles, data.camasDisponibles || 0);
       kpiTotalCamasPill.textContent = `Capacidad: ${data.totalCamas || 0} instaladas`;
 
       // 5. Tiempos Promedio Res 5596/2015
@@ -544,11 +547,11 @@ export async function renderOperationalDashboard(container) {
       const t4Val = Math.round(tiempos['IV'] || 0);
       const t5Val = Math.round(tiempos['V'] || 0);
 
-      t1.textContent = `${t1Val} min`;
-      t2.textContent = `${t2Val} min`;
-      t3.textContent = `${t3Val} min`;
-      t4.textContent = `${t4Val} min`;
-      t5.textContent = `${t5Val} min`;
+      motion.animateCounter(t1, t1Val, { suffix: ' min' });
+      motion.animateCounter(t2, t2Val, { suffix: ' min' });
+      motion.animateCounter(t3, t3Val, { suffix: ' min' });
+      motion.animateCounter(t4, t4Val, { suffix: ' min' });
+      motion.animateCounter(t5, t5Val, { suffix: ' min' });
 
       cntWaitT1.textContent = `${porTriaje['I'] || 0} paciente(s)`;
       cntWaitT2.textContent = `${porTriaje['II'] || 0} paciente(s)`;

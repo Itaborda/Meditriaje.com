@@ -6,6 +6,7 @@
 
 import { hospitalApi } from '../api.js';
 import { auth } from '../auth.js';
+import { motion } from '../motion.js';
 import { router } from '../router.js';
 import { ui, esc } from '../ui.js';
 
@@ -137,6 +138,8 @@ export async function hospitalCensusView(container) {
     </div>
   `;
 
+  motion.staggerCards(container.querySelectorAll('#censusKpiGrid > .card'), { root: container });
+
   await loadData();
 
   document.getElementById('btnRefreshCensus').addEventListener('click', async () => {
@@ -190,12 +193,19 @@ async function loadData() {
 }
 
 function updateKpis(c) {
-  document.getElementById('kpiTotalCamas').textContent = c.totalCamas;
-  document.getElementById('kpiOcupadas').textContent = c.ocupadas;
-  document.getElementById('kpiDisponibles').textContent = c.disponibles;
-  document.getElementById('kpiLimpieza').textContent = c.enLimpieza;
-  document.getElementById('kpiMantenimiento').textContent = c.enMantenimiento;
-  document.getElementById('kpiTasaOcupacion').textContent = `${c.tasaOcupacionPorcentaje}%`;
+  motion.animateCounter(document.getElementById('kpiTotalCamas'), c.totalCamas ?? 0);
+  motion.animateCounter(document.getElementById('kpiOcupadas'), c.ocupadas ?? 0);
+  motion.animateCounter(document.getElementById('kpiDisponibles'), c.disponibles ?? 0);
+  motion.animateCounter(document.getElementById('kpiLimpieza'), c.enLimpieza ?? 0);
+  motion.animateCounter(document.getElementById('kpiMantenimiento'), c.enMantenimiento ?? 0);
+
+  const tasaStr = String(c.tasaOcupacionPorcentaje ?? 0);
+  const dotIdx = tasaStr.indexOf('.');
+  const decimals = dotIdx >= 0 ? Math.min(2, tasaStr.length - dotIdx - 1) : 0;
+  motion.animateCounter(document.getElementById('kpiTasaOcupacion'), c.tasaOcupacionPorcentaje ?? 0, {
+    suffix: '%',
+    decimals
+  });
 }
 
 function renderAreas(areas) {

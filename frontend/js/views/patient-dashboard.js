@@ -5,6 +5,7 @@
 
 import { api } from '../api.js';
 import { auth } from '../auth.js';
+import { motion } from '../motion.js';
 import { router } from '../router.js';
 import { ui, esc } from '../ui.js';
 
@@ -189,6 +190,11 @@ export async function patientDashboardView(container) {
       </div>
     </div>
   `;
+
+  motion.staggerCards(
+    container.querySelectorAll('.card--highlight, #cardNextAppointment, #cardRecentHistory'),
+    { root: container }
+  );
 
   // 2. Carga en paralelo de datos del paciente
   const [perfilResult, appointmentsResult, historyResult, prescriptionsResult, followUpsResult] = await Promise.allSettled([

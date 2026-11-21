@@ -7,6 +7,7 @@
 
 import { emergencyApi } from '../api.js';
 import { auth } from '../auth.js';
+import { motion } from '../motion.js';
 import { router } from '../router.js';
 import { ui, esc } from '../ui.js';
 
@@ -172,6 +173,8 @@ export async function nursingDashboardView(container) {
     </div>
   `;
 
+  motion.staggerCards(container.querySelectorAll('#kpiCards > .card'), { root: container });
+
   // Hospital único: la cola es la del hospital (el servidor resuelve la sede)
   await loadQueue();
 
@@ -211,10 +214,10 @@ function updateKpis() {
   const pendientes = queue.filter(q => !q.nivelTriaje || q.nivelTriaje === 'PENDIENTE_VALORACION' || q.estado === 'REGISTRADO' || q.estadoEpisodio === 'REGISTRADO').length;
   const nn = queue.filter(q => q.codigoProvisional != null || q.esIdentidadProvisional || q.esNN).length;
 
-  document.getElementById('kpiTotal').textContent = total;
-  document.getElementById('kpiCriticos').textContent = criticos;
-  document.getElementById('kpiPendientesTriaje').textContent = pendientes;
-  document.getElementById('kpiNN').textContent = nn;
+  motion.animateCounter(document.getElementById('kpiTotal'), total);
+  motion.animateCounter(document.getElementById('kpiCriticos'), criticos);
+  motion.animateCounter(document.getElementById('kpiPendientesTriaje'), pendientes);
+  motion.animateCounter(document.getElementById('kpiNN'), nn);
 }
 
 function renderQueue() {

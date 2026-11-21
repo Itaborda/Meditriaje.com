@@ -6,12 +6,14 @@
 
 import { api } from '../api.js';
 import { auth } from '../auth.js';
+import { motion } from '../motion.js';
 import { router } from '../router.js';
 import { ui } from '../ui.js';
 
 // Estado local reactivo de la sesión de triaje
 let triageState = {
   step: 1, // 1: Selección de síntomas, 2: Intensidad y duración
+  prevStep: 1,
   catalog: [],
   selectedSymptoms: new Map(), // codigo -> { codigo, nombre, categoria, esAlarma, intensidad: 5, duracionHoras: 12 }
   observaciones: '',
@@ -47,6 +49,7 @@ function formatCategoryLabel(cat) {
 function resetState() {
   triageState = {
     step: 1,
+    prevStep: 1,
     catalog: [],
     selectedSymptoms: new Map(),
     observaciones: '',
@@ -129,11 +132,14 @@ function renderWizard(container) {
   `;
 
   const stepContainer = container.querySelector('#wizardStepContent');
+  const direction = triageState.step < triageState.prevStep ? 'back' : 'forward';
   if (triageState.step === 1) {
     renderStep1(stepContainer, container);
   } else {
     renderStep2(stepContainer, container);
   }
+  triageState.prevStep = triageState.step;
+  motion.stepTransition(stepContainer, direction);
 }
 
 /**
@@ -308,6 +314,7 @@ function renderStep1(stepContainer, mainContainer) {
   // Avanzar al paso 2
   btnNext.addEventListener('click', () => {
     if (triageState.selectedSymptoms.size === 0) return;
+    triageState.prevStep = triageState.step;
     triageState.step = 2;
     renderWizard(mainContainer);
   });
@@ -508,6 +515,7 @@ function renderStep2(stepContainer, mainContainer) {
 
   // Volver a paso 1
   stepContainer.querySelector('#btnBackToStep1').addEventListener('click', () => {
+    triageState.prevStep = triageState.step;
     triageState.step = 1;
     renderWizard(mainContainer);
   });
@@ -699,6 +707,9 @@ export function renderEmergencyView(container, resultado) {
       </div>
     </div>
   `;
+
+  motion.stepTransition(container.querySelector('.card'), 'forward');
+  motion.drawSvg(container.querySelector('.badge svg, .card-header svg'), { duration: 550, root: container });
 }
 
 /**
@@ -787,6 +798,9 @@ export function renderTriageResultView(container, resultado) {
       </div>
     </div>
   `;
+
+  motion.stepTransition(container.querySelector('.card'), 'forward');
+  motion.drawSvg(container.querySelector('.badge svg, .card-header svg'), { duration: 550, root: container });
 }
 
 /**

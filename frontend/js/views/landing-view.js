@@ -5,6 +5,7 @@
  */
 
 import { auth } from '../auth.js';
+import { motion } from '../motion.js';
 import { ui } from '../ui.js';
 
 export async function landingView(container) {
@@ -24,7 +25,7 @@ export async function landingView(container) {
   }
 
   container.innerHTML = `
-    <div class="landing-ambient-wrapper">
+    <div class="landing-ambient-wrapper" data-motion-custom="true">
       <div class="ambient-glow ambient-glow--teal"></div>
       <div class="ambient-glow ambient-glow--cyan"></div>
       <div class="ambient-glow ambient-glow--emerald"></div>
@@ -177,25 +178,25 @@ export async function landingView(container) {
     <!-- 6. Metrics Strip (Bento Counters) -->
     <div class="metrics-container">
       <div class="metric-card">
-        <div class="metric-value">42</div>
+        <div class="metric-value tabular-nums" data-metric-target="42">42</div>
         <div class="metric-label">Reglas Clínicas</div>
         <div class="metric-sub">Motor determinista según intensidad y duración</div>
       </div>
 
       <div class="metric-card">
-        <div class="metric-value">5</div>
+        <div class="metric-value tabular-nums" data-metric-target="5">5</div>
         <div class="metric-label">Niveles de Triaje</div>
         <div class="metric-sub">Escala I a V con semaforización reglamentaria</div>
       </div>
 
       <div class="metric-card">
-        <div class="metric-value">100%</div>
+        <div class="metric-value tabular-nums" data-metric-target="100" data-metric-suffix="%">100%</div>
         <div class="metric-label">Inmutabilidad</div>
         <div class="metric-sub">Historias clínicas protegidas con enmiendas cronológicas</div>
       </div>
 
       <div class="metric-card">
-        <div class="metric-value">0</div>
+        <div class="metric-value tabular-nums" data-metric-target="0">0</div>
         <div class="metric-label">Colisiones</div>
         <div class="metric-sub">Reserva atómica de slots y prevención de doble turno</div>
       </div>
@@ -593,6 +594,45 @@ export async function landingView(container) {
 
   // 12. Lógica Interactiva del Simulador de Triaje
   initSimulator(container);
+
+  // 13. Coreografía discreta de entrada y revelación en scroll
+  initLandingMotion(container);
+}
+
+function initLandingMotion(container) {
+  motion.heroEntrance(container);
+
+  const metricsContainer = container.querySelector('.metrics-container');
+  if (metricsContainer) {
+    motion.revealOnScroll(metricsContainer, metricsContainer.querySelectorAll('.metric-card'), {
+      root: container,
+      onReveal: () => {
+        metricsContainer.querySelectorAll('.metric-value[data-metric-target]').forEach((valEl) => {
+          const target = Number(valEl.getAttribute('data-metric-target'));
+          const suffix = valEl.getAttribute('data-metric-suffix') || '';
+          if (Number.isFinite(target) && target > 0) {
+            motion.animateCounter(valEl, target, { suffix, fromZero: true, duration: 520 });
+          }
+        });
+      }
+    });
+  }
+
+  const bentoGrid = container.querySelector('.bento-grid');
+  if (bentoGrid) {
+    motion.revealOnScroll(bentoGrid, bentoGrid.querySelectorAll('.bento-card'), { root: container });
+  }
+
+  const spotlightCard = container.querySelector('.bento-card--spotlight');
+  if (spotlightCard) {
+    motion.revealOnScroll(spotlightCard, [spotlightCard], { root: container });
+  }
+
+  const simSection = container.querySelector('#demo-simulador');
+  const simBox = simSection?.querySelector('.simulator-box');
+  if (simSection && simBox) {
+    motion.revealOnScroll(simSection, [simBox], { root: container });
+  }
 }
 
 function initSimulator(container) {
@@ -610,7 +650,7 @@ function initSimulator(container) {
 
   if (!selectSintoma || !sliderIntensidad) return;
 
-  const updateSimulation = () => {
+  const updateSimulation = (isUserInteraction = false) => {
     const sintoma = selectSintoma.value;
     const intensidad = parseInt(sliderIntensidad.value, 10);
     const duracion = parseInt(selectDuracion.value, 10);
@@ -638,6 +678,7 @@ function initSimulator(container) {
         ctaText.textContent = 'Llamar a Emergencias (123)';
         if (ctaIcon) ctaIcon.innerHTML = ui.icon('phone', 'icon icon--xs');
       }
+      if (isUserInteraction) motion.pulseSubtle(resultadoBox);
       return;
     }
 
@@ -702,6 +743,8 @@ function initSimulator(container) {
       resultadoBox.style.borderColor = 'var(--info)';
       resultadoBox.style.backgroundColor = 'var(--info-bg)';
     }
+
+    if (isUserInteraction) motion.pulseSubtle(resultadoBox);
   };
 
   const scrollSim = () => {
@@ -711,9 +754,9 @@ function initSimulator(container) {
   container.querySelector('#btnScrollSim2')?.addEventListener('click', scrollSim);
   container.querySelector('#btnScrollSim3')?.addEventListener('click', scrollSim);
 
-  selectSintoma.addEventListener('change', updateSimulation);
-  selectDuracion.addEventListener('change', updateSimulation);
-  sliderIntensidad.addEventListener('input', updateSimulation);
+  selectSintoma.addEventListener('change', () => updateSimulation(true));
+  selectDuracion.addEventListener('change', () => updateSimulation(true));
+  sliderIntensidad.addEventListener('input', () => updateSimulation(true));
 
-  updateSimulation();
+  updateSimulation(false);
 }

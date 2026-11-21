@@ -6,6 +6,7 @@
  */
 
 import { api } from '../api.js';
+import { motion } from '../motion.js';
 import { router } from '../router.js';
 import { ui, esc } from '../ui.js';
 import { showMfaModal } from './mfa-setup-modal.js';
@@ -394,6 +395,14 @@ async function renderAdminDashboardHome(container) {
     ui.showToast('Métricas y bitácora actualizadas en tiempo real.', 'info', 3000);
   });
 
+  // Animación escalonada discreta para tarjetas KPI
+  const kpiCards = Array.from(
+    container.querySelectorAll('#dashMetricBeds, #dashMetricPros, #dashMetricSpecs, #dashMetricSlots')
+  )
+    .map(el => el.closest('.card'))
+    .filter(Boolean);
+  motion.staggerCards(kpiCards, { root: container });
+
   // Cargar métricas y auditoría en segundo plano
   loadDashboardMetrics(container);
   loadRecentAudit(container);
@@ -417,19 +426,22 @@ async function loadDashboardMetrics(container) {
     const elSlots = container.querySelector('#dashMetricSlots');
 
     if (elBeds) {
-      elBeds.textContent = censusRes.status === 'fulfilled' ? (censusRes.value?.totalCamas ?? 0) : '—';
+      motion.animateCounter(
+        elBeds,
+        censusRes.status === 'fulfilled' ? (censusRes.value?.totalCamas ?? 0) : '—'
+      );
     }
     if (elPros) {
       const totalPros = prosRes.status === 'fulfilled' ? (prosRes.value?.totalElements ?? prosRes.value?.content?.length ?? (Array.isArray(prosRes.value) ? prosRes.value.length : 0)) : '—';
-      elPros.textContent = totalPros;
+      motion.animateCounter(elPros, totalPros);
     }
     if (elSpecs) {
       const totalSpecs = specsRes.status === 'fulfilled' ? (specsRes.value?.totalElements ?? specsRes.value?.content?.length ?? (Array.isArray(specsRes.value) ? specsRes.value.length : 0)) : '—';
-      elSpecs.textContent = totalSpecs;
+      motion.animateCounter(elSpecs, totalSpecs);
     }
     if (elSlots) {
       const totalSlots = slotsRes.status === 'fulfilled' ? (slotsRes.value?.totalElements ?? slotsRes.value?.content?.length ?? (Array.isArray(slotsRes.value) ? slotsRes.value.length : 0)) : '—';
-      elSlots.textContent = totalSlots;
+      motion.animateCounter(elSlots, totalSlots);
     }
   } catch (err) {
     console.warn('Error al cargar métricas del Dashboard:', err);
