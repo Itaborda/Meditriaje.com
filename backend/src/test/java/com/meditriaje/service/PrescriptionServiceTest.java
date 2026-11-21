@@ -371,9 +371,6 @@ class PrescriptionServiceTest {
     @Test
     @DisplayName("obtenerPorPublicId - Administrador es rechazado categóricamente (ADR-007)")
     void getByPublicId_admin_throws403() {
-        Prescription receta = new Prescription(555L, "receta-uuid-1", ATENCION_ID, PACIENTE_ID, PROFESIONAL_ID, 30, Instant.now());
-        when(prescriptionRepository.findEntityByPublicId("receta-uuid-1")).thenReturn(Optional.of(receta));
-
         assertThatThrownBy(() -> service.getByPublicId(
                 "receta-uuid-1",
                 USUARIO_ADMIN_UUID,
@@ -381,6 +378,7 @@ class PrescriptionServiceTest {
         )).isInstanceOf(UnauthorizedAccessException.class)
           .hasMessageContaining("El personal administrativo no tiene acceso a recetas ni contenido clinico");
 
+        verify(prescriptionRepository, never()).findEntityByPublicId(anyString());
         verify(prescriptionRepository, never()).findByPublicId(anyString());
     }
 

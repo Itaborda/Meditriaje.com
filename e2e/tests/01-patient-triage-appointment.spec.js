@@ -43,7 +43,7 @@ test.describe('Flujo Crítico 1: Paciente — Triaje a Cita', () => {
     await expect(symptomChips.first()).toBeVisible({ timeout: 15000 });
 
     // Elegir el primer síntoma no marcado como alarma
-    const nonAlarmChip = page.locator('#symptomsList button.chip:not([style*="var(--danger)"])').first();
+    const nonAlarmChip = page.locator('#symptomsList button.chip:not(.chip--alarm)').first();
     await nonAlarmChip.click();
 
     // Avanzar al Paso 2

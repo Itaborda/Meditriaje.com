@@ -279,6 +279,10 @@ public class ClinicalAttentionService {
             Collection<? extends GrantedAuthority> authorities,
             String ipOrigen
     ) {
+        if (authorities != null && authorities.stream().anyMatch(a -> ClinicalAccessService.ROLE_ADMIN.equals(a.getAuthority()))) {
+            throw new UnauthorizedAccessException("El personal administrativo no tiene acceso a atenciones ni contenido clinico.");
+        }
+
         ClinicalAttention atencion = attentionRepository.findEntityByPublicId(atencionPublicId)
                 .orElseThrow(() -> new ResourceNotFoundException("Atencion clinica no encontrada."));
 

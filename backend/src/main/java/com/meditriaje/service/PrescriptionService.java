@@ -223,9 +223,6 @@ public class PrescriptionService {
             throw new UnauthorizedAccessException("Usuario no autenticado o sin roles asignados.");
         }
 
-        Prescription receta = prescriptionRepository.findEntityByPublicId(publicId)
-                .orElseThrow(() -> new ResourceNotFoundException("Receta medica no encontrada."));
-
         Set<String> roles = authorities.stream()
                 .map(GrantedAuthority::getAuthority)
                 .collect(Collectors.toSet());
@@ -234,6 +231,9 @@ public class PrescriptionService {
         if (roles.contains(ClinicalAccessService.ROLE_ADMIN)) {
             throw new UnauthorizedAccessException("El personal administrativo no tiene acceso a recetas ni contenido clinico.");
         }
+
+        Prescription receta = prescriptionRepository.findEntityByPublicId(publicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Receta medica no encontrada."));
 
         User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario autenticado no encontrado."));

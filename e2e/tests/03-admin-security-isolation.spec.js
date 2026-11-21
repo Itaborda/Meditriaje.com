@@ -37,7 +37,7 @@ test.describe('Flujo Crítico 3: Administrador — Aislamiento de Rutas Clínica
 
     const testEndpoints = [
       { method: 'GET', url: '/api/v1/patients/me/history', label: 'Historia clínica propia' },
-      { method: 'GET', url: '/api/v1/patients/00000000-0000-0000-0000-000000000001/history', label: 'Historia clínica por ID' },
+      { method: 'GET', url: '/api/v1/clinical/patients/00000000-0000-0000-0000-000000000001/history', label: 'Historia clínica por ID' },
       { method: 'GET', url: '/api/v1/attentions/00000000-0000-0000-0000-000000000001', label: 'Detalle de atención médica' },
       { method: 'GET', url: '/api/v1/prescriptions/00000000-0000-0000-0000-000000000001', label: 'Detalle de receta médica' },
       { method: 'GET', url: '/api/v1/clinical/patients/00000000-0000-0000-0000-000000000001/allergies', label: 'Alergias clínicas' },
