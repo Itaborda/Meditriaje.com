@@ -80,10 +80,7 @@ class NoSqlOutsideGatewayTest {
             "com/meditriaje/repository/RepresentacionLegalRepository.java",
             "com/meditriaje/repository/SeguimientoQrRepository.java",
             "com/meditriaje/repository/SeguimientoRepository.java",
-            "com/meditriaje/repository/TriajeReglasRepository.java",
-            "com/meditriaje/repository/TriajeRepository.java",
-            "com/meditriaje/repository/UsuarioRepository.java",
-            "com/meditriaje/repository/ValoracionTriajeRepository.java"
+            "com/meditriaje/repository/UsuarioRepository.java"
     );
 
     @Test

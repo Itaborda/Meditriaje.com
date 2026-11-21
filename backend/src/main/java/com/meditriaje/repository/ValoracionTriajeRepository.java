@@ -2,37 +2,33 @@ package com.meditriaje.repository;
 
 import com.meditriaje.dto.emergency.ValoracionTriajeResponse;
 import com.meditriaje.model.ValoracionTriaje;
-import org.springframework.dao.EmptyResultDataAccessException;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
-import org.springframework.stereotype.Repository;
-
+import com.meditriaje.repository.plsql.PackageGateway;
+import com.meditriaje.repository.plsql.ProcedureSpec;
 import java.math.BigDecimal;
-import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.stereotype.Repository;
 
 /**
- * Repositorio JDBC para {@code VALORACION_TRIAJE} inmutable (Fase U, ADR-027, U04).
+ * Valoraciones clínicas de triaje de urgencias ({@code VALORACION_TRIAJE}, inmutable, Fase U, ADR-027, U04) a través
+ * de {@code PKG_TRIAGE}. No contiene SQL.
  */
 @Repository
 public class ValoracionTriajeRepository {
 
-    private final JdbcTemplate jdbcTemplate;
+    static final String PACKAGE = "PKG_TRIAGE";
 
-    private final RowMapper<ValoracionTriaje> rowMapper = (rs, rowNum) -> {
+    static final RowMapper<ValoracionTriaje> ROW_MAPPER = (rs, rowNum) -> {
         Timestamp tsCreated = rs.getTimestamp("CREADO_AT");
-        int fc = rs.getInt("FRECUENCIA_CARDIACA");
-        int fr = rs.getInt("FRECUENCIA_RESPIRATORIA");
-        int so2 = rs.getInt("SATURACION_OXIGENO");
-        int glasgow = rs.getInt("ESCALA_GLASGOW");
-        BigDecimal temp = rs.getBigDecimal("TEMPERATURA");
-
         return new ValoracionTriaje(
                 rs.getLong("ID"),
                 rs.getString("PUBLIC_ID"),
@@ -42,81 +38,105 @@ public class ValoracionTriajeRepository {
                 rs.getString("MOTIVO_CONSULTA"),
                 rs.getString("HALLAZGOS_CLINICOS"),
                 rs.getString("PRESION_ARTERIAL"),
-                rs.wasNull() ? null : fc,
-                rs.wasNull() ? null : fr,
-                rs.wasNull() ? null : so2,
-                temp,
-                rs.wasNull() ? null : glasgow,
+                nullableInt(rs, "FRECUENCIA_CARDIACA"),
+                nullableInt(rs, "FRECUENCIA_RESPIRATORIA"),
+                nullableInt(rs, "SATURACION_OXIGENO"),
+                rs.getBigDecimal("TEMPERATURA"),
+                nullableInt(rs, "ESCALA_GLASGOW"),
                 rs.getLong("EVALUADOR_USUARIO_ID"),
                 rs.getInt("ES_REEVALUACION") == 1,
                 rs.getString("MOTIVO_REEVALUACION"),
-                tsCreated != null ? tsCreated.toInstant() : null
-        );
+                tsCreated != null ? tsCreated.toInstant() : null);
     };
 
-    public ValoracionTriajeRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "jdbcTemplate no puede ser nulo");
+    static final RowMapper<ValoracionTriajeResponse> RESPONSE_MAPPER = (rs, rowNum) -> {
+        Timestamp tsCreated = rs.getTimestamp("CREADO_AT");
+        return new ValoracionTriajeResponse(
+                rs.getString("PUBLIC_ID"),
+                rs.getString("EPISODIO_PUB_ID"),
+                rs.getInt("VERSION"),
+                rs.getString("NIVEL"),
+                rs.getString("MOTIVO_CONSULTA"),
+                rs.getString("HALLAZGOS_CLINICOS"),
+                rs.getString("PRESION_ARTERIAL"),
+                nullableInt(rs, "FRECUENCIA_CARDIACA"),
+                nullableInt(rs, "FRECUENCIA_RESPIRATORIA"),
+                nullableInt(rs, "SATURACION_OXIGENO"),
+                rs.getBigDecimal("TEMPERATURA"),
+                nullableInt(rs, "ESCALA_GLASGOW"),
+                rs.getString("EVALUADOR_NOMBRE"),
+                rs.getInt("ES_REEVALUACION") == 1,
+                rs.getString("MOTIVO_REEVALUACION"),
+                tsCreated != null ? tsCreated.toInstant() : null);
+    };
+
+    static final ProcedureSpec GET_NEXT_ASSESSMENT_VERSION =
+            ProcedureSpec.function(PACKAGE, "get_next_assessment_version", "result", Types.NUMERIC)
+                    .in("p_episode_id", Types.NUMERIC)
+                    .build();
+
+    static final ProcedureSpec CREATE_ASSESSMENT = ProcedureSpec.procedure(PACKAGE, "create_assessment")
+            .in("p_public_id", Types.VARCHAR)
+            .in("p_episode_id", Types.NUMERIC)
+            .in("p_version", Types.NUMERIC)
+            .in("p_level", Types.VARCHAR)
+            .in("p_chief_complaint", Types.VARCHAR)
+            .in("p_findings", Types.VARCHAR)
+            .in("p_blood_pressure", Types.VARCHAR)
+            .in("p_heart_rate", Types.NUMERIC)
+            .in("p_respiratory_rate", Types.NUMERIC)
+            .in("p_oxygen_saturation", Types.NUMERIC)
+            .in("p_temperature", Types.NUMERIC)
+            .in("p_glasgow", Types.NUMERIC)
+            .in("p_evaluator_user_id", Types.NUMERIC)
+            .in("p_is_reassessment", Types.NUMERIC)
+            .in("p_reassessment_reason", Types.VARCHAR)
+            .out("o_id", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec LIST_ASSESSMENTS_BY_EPISODE =
+            ProcedureSpec.procedure(PACKAGE, "list_assessments_by_episode")
+                    .in("p_episode_id", Types.NUMERIC)
+                    .cursor("o_rows", RESPONSE_MAPPER)
+                    .build();
+
+    static final ProcedureSpec GET_LATEST_ASSESSMENT = ProcedureSpec.procedure(PACKAGE, "get_latest_assessment")
+            .in("p_episode_id", Types.NUMERIC)
+            .cursor("o_row", ROW_MAPPER)
+            .build();
+
+    private final PackageGateway gateway;
+
+    public ValoracionTriajeRepository(PackageGateway gateway) {
+        this.gateway = Objects.requireNonNull(gateway, "gateway no puede ser nulo");
     }
 
     public int obtenerSiguienteVersion(Long episodioId) {
-        String sql = "SELECT COALESCE(MAX(VERSION), 0) + 1 FROM VALORACION_TRIAJE WHERE EPISODIO_ID = ?";
-        Integer version = jdbcTemplate.queryForObject(sql, Integer.class, episodioId);
-        return version != null ? version : 1;
+        Number version = gateway.callFunction(
+                GET_NEXT_ASSESSMENT_VERSION,
+                new MapSqlParameterSource().addValue("p_episode_id", episodioId, Types.NUMERIC));
+        return version != null ? version.intValue() : 1;
     }
 
     public ValoracionTriaje guardar(ValoracionTriaje valoracion) {
-        String sql = """
-                INSERT INTO VALORACION_TRIAJE (
-                    PUBLIC_ID, EPISODIO_ID, VERSION, NIVEL, MOTIVO_CONSULTA, HALLAZGOS_CLINICOS,
-                    PRESION_ARTERIAL, FRECUENCIA_CARDIACA, FRECUENCIA_RESPIRATORIA, SATURACION_OXIGENO,
-                    TEMPERATURA, ESCALA_GLASGOW, EVALUADOR_USUARIO_ID, ES_REEVALUACION, MOTIVO_REEVALUACION
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """;
+        Map<String, Object> out = gateway.execute(CREATE_ASSESSMENT, new MapSqlParameterSource()
+                .addValue("p_public_id", valoracion.publicId(), Types.VARCHAR)
+                .addValue("p_episode_id", valoracion.episodioId(), Types.NUMERIC)
+                .addValue("p_version", valoracion.version(), Types.NUMERIC)
+                .addValue("p_level", valoracion.nivel(), Types.VARCHAR)
+                .addValue("p_chief_complaint", valoracion.motivoConsulta(), Types.VARCHAR)
+                .addValue("p_findings", valoracion.hallazgosClinicos(), Types.VARCHAR)
+                .addValue("p_blood_pressure", valoracion.presionArterial(), Types.VARCHAR)
+                .addValue("p_heart_rate", valoracion.frecuenciaCardiaca(), Types.NUMERIC)
+                .addValue("p_respiratory_rate", valoracion.frecuenciaRespiratoria(), Types.NUMERIC)
+                .addValue("p_oxygen_saturation", valoracion.saturacionOxigeno(), Types.NUMERIC)
+                .addValue("p_temperature", valoracion.temperatura(), Types.NUMERIC)
+                .addValue("p_glasgow", valoracion.escalaGlasgow(), Types.NUMERIC)
+                .addValue("p_evaluator_user_id", valoracion.evaluadorUsuarioId(), Types.NUMERIC)
+                .addValue("p_is_reassessment", valoracion.esReevaluacion() ? 1 : 0, Types.NUMERIC)
+                .addValue("p_reassessment_reason", valoracion.motivoReevaluacion(), Types.VARCHAR));
 
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(sql, new String[]{"ID"});
-            ps.setString(1, valoracion.publicId());
-            ps.setLong(2, valoracion.episodioId());
-            ps.setInt(3, valoracion.version());
-            ps.setString(4, valoracion.nivel());
-            ps.setString(5, valoracion.motivoConsulta());
-            ps.setString(6, valoracion.hallazgosClinicos());
-            ps.setString(7, valoracion.presionArterial());
-
-            if (valoracion.frecuenciaCardiaca() != null) {
-                ps.setInt(8, valoracion.frecuenciaCardiaca());
-            } else {
-                ps.setNull(8, java.sql.Types.NUMERIC);
-            }
-            if (valoracion.frecuenciaRespiratoria() != null) {
-                ps.setInt(9, valoracion.frecuenciaRespiratoria());
-            } else {
-                ps.setNull(9, java.sql.Types.NUMERIC);
-            }
-            if (valoracion.saturacionOxigeno() != null) {
-                ps.setInt(10, valoracion.saturacionOxigeno());
-            } else {
-                ps.setNull(10, java.sql.Types.NUMERIC);
-            }
-            if (valoracion.temperatura() != null) {
-                ps.setBigDecimal(11, valoracion.temperatura());
-            } else {
-                ps.setNull(11, java.sql.Types.NUMERIC);
-            }
-            if (valoracion.escalaGlasgow() != null) {
-                ps.setInt(12, valoracion.escalaGlasgow());
-            } else {
-                ps.setNull(12, java.sql.Types.NUMERIC);
-            }
-
-            ps.setLong(13, valoracion.evaluadorUsuarioId());
-            ps.setInt(14, valoracion.esReevaluacion() ? 1 : 0);
-            ps.setString(15, valoracion.motivoReevaluacion());
-            return ps;
-        }, keyHolder);
-
-        Number id = keyHolder.getKey();
+        Number id = (Number) out.get("o_id");
         Long generatedId = id != null ? id.longValue() : null;
 
         return new ValoracionTriaje(
@@ -136,76 +156,26 @@ public class ValoracionTriajeRepository {
                 valoracion.evaluadorUsuarioId(),
                 valoracion.esReevaluacion(),
                 valoracion.motivoReevaluacion(),
-                Instant.now()
-        );
+                Instant.now());
     }
 
     public List<ValoracionTriajeResponse> listarPorEpisodioId(Long episodioId) {
-        String sql = """
-                SELECT vt.PUBLIC_ID,
-                       e.PUBLIC_ID AS EPISODIO_PUB_ID,
-                       vt.VERSION,
-                       vt.NIVEL,
-                       vt.MOTIVO_CONSULTA,
-                       vt.HALLAZGOS_CLINICOS,
-                       vt.PRESION_ARTERIAL,
-                       vt.FRECUENCIA_CARDIACA,
-                       vt.FRECUENCIA_RESPIRATORIA,
-                       vt.SATURACION_OXIGENO,
-                       vt.TEMPERATURA,
-                       vt.ESCALA_GLASGOW,
-                       COALESCE(prof.NOMBRES || ' ' || prof.APELLIDOS, u.EMAIL) AS EVALUADOR_NOMBRE,
-                       vt.ES_REEVALUACION,
-                       vt.MOTIVO_REEVALUACION,
-                       vt.CREADO_AT
-                FROM VALORACION_TRIAJE vt
-                JOIN EPISODIO_ATENCION e ON vt.EPISODIO_ID = e.ID
-                JOIN USUARIO u ON vt.EVALUADOR_USUARIO_ID = u.ID
-                LEFT JOIN PROFESIONAL prof ON prof.USUARIO_ID = u.ID
-                WHERE vt.EPISODIO_ID = ?
-                ORDER BY vt.VERSION ASC
-                """;
-
-        return jdbcTemplate.query(sql, (rs, rowNum) -> {
-            Timestamp tsCreated = rs.getTimestamp("CREADO_AT");
-            int fc = rs.getInt("FRECUENCIA_CARDIACA");
-            int fr = rs.getInt("FRECUENCIA_RESPIRATORIA");
-            int so2 = rs.getInt("SATURACION_OXIGENO");
-            int glasgow = rs.getInt("ESCALA_GLASGOW");
-            BigDecimal temp = rs.getBigDecimal("TEMPERATURA");
-
-            return new ValoracionTriajeResponse(
-                    rs.getString("PUBLIC_ID"),
-                    rs.getString("EPISODIO_PUB_ID"),
-                    rs.getInt("VERSION"),
-                    rs.getString("NIVEL"),
-                    rs.getString("MOTIVO_CONSULTA"),
-                    rs.getString("HALLAZGOS_CLINICOS"),
-                    rs.getString("PRESION_ARTERIAL"),
-                    rs.wasNull() ? null : fc,
-                    rs.wasNull() ? null : fr,
-                    rs.wasNull() ? null : so2,
-                    temp,
-                    rs.wasNull() ? null : glasgow,
-                    rs.getString("EVALUADOR_NOMBRE"),
-                    rs.getInt("ES_REEVALUACION") == 1,
-                    rs.getString("MOTIVO_REEVALUACION"),
-                    tsCreated != null ? tsCreated.toInstant() : null
-            );
-        }, episodioId);
+        return gateway.list(
+                LIST_ASSESSMENTS_BY_EPISODE,
+                new MapSqlParameterSource().addValue("p_episode_id", episodioId, Types.NUMERIC),
+                "o_rows");
     }
 
     public Optional<ValoracionTriaje> buscarUltimaPorEpisodioId(Long episodioId) {
-        String sql = """
-                SELECT * FROM VALORACION_TRIAJE
-                WHERE EPISODIO_ID = ?
-                ORDER BY VERSION DESC
-                FETCH FIRST 1 ROWS ONLY
-                """;
-        try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(sql, rowMapper, episodioId));
-        } catch (EmptyResultDataAccessException e) {
-            return Optional.empty();
-        }
+        List<ValoracionTriaje> rows = gateway.list(
+                GET_LATEST_ASSESSMENT,
+                new MapSqlParameterSource().addValue("p_episode_id", episodioId, Types.NUMERIC),
+                "o_row");
+        return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
+    }
+
+    private static Integer nullableInt(ResultSet rs, String column) throws SQLException {
+        int value = rs.getInt(column);
+        return rs.wasNull() ? null : value;
     }
 }

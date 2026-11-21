@@ -5,36 +5,36 @@ import com.meditriaje.dto.triage.SintomaItemResponse;
 import com.meditriaje.dto.triage.TriajeResponse;
 import com.meditriaje.model.Triaje;
 import com.meditriaje.model.TriajeSintoma;
+import com.meditriaje.repository.plsql.PackageGateway;
+import com.meditriaje.repository.plsql.ProcedureSpec;
 import com.meditriaje.triage.MotorTriajeBasadoEnReglas;
 import com.meditriaje.triage.RutaSugerida;
-import org.springframework.jdbc.core.BatchPreparedStatementSetter;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
-import org.springframework.stereotype.Repository;
-
 import java.math.BigDecimal;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.time.Instant;
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.namedparam.EmptySqlParameterSource;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.stereotype.Repository;
 
 /**
- * Repositorio JDBC para la persistencia y consulta inmutable de triajes clínicos (ADR-001, ADR-009, HU-02).
+ * Persistencia y consulta inmutable de triajes clínicos (ADR-001, ADR-009, HU-02) a través de {@code PKG_TRIAGE}.
+ * No contiene SQL.
  */
 @Repository
 public class TriajeRepository {
 
-    private final JdbcTemplate jdbcTemplate;
+    static final String PACKAGE = "PKG_TRIAGE";
 
-    private final RowMapper<Triaje> triajeRowMapper = (rs, rowNum) -> {
+    static final RowMapper<Triaje> TRIAGE_MAPPER = (rs, rowNum) -> {
         Timestamp tsCreated = rs.getTimestamp("CREATED_AT");
         return new Triaje(
                 rs.getLong("ID"),
@@ -45,12 +45,99 @@ public class TriajeRepository {
                 rs.getString("RUTA_SUGERIDA"),
                 rs.getInt("ES_EMERGENCIA") == 1,
                 rs.getString("OBSERVACIONES"),
-                tsCreated != null ? tsCreated.toInstant() : null
-        );
+                tsCreated != null ? tsCreated.toInstant() : null);
     };
 
-    public TriajeRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "JdbcTemplate no puede ser nulo");
+    /** Fila plana del triaje consolidado: datos del triaje repetidos y, si existe, un síntoma. */
+    record DetailRow(
+            String triajePublicId,
+            String pacientePublicId,
+            String versionReglas,
+            String nivelPrioridad,
+            String rutaSugerida,
+            boolean esEmergencia,
+            String observaciones,
+            Instant createdAt,
+            String sintomaCodigo,
+            String sintomaNombre,
+            BigDecimal duracionHoras,
+            int intensidad,
+            boolean esAlarma) {}
+
+    static final RowMapper<DetailRow> DETAIL_MAPPER = (rs, rowNum) -> {
+        Timestamp tsCreated = rs.getTimestamp("CREATED_AT");
+        return new DetailRow(
+                rs.getString("TRIAJE_PUBLIC_ID"),
+                rs.getString("PACIENTE_PUBLIC_ID"),
+                rs.getString("VERSION_REGLAS"),
+                rs.getString("NIVEL_PRIORIDAD"),
+                rs.getString("RUTA_SUGERIDA"),
+                rs.getInt("ES_EMERGENCIA") == 1,
+                rs.getString("OBSERVACIONES"),
+                tsCreated != null ? tsCreated.toInstant() : null,
+                rs.getString("SINTOMA_CODIGO"),
+                rs.getString("SINTOMA_NOMBRE"),
+                rs.getBigDecimal("DURACION_HORAS"),
+                rs.getInt("INTENSIDAD"),
+                rs.getInt("ES_ALARMA") == 1);
+    };
+
+    static final RowMapper<CatalogoSintomaResponse> CATALOG_MAPPER = (rs, rowNum) -> new CatalogoSintomaResponse(
+            rs.getString("PUBLIC_ID"),
+            rs.getString("CODIGO"),
+            rs.getString("NOMBRE"),
+            rs.getString("CATEGORIA"),
+            rs.getInt("ES_ALARMA") == 1);
+
+    static final RowMapper<Map.Entry<String, Long>> SYMPTOM_ID_MAPPER =
+            (rs, rowNum) -> new AbstractMap.SimpleImmutableEntry<>(rs.getString("CODIGO"), rs.getLong("ID"));
+
+    static final ProcedureSpec CREATE_TRIAGE = ProcedureSpec.procedure(PACKAGE, "create_triage")
+            .in("p_public_id", Types.VARCHAR)
+            .in("p_patient_id", Types.NUMERIC)
+            .in("p_rules_version", Types.VARCHAR)
+            .in("p_priority_level", Types.VARCHAR)
+            .in("p_suggested_route", Types.VARCHAR)
+            .in("p_is_emergency", Types.NUMERIC)
+            .in("p_observations", Types.VARCHAR)
+            .out("o_id", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec ADD_TRIAGE_SYMPTOM = ProcedureSpec.procedure(PACKAGE, "add_triage_symptom")
+            .in("p_triage_id", Types.NUMERIC)
+            .in("p_symptom_id", Types.NUMERIC)
+            .in("p_duration_hours", Types.NUMERIC)
+            .in("p_intensity", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec GET_TRIAGE_DETAIL = ProcedureSpec.procedure(PACKAGE, "get_triage_detail")
+            .in("p_public_id", Types.VARCHAR)
+            .cursor("o_rows", DETAIL_MAPPER)
+            .build();
+
+    static final ProcedureSpec GET_TRIAGE_BY_PUBLIC_ID = ProcedureSpec.procedure(PACKAGE, "get_triage_by_public_id")
+            .in("p_public_id", Types.VARCHAR)
+            .cursor("o_row", TRIAGE_MAPPER)
+            .build();
+
+    static final ProcedureSpec GET_TRIAGE_BY_ID = ProcedureSpec.procedure(PACKAGE, "get_triage_by_id")
+            .in("p_id", Types.NUMERIC)
+            .cursor("o_row", TRIAGE_MAPPER)
+            .build();
+
+    static final ProcedureSpec LIST_ACTIVE_SYMPTOM_CATALOG =
+            ProcedureSpec.procedure(PACKAGE, "list_active_symptom_catalog")
+                    .cursor("o_rows", CATALOG_MAPPER)
+                    .build();
+
+    static final ProcedureSpec LIST_ACTIVE_SYMPTOM_IDS = ProcedureSpec.procedure(PACKAGE, "list_active_symptom_ids")
+            .cursor("o_rows", SYMPTOM_ID_MAPPER)
+            .build();
+
+    private final PackageGateway gateway;
+
+    public TriajeRepository(PackageGateway gateway) {
+        this.gateway = Objects.requireNonNull(gateway, "PackageGateway no puede ser nulo");
     }
 
     /**
@@ -58,25 +145,16 @@ public class TriajeRepository {
      */
     public Long guardarTriaje(Triaje triaje) {
         Objects.requireNonNull(triaje, "El triaje no puede ser nulo");
-        final String sql = """
-            INSERT INTO TRIAJE (PUBLIC_ID, PACIENTE_ID, VERSION_REGLAS, NIVEL_PRIORIDAD, RUTA_SUGERIDA, ES_EMERGENCIA, OBSERVACIONES)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """;
+        Map<String, Object> out = gateway.execute(CREATE_TRIAGE, new MapSqlParameterSource()
+                .addValue("p_public_id", triaje.publicId(), Types.VARCHAR)
+                .addValue("p_patient_id", triaje.pacienteId(), Types.NUMERIC)
+                .addValue("p_rules_version", triaje.versionReglas(), Types.VARCHAR)
+                .addValue("p_priority_level", triaje.nivelPrioridad(), Types.VARCHAR)
+                .addValue("p_suggested_route", triaje.rutaSugerida(), Types.VARCHAR)
+                .addValue("p_is_emergency", triaje.esEmergencia() ? 1 : 0, Types.NUMERIC)
+                .addValue("p_observations", triaje.observaciones(), Types.VARCHAR));
 
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(sql, new String[] { "ID" });
-            ps.setString(1, triaje.publicId());
-            ps.setLong(2, triaje.pacienteId());
-            ps.setString(3, triaje.versionReglas());
-            ps.setString(4, triaje.nivelPrioridad());
-            ps.setString(5, triaje.rutaSugerida());
-            ps.setInt(6, triaje.esEmergencia() ? 1 : 0);
-            ps.setString(7, triaje.observaciones());
-            return ps;
-        }, keyHolder);
-
-        Number key = keyHolder.getKey();
+        Number key = (Number) out.get("o_id");
         if (key == null) {
             throw new IllegalStateException("No se pudo obtener el ID autogenerado para el triaje.");
         }
@@ -84,34 +162,21 @@ public class TriajeRepository {
     }
 
     /**
-     * Inserta por lote los síntomas reportados en la evaluación de triaje (ADR-009).
+     * Inserta los síntomas reportados en la evaluación de triaje (ADR-009), uno por llamada, dentro de la misma
+     * transacción del servicio.
      */
     public void guardarSintomas(Long triajeId, List<TriajeSintoma> sintomas) {
         Objects.requireNonNull(triajeId, "triajeId no puede ser nulo");
         if (sintomas == null || sintomas.isEmpty()) {
             return;
         }
-
-        final String sql = """
-            INSERT INTO TRIAJE_SINTOMA (TRIAJE_ID, SINTOMA_ID, DURACION_HORAS, INTENSIDAD)
-            VALUES (?, ?, ?, ?)
-            """;
-
-        jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
-            @Override
-            public void setValues(PreparedStatement ps, int i) throws SQLException {
-                TriajeSintoma s = sintomas.get(i);
-                ps.setLong(1, triajeId);
-                ps.setLong(2, s.sintomaId());
-                ps.setBigDecimal(3, s.duracionHoras());
-                ps.setInt(4, s.intensidad());
-            }
-
-            @Override
-            public int getBatchSize() {
-                return sintomas.size();
-            }
-        });
+        for (TriajeSintoma s : sintomas) {
+            gateway.execute(ADD_TRIAGE_SYMPTOM, new MapSqlParameterSource()
+                    .addValue("p_triage_id", triajeId)
+                    .addValue("p_symptom_id", s.sintomaId())
+                    .addValue("p_duration_hours", s.duracionHoras())
+                    .addValue("p_intensity", s.intensidad()));
+        }
     }
 
     /**
@@ -119,83 +184,43 @@ public class TriajeRepository {
      */
     public Optional<TriajeResponse> buscarPorPublicId(String publicId) {
         Objects.requireNonNull(publicId, "El publicId no puede ser nulo");
-        final String sql = """
-            SELECT t.ID AS TRIAJE_ID,
-                   t.PUBLIC_ID AS TRIAJE_PUBLIC_ID,
-                   p.PUBLIC_ID AS PACIENTE_PUBLIC_ID,
-                   t.VERSION_REGLAS,
-                   t.NIVEL_PRIORIDAD,
-                   t.RUTA_SUGERIDA,
-                   t.ES_EMERGENCIA,
-                   t.OBSERVACIONES,
-                   t.CREATED_AT,
-                   s.CODIGO AS SINTOMA_CODIGO,
-                   s.NOMBRE AS SINTOMA_NOMBRE,
-                   ts.DURACION_HORAS,
-                   ts.INTENSIDAD,
-                   s.ES_ALARMA
-            FROM TRIAJE t
-            JOIN PACIENTE p ON t.PACIENTE_ID = p.ID
-            LEFT JOIN TRIAJE_SINTOMA ts ON ts.TRIAJE_ID = t.ID
-            LEFT JOIN SINTOMA s ON ts.SINTOMA_ID = s.ID
-            WHERE t.PUBLIC_ID = ?
-            ORDER BY s.NOMBRE ASC
-            """;
+        List<DetailRow> rows =
+                gateway.list(GET_TRIAGE_DETAIL, new MapSqlParameterSource("p_public_id", publicId), "o_rows");
+        if (rows.isEmpty()) {
+            return Optional.empty();
+        }
 
-        return jdbcTemplate.query(sql, rs -> {
-            if (!rs.next()) {
-                return Optional.empty();
-            }
-
-            String triajePublicId = rs.getString("TRIAJE_PUBLIC_ID");
-            String pacientePublicId = rs.getString("PACIENTE_PUBLIC_ID");
-            String versionReglas = rs.getString("VERSION_REGLAS");
-            String nivelPrioridad = rs.getString("NIVEL_PRIORIDAD");
-            String rutaSugerida = rs.getString("RUTA_SUGERIDA");
-            boolean esEmergencia = rs.getInt("ES_EMERGENCIA") == 1;
-            String observaciones = rs.getString("OBSERVACIONES");
-            Timestamp tsCreated = rs.getTimestamp("CREATED_AT");
-            Instant createdAt = tsCreated != null ? tsCreated.toInstant() : null;
-
-            List<SintomaItemResponse> sintomas = new ArrayList<>();
-            List<String> sintomasAlarma = new ArrayList<>();
-
-            do {
-                String codigo = rs.getString("SINTOMA_CODIGO");
-                if (codigo != null) {
-                    String nombre = rs.getString("SINTOMA_NOMBRE");
-                    BigDecimal duracion = rs.getBigDecimal("DURACION_HORAS");
-                    int intensidad = rs.getInt("INTENSIDAD");
-                    boolean esAlarma = rs.getInt("ES_ALARMA") == 1;
-
-                    sintomas.add(new SintomaItemResponse(codigo, nombre, duracion, intensidad, esAlarma));
-                    if (esAlarma) {
-                        sintomasAlarma.add(codigo);
-                    }
+        DetailRow head = rows.get(0);
+        List<SintomaItemResponse> sintomas = new ArrayList<>();
+        List<String> sintomasAlarma = new ArrayList<>();
+        for (DetailRow row : rows) {
+            if (row.sintomaCodigo() != null) {
+                sintomas.add(new SintomaItemResponse(
+                        row.sintomaCodigo(), row.sintomaNombre(), row.duracionHoras(), row.intensidad(), row.esAlarma()));
+                if (row.esAlarma()) {
+                    sintomasAlarma.add(row.sintomaCodigo());
                 }
-            } while (rs.next());
+            }
+        }
+        sintomasAlarma.sort(String::compareTo);
 
-            sintomasAlarma.sort(String::compareTo);
+        String mensaje = head.esEmergencia()
+                ? MotorTriajeBasadoEnReglas.MENSAJE_EMERGENCIA
+                : MotorTriajeBasadoEnReglas.mensajePara(RutaSugerida.valueOf(head.rutaSugerida()));
 
-            String mensaje = esEmergencia
-                    ? MotorTriajeBasadoEnReglas.MENSAJE_EMERGENCIA
-                    : MotorTriajeBasadoEnReglas.mensajePara(RutaSugerida.valueOf(rutaSugerida));
-
-            return Optional.of(new TriajeResponse(
-                    triajePublicId,
-                    pacientePublicId,
-                    nivelPrioridad,
-                    rutaSugerida,
-                    esEmergencia,
-                    versionReglas,
-                    mensaje,
-                    MotorTriajeBasadoEnReglas.AVISO,
-                    sintomasAlarma,
-                    sintomas,
-                    observaciones,
-                    createdAt
-            ));
-        }, publicId);
+        return Optional.of(new TriajeResponse(
+                head.triajePublicId(),
+                head.pacientePublicId(),
+                head.nivelPrioridad(),
+                head.rutaSugerida(),
+                head.esEmergencia(),
+                head.versionReglas(),
+                mensaje,
+                MotorTriajeBasadoEnReglas.AVISO,
+                sintomasAlarma,
+                sintomas,
+                head.observaciones(),
+                head.createdAt()));
     }
 
     /**
@@ -203,13 +228,8 @@ public class TriajeRepository {
      */
     public Optional<Triaje> buscarEntidadPorPublicId(String publicId) {
         Objects.requireNonNull(publicId, "El publicId no puede ser nulo");
-        final String sql = """
-            SELECT ID, PUBLIC_ID, PACIENTE_ID, VERSION_REGLAS, NIVEL_PRIORIDAD, RUTA_SUGERIDA,
-                   ES_EMERGENCIA, OBSERVACIONES, CREATED_AT
-            FROM TRIAJE
-            WHERE PUBLIC_ID = ?
-            """;
-        List<Triaje> resultados = jdbcTemplate.query(sql, triajeRowMapper, publicId);
+        List<Triaje> resultados =
+                gateway.list(GET_TRIAGE_BY_PUBLIC_ID, new MapSqlParameterSource("p_public_id", publicId), "o_row");
         return resultados.stream().findFirst();
     }
 
@@ -218,13 +238,7 @@ public class TriajeRepository {
      */
     public Optional<Triaje> buscarEntidadPorId(Long id) {
         Objects.requireNonNull(id, "El id no puede ser nulo");
-        final String sql = """
-            SELECT ID, PUBLIC_ID, PACIENTE_ID, VERSION_REGLAS, NIVEL_PRIORIDAD, RUTA_SUGERIDA,
-                   ES_EMERGENCIA, OBSERVACIONES, CREATED_AT
-            FROM TRIAJE
-            WHERE ID = ?
-            """;
-        List<Triaje> resultados = jdbcTemplate.query(sql, triajeRowMapper, id);
+        List<Triaje> resultados = gateway.list(GET_TRIAGE_BY_ID, new MapSqlParameterSource("p_id", id), "o_row");
         return resultados.stream().findFirst();
     }
 
@@ -232,30 +246,19 @@ public class TriajeRepository {
      * Lista los síntomas activos del catálogo ordenados por categoría y nombre (ADR-009).
      */
     public List<CatalogoSintomaResponse> listarCatalogoSintomasActivos() {
-        final String sql = """
-            SELECT PUBLIC_ID, CODIGO, NOMBRE, CATEGORIA, ES_ALARMA
-            FROM SINTOMA
-            WHERE ESTADO = 'ACTIVO'
-            ORDER BY CATEGORIA, NOMBRE
-            """;
-        return jdbcTemplate.query(sql, (rs, rowNum) -> new CatalogoSintomaResponse(
-                rs.getString("PUBLIC_ID"),
-                rs.getString("CODIGO"),
-                rs.getString("NOMBRE"),
-                rs.getString("CATEGORIA"),
-                rs.getInt("ES_ALARMA") == 1
-        ));
+        return gateway.list(LIST_ACTIVE_SYMPTOM_CATALOG, EmptySqlParameterSource.INSTANCE, "o_rows");
     }
 
     /**
      * Mapeo rápido de código a ID interno numérico de los síntomas activos en base de datos.
      */
     public Map<String, Long> obtenerMapaCodigoAIdSintomas() {
-        final String sql = "SELECT CODIGO, ID FROM SINTOMA WHERE ESTADO = 'ACTIVO'";
+        List<Map.Entry<String, Long>> rows =
+                gateway.list(LIST_ACTIVE_SYMPTOM_IDS, EmptySqlParameterSource.INSTANCE, "o_rows");
         Map<String, Long> mapa = new HashMap<>();
-        jdbcTemplate.query(sql, rs -> {
-            mapa.put(rs.getString("CODIGO"), rs.getLong("ID"));
-        });
+        for (Map.Entry<String, Long> row : rows) {
+            mapa.put(row.getKey(), row.getValue());
+        }
         return mapa;
     }
 }
