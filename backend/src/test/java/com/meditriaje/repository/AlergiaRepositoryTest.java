@@ -1,149 +1,120 @@
 package com.meditriaje.repository;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
 import com.meditriaje.dto.allergy.AlergiaResponse;
 import com.meditriaje.model.Alergia;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentMatchers;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.PreparedStatementCreator;
-import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.support.KeyHolder;
-
+import com.meditriaje.repository.plsql.PackageGateway;
+import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.namedparam.SqlParameterSource;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.contains;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.when;
-
-@ExtendWith(MockitoExtension.class)
+/** El repositorio de alergias delega en PKG_PATIENTS a través de la pasarela. */
 class AlergiaRepositoryTest {
 
-    @Mock
-    private JdbcTemplate jdbcTemplate;
-
-    private AlergiaRepository alergiaRepository;
-
-    @BeforeEach
-    void setUp() {
-        alergiaRepository = new AlergiaRepository(jdbcTemplate);
-    }
+    private final PackageGateway gateway = mock(PackageGateway.class);
+    private final AlergiaRepository alergiaRepository = new AlergiaRepository(gateway);
 
     @Test
-    @DisplayName("listarPorPacienteId: retorna lista de alergias activas")
+    @DisplayName("listarPorPacienteId: por defecto pide solo las activas")
     void listarPorPacienteId_retornaLista() {
-        Alergia alergia = new Alergia(1L, "ale-uuid-1", 10L, "Penicilina", "Anafilaxia", "GRAVE", "ACTIVA", "PROFESIONAL", 1L, null, null, null, null, Instant.now(), Instant.now());
-        when(jdbcTemplate.query(contains("FROM ALERGIA"), any(RowMapper.class), eq(10L), eq(1)))
+        Alergia alergia = new Alergia(1L, "ale-uuid-1", 10L, "Penicilina", "Anafilaxia", "GRAVE", "ACTIVA",
+                "PROFESIONAL", 1L, null, null, null, null, Instant.now(), Instant.now());
+        when(gateway.<Alergia>list(eq(AlergiaRepository.LIST_BY_PATIENT_ID),
+                        argThat(p -> Long.valueOf(10L).equals(p.getValue("p_patient_id"))
+                                && Integer.valueOf(1).equals(p.getValue("p_only_active"))), eq("o_rows")))
                 .thenReturn(List.of(alergia));
 
         List<Alergia> resultado = alergiaRepository.listarPorPacienteId(10L);
 
-        assertThat(resultado).hasSize(1);
-        assertThat(resultado.get(0).sustancia()).isEqualTo("Penicilina");
-        assertThat(resultado.get(0).severidad()).isEqualTo("GRAVE");
+        assertThat(resultado).containsExactly(alergia);
     }
 
     @Test
-    @DisplayName("listarPorPacienteId: con id nulo retorna lista vacía sin consultar BD")
+    @DisplayName("listarPorPacienteId: con id nulo retorna lista vacía sin consultar la base")
     void listarPorPacienteId_idNulo() {
-        List<Alergia> resultado = alergiaRepository.listarPorPacienteId(null);
-        assertThat(resultado).isEmpty();
+        assertThat(alergiaRepository.listarPorPacienteId(null)).isEmpty();
+        verifyNoInteractions(gateway);
     }
 
     @Test
-    @DisplayName("listarPorPacientePublicId: retorna lista de DTOs AlergiaResponse")
+    @DisplayName("listarPorPacientePublicId: envía la bandera de inactivas")
     void listarPorPacientePublicId_exito() {
-        AlergiaResponse response = new AlergiaResponse(
-                "ale-uuid-1", "pac-uuid-10", "Ibuprofeno", "Erupcion", "MODERADA", "ACTIVA", "PACIENTE", true, null, Instant.now(), null, null
-        );
-        when(jdbcTemplate.query(contains("FROM ALERGIA a"), any(RowMapper.class), eq("pac-uuid-10"), eq(1)))
+        AlergiaResponse response = new AlergiaResponse("ale-uuid-1", "pac-uuid-10", "Ibuprofeno", "Erupcion",
+                "MODERADA", "ACTIVA", "PACIENTE", true, null, Instant.now(), null, null);
+        when(gateway.<AlergiaResponse>list(eq(AlergiaRepository.LIST_BY_PATIENT_PUBLIC_ID),
+                        argThat(p -> "pac-uuid-10".equals(p.getValue("p_patient_public_id"))
+                                && Integer.valueOf(1).equals(p.getValue("p_include_inactive"))), eq("o_rows")))
                 .thenReturn(List.of(response));
 
-        List<AlergiaResponse> resultado = alergiaRepository.listarPorPacientePublicId("pac-uuid-10", true);
-
-        assertThat(resultado).hasSize(1);
-        assertThat(resultado.get(0).sustancia()).isEqualTo("Ibuprofeno");
-        assertThat(resultado.get(0).autorreportada()).isTrue();
+        assertThat(alergiaRepository.listarPorPacientePublicId("pac-uuid-10", true)).containsExactly(response);
     }
 
     @Test
-    @DisplayName("buscarEntidadPorPublicId: retorna Optional con la entidad si existe")
-    void buscarEntidadPorPublicId_exito() {
-        Alergia alergia = new Alergia(1L, "ale-uuid-1", 10L, "Dipirona", "Hipotension", "GRAVE", "ACTIVA", "PROFESIONAL", 2L, null, null, null, null, Instant.now(), Instant.now());
-        when(jdbcTemplate.query(contains("WHERE PUBLIC_ID = ?"), any(RowMapper.class), eq("ale-uuid-1")))
-                .thenReturn(List.of(alergia));
-
-        Optional<Alergia> resultado = alergiaRepository.buscarEntidadPorPublicId("ale-uuid-1");
-
-        assertThat(resultado).isPresent();
-        assertThat(resultado.get().sustancia()).isEqualTo("Dipirona");
-    }
-
-    @Test
-    @DisplayName("buscarPorPublicId: retorna Optional con AlergiaResponse DTO")
+    @DisplayName("buscarEntidadPorPublicId y buscarPorPublicId usan rutinas distintas")
     void buscarPorPublicId_exito() {
-        AlergiaResponse response = new AlergiaResponse(
-                "ale-uuid-1", "pac-uuid-10", "Dipirona", "Hipotension", "GRAVE", "ACTIVA", "PROFESIONAL", false, null, Instant.now(), null, null
-        );
-        when(jdbcTemplate.query(contains("WHERE a.PUBLIC_ID = ?"), any(RowMapper.class), eq("ale-uuid-1")))
-                .thenReturn(List.of(response));
+        Alergia alergia = new Alergia(1L, "ale-uuid-1", 10L, "Dipirona", "Hipotension", "GRAVE", "ACTIVA",
+                "PROFESIONAL", 2L, null, null, null, null, Instant.now(), Instant.now());
+        AlergiaResponse response = new AlergiaResponse("ale-uuid-1", "pac-uuid-10", "Dipirona", "Hipotension",
+                "GRAVE", "ACTIVA", "PROFESIONAL", false, null, Instant.now(), null, null);
+        when(gateway.<Alergia>single(eq(AlergiaRepository.GET_BY_PUBLIC_ID), any(SqlParameterSource.class),
+                        eq("o_row")))
+                .thenReturn(Optional.of(alergia));
+        when(gateway.<AlergiaResponse>single(eq(AlergiaRepository.GET_VIEW_BY_PUBLIC_ID),
+                        any(SqlParameterSource.class), eq("o_row")))
+                .thenReturn(Optional.of(response));
 
-        Optional<AlergiaResponse> resultado = alergiaRepository.buscarPorPublicId("ale-uuid-1");
-
-        assertThat(resultado).isPresent();
-        assertThat(resultado.get().sustancia()).isEqualTo("Dipirona");
-        assertThat(resultado.get().autorreportada()).isFalse();
+        assertThat(alergiaRepository.buscarEntidadPorPublicId("ale-uuid-1")).contains(alergia);
+        assertThat(alergiaRepository.buscarPorPublicId("ale-uuid-1")).contains(response);
     }
 
     @Test
-    @DisplayName("existeActivaPorSustancia: true si conteo > 0")
+    @DisplayName("existeActivaPorSustancia: true si el conteo es mayor que cero")
     void existeActivaPorSustancia_true() {
-        when(jdbcTemplate.queryForObject(contains("COUNT(*)"), eq(Integer.class), eq(10L), eq("Penicilina")))
-                .thenReturn(1);
+        when(gateway.<Object>callFunction(eq(AlergiaRepository.COUNT_ACTIVE_BY_SUBSTANCE),
+                        any(SqlParameterSource.class)))
+                .thenReturn(BigDecimal.ONE);
 
-        boolean existe = alergiaRepository.existeActivaPorSustancia(10L, "Penicilina");
-        assertThat(existe).isTrue();
+        assertThat(alergiaRepository.existeActivaPorSustancia(10L, "Penicilina")).isTrue();
+        assertThat(alergiaRepository.existeActivaPorSustancia(10L, " ")).isFalse();
     }
 
     @Test
-    @DisplayName("crear: inserta y recupera clave generada")
+    @DisplayName("crear: recorta la sustancia, aplica valores por defecto y devuelve el ID")
     void crear_exito() {
-        doAnswer(invocation -> {
-            KeyHolder kh = invocation.getArgument(1);
-            kh.getKeyList().add(Map.of("ID", 55L));
-            return 1;
-        }).when(jdbcTemplate).update(any(PreparedStatementCreator.class), any(KeyHolder.class));
+        when(gateway.execute(eq(AlergiaRepository.CREATE_ALLERGY),
+                        argThat(p -> "Ibuprofeno".equals(p.getValue("p_substance"))
+                                && "ACTIVA".equals(p.getValue("p_status"))
+                                && "PROFESIONAL".equals(p.getValue("p_origin")))))
+                .thenReturn(Map.of("o_id", new BigDecimal("55")));
 
-        Alergia nueva = new Alergia(null, 10L, "Ibuprofeno", "Erupcion", "MODERADA", null);
-        Long id = alergiaRepository.crear(nueva);
+        Alergia nueva = new Alergia(null, 10L, " Ibuprofeno ", "Erupcion", "MODERADA", null);
 
-        assertThat(id).isEqualTo(55L);
+        assertThat(alergiaRepository.crear(nueva)).isEqualTo(55L);
     }
 
     @Test
-    @DisplayName("inactivar: ejecuta update y retorna filas afectadas")
+    @DisplayName("inactivar: devuelve las filas afectadas")
     void inactivar_exito() {
         Instant inactInstant = Instant.now();
-        when(jdbcTemplate.update(
-                contains("UPDATE ALERGIA"),
-                eq(99L),
-                eq("Prueba negativa"),
-                eq(Timestamp.from(inactInstant)),
-                eq(55L)
-        )).thenReturn(1);
+        when(gateway.execute(eq(AlergiaRepository.INACTIVATE_ALLERGY),
+                        argThat(p -> Long.valueOf(55L).equals(p.getValue("p_id"))
+                                && "Prueba negativa".equals(p.getValue("p_reason"))
+                                && Timestamp.from(inactInstant).equals(p.getValue("p_inactivated_at")))))
+                .thenReturn(Map.of("o_affected", BigDecimal.ONE));
 
-        int actualizados = alergiaRepository.inactivar(55L, 99L, "Prueba negativa", inactInstant);
-        assertThat(actualizados).isEqualTo(1);
+        assertThat(alergiaRepository.inactivar(55L, 99L, "Prueba negativa ", inactInstant)).isEqualTo(1);
     }
 }

@@ -1,42 +1,41 @@
 package com.meditriaje.repository;
 
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
+import com.meditriaje.repository.plsql.PackageGateway;
+import com.meditriaje.repository.plsql.ProcedureSpec;
+import java.sql.Types;
+import java.util.Map;
+import java.util.Objects;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.stereotype.Repository;
 
-import java.sql.PreparedStatement;
-import java.util.Objects;
-
 /**
- * Repositorio para la entidad {@code CONSENTIMIENTO}.
+ * Repositorio de la entidad {@code CONSENTIMIENTO} a través de {@code PKG_PATIENTS}. No contiene SQL.
  */
 @Repository
 public class ConsentimientoRepository {
 
-    private final JdbcTemplate jdbcTemplate;
+    static final ProcedureSpec CREATE_CONSENT = ProcedureSpec.procedure(PacienteRepository.PACKAGE, "create_consent")
+            .in("p_user_id", Types.NUMERIC)
+            .in("p_text_version", Types.VARCHAR)
+            .in("p_accepted", Types.NUMERIC)
+            .in("p_source_ip", Types.VARCHAR)
+            .out("o_id", Types.NUMERIC)
+            .build();
 
-    public ConsentimientoRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "JdbcTemplate no puede ser nulo");
+    private final PackageGateway gateway;
+
+    public ConsentimientoRepository(PackageGateway gateway) {
+        this.gateway = Objects.requireNonNull(gateway, "gateway no puede ser nulo");
     }
 
     public Long registrar(Long usuarioId, String versionTexto, boolean aceptado, String ipOrigen) {
-        final String sql = """
-            INSERT INTO CONSENTIMIENTO (USUARIO_ID, VERSION_TEXTO, ACEPTADO, IP_ORIGEN, REVOCADO)
-            VALUES (?, ?, ?, ?, 0)
-            """;
-
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(sql, new String[] { "ID" });
-            ps.setLong(1, usuarioId);
-            ps.setString(2, versionTexto);
-            ps.setInt(3, aceptado ? 1 : 0);
-            ps.setString(4, ipOrigen);
-            return ps;
-        }, keyHolder);
-
-        Number key = keyHolder.getKey();
+        Objects.requireNonNull(usuarioId, "usuarioId no puede ser nulo");
+        Map<String, Object> out = gateway.execute(CREATE_CONSENT, new MapSqlParameterSource()
+                .addValue("p_user_id", usuarioId)
+                .addValue("p_text_version", versionTexto)
+                .addValue("p_accepted", aceptado ? 1 : 0)
+                .addValue("p_source_ip", ipOrigen, Types.VARCHAR));
+        Number key = (Number) out.get("o_id");
         if (key == null) {
             throw new IllegalStateException("No se pudo obtener el ID autogenerado para el consentimiento.");
         }

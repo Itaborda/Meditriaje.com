@@ -2,35 +2,116 @@ package com.meditriaje.repository;
 
 import com.meditriaje.dto.PacientePerfilResponse;
 import com.meditriaje.model.Paciente;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
-import org.springframework.stereotype.Repository;
-
+import com.meditriaje.repository.plsql.PackageGateway;
+import com.meditriaje.repository.plsql.ProcedureSpec;
 import java.sql.Date;
-import java.sql.PreparedStatement;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.time.LocalDate;
-import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.stereotype.Repository;
 
 /**
- * Repositorio para la entidad {@code PACIENTE}.
+ * Repositorio de la entidad {@code PACIENTE} a través de {@code PKG_PATIENTS}. No contiene SQL: declara las
+ * rutinas del paquete y delega la llamada en {@link PackageGateway}.
  */
 @Repository
 public class PacienteRepository {
 
-    private final JdbcTemplate jdbcTemplate;
+    static final String PACKAGE = "PKG_PATIENTS";
 
-    public PacienteRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "JdbcTemplate no puede ser nulo");
+    static final RowMapper<Paciente> PATIENT_MAPPER = (rs, rowNum) -> {
+        Date fNac = rs.getDate("FECHA_NACIMIENTO");
+        Timestamp tsCreated = rs.getTimestamp("CREATED_AT");
+        Timestamp tsUpdated = rs.getTimestamp("UPDATED_AT");
+        return new Paciente(
+                rs.getLong("ID"),
+                rs.getLong("USUARIO_ID"),
+                rs.getString("PUBLIC_ID"),
+                rs.getString("TIPO_DOCUMENTO"),
+                rs.getString("NUMERO_DOCUMENTO"),
+                rs.getString("NOMBRES"),
+                rs.getString("APELLIDOS"),
+                fNac != null ? fNac.toLocalDate() : null,
+                rs.getString("TELEFONO"),
+                tsCreated != null ? tsCreated.toInstant() : null,
+                tsUpdated != null ? tsUpdated.toInstant() : null);
+    };
+
+    static final RowMapper<PacientePerfilResponse> PROFILE_MAPPER = (rs, rowNum) -> {
+        Date fNac = rs.getDate("FECHA_NACIMIENTO");
+        return new PacientePerfilResponse(
+                rs.getString("PUBLIC_ID"),
+                rs.getString("TIPO_DOCUMENTO"),
+                rs.getString("NUMERO_DOCUMENTO"),
+                rs.getString("NOMBRES"),
+                rs.getString("APELLIDOS"),
+                fNac != null ? fNac.toLocalDate() : null,
+                rs.getString("TELEFONO"),
+                rs.getString("EMAIL"));
+    };
+
+    static final ProcedureSpec COUNT_PATIENTS_BY_DOCUMENT = ProcedureSpec.function(
+                    PACKAGE, "count_patients_by_document", "result", Types.NUMERIC)
+            .in("p_document_type", Types.VARCHAR)
+            .in("p_document_number", Types.VARCHAR)
+            .build();
+
+    static final ProcedureSpec CREATE_PATIENT = ProcedureSpec.procedure(PACKAGE, "create_patient")
+            .in("p_user_id", Types.NUMERIC)
+            .in("p_public_id", Types.VARCHAR)
+            .in("p_document_type", Types.VARCHAR)
+            .in("p_document_number", Types.VARCHAR)
+            .in("p_first_names", Types.VARCHAR)
+            .in("p_last_names", Types.VARCHAR)
+            .in("p_birth_date", Types.DATE)
+            .in("p_phone", Types.VARCHAR)
+            .out("o_id", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec GET_PATIENT_PROFILE_BY_USER_PUBLIC_ID = ProcedureSpec.procedure(
+                    PACKAGE, "get_patient_profile_by_user_public_id")
+            .in("p_user_public_id", Types.VARCHAR)
+            .cursor("o_row", PROFILE_MAPPER)
+            .build();
+
+    static final ProcedureSpec GET_PATIENT_BY_USER_ID = ProcedureSpec.procedure(PACKAGE, "get_patient_by_user_id")
+            .in("p_user_id", Types.NUMERIC)
+            .cursor("o_row", PATIENT_MAPPER)
+            .build();
+
+    static final ProcedureSpec GET_PATIENT_BY_ID = ProcedureSpec.procedure(PACKAGE, "get_patient_by_id")
+            .in("p_id", Types.NUMERIC)
+            .cursor("o_row", PATIENT_MAPPER)
+            .build();
+
+    static final ProcedureSpec GET_PATIENT_BY_PUBLIC_ID = ProcedureSpec.procedure(
+                    PACKAGE, "get_patient_by_public_id")
+            .in("p_public_id", Types.VARCHAR)
+            .cursor("o_row", PATIENT_MAPPER)
+            .build();
+
+    static final ProcedureSpec GET_PATIENT_BY_DOCUMENT = ProcedureSpec.procedure(PACKAGE, "get_patient_by_document")
+            .in("p_document_type", Types.VARCHAR)
+            .in("p_document_number", Types.VARCHAR)
+            .cursor("o_row", PATIENT_MAPPER)
+            .build();
+
+    private final PackageGateway gateway;
+
+    public PacienteRepository(PackageGateway gateway) {
+        this.gateway = Objects.requireNonNull(gateway, "gateway no puede ser nulo");
     }
 
     public boolean existePorDocumento(String tipoDocumento, String numeroDocumento) {
-        final String sql = "SELECT COUNT(*) FROM PACIENTE WHERE TIPO_DOCUMENTO = ? AND NUMERO_DOCUMENTO = ?";
-        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, tipoDocumento, numeroDocumento);
-        return count != null && count > 0;
+        Number count = gateway.callFunction(COUNT_PATIENTS_BY_DOCUMENT, new MapSqlParameterSource()
+                .addValue("p_document_type", tipoDocumento, Types.VARCHAR)
+                .addValue("p_document_number", numeroDocumento, Types.VARCHAR));
+        return count != null && count.longValue() > 0;
     }
 
     public Long crear(
@@ -41,28 +122,18 @@ public class PacienteRepository {
             String nombres,
             String apellidos,
             LocalDate fechaNacimiento,
-            String telefono
-    ) {
-        final String sql = """
-            INSERT INTO PACIENTE (USUARIO_ID, PUBLIC_ID, TIPO_DOCUMENTO, NUMERO_DOCUMENTO, NOMBRES, APELLIDOS, FECHA_NACIMIENTO, TELEFONO)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """;
-
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(sql, new String[] { "ID" });
-            ps.setLong(1, usuarioId);
-            ps.setString(2, publicId);
-            ps.setString(3, tipoDocumento);
-            ps.setString(4, numeroDocumento);
-            ps.setString(5, nombres);
-            ps.setString(6, apellidos);
-            ps.setDate(7, Date.valueOf(fechaNacimiento));
-            ps.setString(8, telefono);
-            return ps;
-        }, keyHolder);
-
-        Number key = keyHolder.getKey();
+            String telefono) {
+        Objects.requireNonNull(usuarioId, "usuarioId no puede ser nulo");
+        Map<String, Object> out = gateway.execute(CREATE_PATIENT, new MapSqlParameterSource()
+                .addValue("p_user_id", usuarioId)
+                .addValue("p_public_id", publicId)
+                .addValue("p_document_type", tipoDocumento)
+                .addValue("p_document_number", numeroDocumento)
+                .addValue("p_first_names", nombres)
+                .addValue("p_last_names", apellidos)
+                .addValue("p_birth_date", Date.valueOf(fechaNacimiento))
+                .addValue("p_phone", telefono, Types.VARCHAR));
+        Number key = (Number) out.get("o_id");
         if (key == null) {
             throw new IllegalStateException("No se pudo obtener el ID autogenerado para el paciente.");
         }
@@ -70,139 +141,25 @@ public class PacienteRepository {
     }
 
     public Optional<PacientePerfilResponse> buscarPerfilPorUsuarioPublicId(String usuarioPublicId) {
-        final String sql = """
-            SELECT p.PUBLIC_ID, p.TIPO_DOCUMENTO, p.NUMERO_DOCUMENTO, p.NOMBRES, p.APELLIDOS,
-                   p.FECHA_NACIMIENTO, p.TELEFONO, u.EMAIL
-            FROM PACIENTE p
-            JOIN USUARIO u ON u.ID = p.USUARIO_ID
-            WHERE u.PUBLIC_ID = ?
-            """;
-        List<PacientePerfilResponse> resultados = jdbcTemplate.query(sql, (rs, rowNum) -> {
-            Date fNac = rs.getDate("FECHA_NACIMIENTO");
-            return new PacientePerfilResponse(
-                    rs.getString("PUBLIC_ID"),
-                    rs.getString("TIPO_DOCUMENTO"),
-                    rs.getString("NUMERO_DOCUMENTO"),
-                    rs.getString("NOMBRES"),
-                    rs.getString("APELLIDOS"),
-                    fNac != null ? fNac.toLocalDate() : null,
-                    rs.getString("TELEFONO"),
-                    rs.getString("EMAIL")
-            );
-        }, usuarioPublicId);
-        return resultados.stream().findFirst();
+        return gateway.single(GET_PATIENT_PROFILE_BY_USER_PUBLIC_ID,
+                new MapSqlParameterSource("p_user_public_id", usuarioPublicId), "o_row");
     }
 
     public Optional<Paciente> buscarPorUsuarioId(Long usuarioId) {
-        final String sql = """
-            SELECT ID, USUARIO_ID, PUBLIC_ID, TIPO_DOCUMENTO, NUMERO_DOCUMENTO,
-                   NOMBRES, APELLIDOS, FECHA_NACIMIENTO, TELEFONO, CREATED_AT, UPDATED_AT
-            FROM PACIENTE
-            WHERE USUARIO_ID = ?
-            """;
-        List<Paciente> resultados = jdbcTemplate.query(sql, (rs, rowNum) -> {
-            Date fNac = rs.getDate("FECHA_NACIMIENTO");
-            Timestamp tsCreated = rs.getTimestamp("CREATED_AT");
-            Timestamp tsUpdated = rs.getTimestamp("UPDATED_AT");
-            return new Paciente(
-                    rs.getLong("ID"),
-                    rs.getLong("USUARIO_ID"),
-                    rs.getString("PUBLIC_ID"),
-                    rs.getString("TIPO_DOCUMENTO"),
-                    rs.getString("NUMERO_DOCUMENTO"),
-                    rs.getString("NOMBRES"),
-                    rs.getString("APELLIDOS"),
-                    fNac != null ? fNac.toLocalDate() : null,
-                    rs.getString("TELEFONO"),
-                    tsCreated != null ? tsCreated.toInstant() : null,
-                    tsUpdated != null ? tsUpdated.toInstant() : null
-            );
-        }, usuarioId);
-        return resultados.stream().findFirst();
+        return gateway.single(GET_PATIENT_BY_USER_ID, new MapSqlParameterSource("p_user_id", usuarioId), "o_row");
     }
 
     public Optional<Paciente> buscarPorId(Long id) {
-        final String sql = """
-            SELECT ID, USUARIO_ID, PUBLIC_ID, TIPO_DOCUMENTO, NUMERO_DOCUMENTO,
-                   NOMBRES, APELLIDOS, FECHA_NACIMIENTO, TELEFONO, CREATED_AT, UPDATED_AT
-            FROM PACIENTE
-            WHERE ID = ?
-            """;
-        List<Paciente> resultados = jdbcTemplate.query(sql, (rs, rowNum) -> {
-            Date fNac = rs.getDate("FECHA_NACIMIENTO");
-            Timestamp tsCreated = rs.getTimestamp("CREATED_AT");
-            Timestamp tsUpdated = rs.getTimestamp("UPDATED_AT");
-            return new Paciente(
-                    rs.getLong("ID"),
-                    rs.getLong("USUARIO_ID"),
-                    rs.getString("PUBLIC_ID"),
-                    rs.getString("TIPO_DOCUMENTO"),
-                    rs.getString("NUMERO_DOCUMENTO"),
-                    rs.getString("NOMBRES"),
-                    rs.getString("APELLIDOS"),
-                    fNac != null ? fNac.toLocalDate() : null,
-                    rs.getString("TELEFONO"),
-                    tsCreated != null ? tsCreated.toInstant() : null,
-                    tsUpdated != null ? tsUpdated.toInstant() : null
-            );
-        }, id);
-        return resultados.stream().findFirst();
+        return gateway.single(GET_PATIENT_BY_ID, new MapSqlParameterSource("p_id", id), "o_row");
     }
 
     public Optional<Paciente> buscarPorPublicId(String publicId) {
-        final String sql = """
-            SELECT ID, USUARIO_ID, PUBLIC_ID, TIPO_DOCUMENTO, NUMERO_DOCUMENTO,
-                   NOMBRES, APELLIDOS, FECHA_NACIMIENTO, TELEFONO, CREATED_AT, UPDATED_AT
-            FROM PACIENTE
-            WHERE PUBLIC_ID = ?
-            """;
-        List<Paciente> resultados = jdbcTemplate.query(sql, (rs, rowNum) -> {
-            Date fNac = rs.getDate("FECHA_NACIMIENTO");
-            Timestamp tsCreated = rs.getTimestamp("CREATED_AT");
-            Timestamp tsUpdated = rs.getTimestamp("UPDATED_AT");
-            return new Paciente(
-                    rs.getLong("ID"),
-                    rs.getLong("USUARIO_ID"),
-                    rs.getString("PUBLIC_ID"),
-                    rs.getString("TIPO_DOCUMENTO"),
-                    rs.getString("NUMERO_DOCUMENTO"),
-                    rs.getString("NOMBRES"),
-                    rs.getString("APELLIDOS"),
-                    fNac != null ? fNac.toLocalDate() : null,
-                    rs.getString("TELEFONO"),
-                    tsCreated != null ? tsCreated.toInstant() : null,
-                    tsUpdated != null ? tsUpdated.toInstant() : null
-            );
-        }, publicId);
-        return resultados.stream().findFirst();
+        return gateway.single(GET_PATIENT_BY_PUBLIC_ID, new MapSqlParameterSource("p_public_id", publicId), "o_row");
     }
 
     public Optional<Paciente> buscarPorDocumento(String tipoDocumento, String numeroDocumento) {
-        final String sql = """
-            SELECT ID, USUARIO_ID, PUBLIC_ID, TIPO_DOCUMENTO, NUMERO_DOCUMENTO,
-                   NOMBRES, APELLIDOS, FECHA_NACIMIENTO, TELEFONO, CREATED_AT, UPDATED_AT
-            FROM PACIENTE
-            WHERE TIPO_DOCUMENTO = ? AND NUMERO_DOCUMENTO = ?
-            """;
-        List<Paciente> resultados = jdbcTemplate.query(sql, (rs, rowNum) -> {
-            Date fNac = rs.getDate("FECHA_NACIMIENTO");
-            Timestamp tsCreated = rs.getTimestamp("CREATED_AT");
-            Timestamp tsUpdated = rs.getTimestamp("UPDATED_AT");
-            return new Paciente(
-                    rs.getLong("ID"),
-                    rs.getLong("USUARIO_ID"),
-                    rs.getString("PUBLIC_ID"),
-                    rs.getString("TIPO_DOCUMENTO"),
-                    rs.getString("NUMERO_DOCUMENTO"),
-                    rs.getString("NOMBRES"),
-                    rs.getString("APELLIDOS"),
-                    fNac != null ? fNac.toLocalDate() : null,
-                    rs.getString("TELEFONO"),
-                    tsCreated != null ? tsCreated.toInstant() : null,
-                    tsUpdated != null ? tsUpdated.toInstant() : null
-            );
-        }, tipoDocumento, numeroDocumento);
-        return resultados.stream().findFirst();
+        return gateway.single(GET_PATIENT_BY_DOCUMENT, new MapSqlParameterSource()
+                .addValue("p_document_type", tipoDocumento)
+                .addValue("p_document_number", numeroDocumento), "o_row");
     }
 }
-
