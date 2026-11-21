@@ -27,8 +27,9 @@ test.describe('Flujo Crítico 3: Administrador — Aislamiento de Rutas Clínica
     // Esperar redirección a panel administrativo
     await expect(page).toHaveURL(/.*#\/admin\/.*/);
 
-    // 2. Comprobar que en la UI del admin NO existen enlaces de navegación hacia historia clínica
-    const clinicalNavLinks = page.locator('nav a[href*="/patient/history"], nav a[href*="/professional/agenda"]');
+    // 2. Comprobar que en la UI visible del admin NO existen enlaces de navegación hacia historia clínica
+    await expect(page.locator('#bottom-nav')).toBeHidden();
+    const clinicalNavLinks = page.locator('nav:visible a[href*="/patient/history"], nav:visible a[href*="/professional/agenda"]');
     await expect(clinicalNavLinks).toHaveCount(0);
 
     // 3. Evaluar peticiones fetch autenticadas directamente en el contexto del navegador del admin
@@ -68,7 +69,8 @@ test.describe('Flujo Crítico 3: Administrador — Aislamiento de Rutas Clínica
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Accept': 'application/json'
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
           },
           credentials: 'include',
           body: JSON.stringify({

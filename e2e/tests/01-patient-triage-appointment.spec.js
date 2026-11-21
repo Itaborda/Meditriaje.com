@@ -52,7 +52,7 @@ test.describe('Flujo Crítico 1: Paciente — Triaje a Cita', () => {
     await btnNext.click();
 
     // 4. Paso 2: Detalles del síntoma (Intensidad y Duración)
-    await expect(page.locator('h2')).toContainText('Detalles de tus síntomas');
+    await expect(page.getByRole('heading', { name: 'Detalles de tus síntomas' })).toBeVisible();
 
     // Seleccionar intensidad moderada (ej. 4 de 10)
     const scaleBtn = page.locator('.scale-btn[data-val="4"]').first();
@@ -100,6 +100,6 @@ test.describe('Flujo Crítico 1: Paciente — Triaje a Cita', () => {
 
     // 7. Verificación de éxito de reserva
     // Debe mostrar la vista de éxito o confirmación
-    await expect(page.locator('text=¡Cita agendada exitosamente!|Reserva Exitosa|Cita Confirmada').first()).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('text=/¡Cita agendada exitosamente!|Tu cita ha sido confirmada|Cita Confirmada/i').first()).toBeVisible({ timeout: 15000 });
   });
 });

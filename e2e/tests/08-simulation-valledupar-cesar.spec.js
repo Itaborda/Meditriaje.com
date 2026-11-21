@@ -111,7 +111,7 @@ test.describe('Simulación Clínica y Operativa — Valledupar, Cesar (Hospital 
 
     expect(admisionEnviada).not.toBeNull();
     expect(admisionEnviada.esIdentidadProvisional).toBe(true);
-    expect(admisionEnviada.motivoConsulta).toContain('Valledupar');
+    expect(admisionEnviada.motivoLlegada).toContain('Valledupar');
   });
 
   test('Paso 2: Valoración presencial de triaje humano Nivel II (Res. 5596) en Urgencias Valledupar', async ({ page }) => {
@@ -220,7 +220,7 @@ test.describe('Simulación Clínica y Operativa — Valledupar, Cesar (Hospital 
       });
     });
 
-    await page.route(`**/api/v1/hospital/beds/${sedeValledupar}`, async (route) => {
+    await page.route('**/api/v1/hospital/beds', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

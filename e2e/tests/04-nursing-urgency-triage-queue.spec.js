@@ -199,7 +199,7 @@ test.describe('Fase 2: Circuito de Enfermería, Urgencias y Triaje Presencial', 
     // Verificar que el payload contiene la bandera esNN y los datos
     expect(admissionPayload).not.toBeNull();
     expect(admissionPayload.esIdentidadProvisional).toBe(true);
-    expect(admissionPayload.motivoConsulta).toContain('traumatismo craneoencefálico');
+    expect(admissionPayload.motivoLlegada).toContain('traumatismo craneoencefálico');
     expect(admissionPayload.edadAparente).toBe(45);
   });
 

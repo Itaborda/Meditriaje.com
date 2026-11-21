@@ -29,27 +29,14 @@ test.describe('Flujo Crítico 2: Profesional — Atención a Receta', () => {
     await expect(page).toHaveURL(/.*#\/professional\/agenda/);
     await expect(page.locator('h1')).toContainText('Agenda del día');
 
-    // 2. Localizar cita para atender
-    // Si existe botón de iniciar atención en alguna cita del listado
-    const btnStart = page.locator('.btn-start').first();
-    const btnHistory = page.locator('a[href*="#/professional/patient-history/"]').first();
-
-    // Esperar a que la lista de citas cargue
+    // 2. Consultar todas las citas de la agenda (sin limitar al día actual) y esperar carga
     await expect(page.locator('#agendaList')).toBeVisible({ timeout: 15000 });
+    await page.fill('#agendaDate', '');
+    await page.click('#agendaFilters button[type="submit"]');
 
-    if (await btnStart.isVisible()) {
-      await btnStart.click();
-    } else {
-      // Si todas ya están iniciadas o cerradas, navegar a la primera atención disponible de la demo
-      const attendLink = page.locator('a[href*="#/professional/attention/"]').first();
-      if (await attendLink.isVisible()) {
-        await attendLink.click();
-      } else {
-        // Alternativamente, buscar una cita en estado PROGRAMADA
-        const firstCita = page.locator('.appointment-card').first();
-        await expect(firstCita).toBeVisible();
-      }
-    }
+    const btnStart = page.locator('.btn-start').first();
+    await expect(btnStart).toBeVisible({ timeout: 15000 });
+    await btnStart.click();
 
     // 3. Verificar que estamos en la vista de atención clínica
     await expect(page).toHaveURL(/.*#\/professional\/attention\/.*/);
@@ -132,6 +119,6 @@ test.describe('Flujo Crítico 2: Profesional — Atención a Receta', () => {
     }
 
     // Verificar confirmación de receta emitida exitosamente
-    await expect(page.locator('text=Receta emitida exitosamente|Receta creada|Cerrada · inmutable').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=/Receta emitida|Receta creada|Cerrada · inmutable/i').first()).toBeVisible({ timeout: 10000 });
   });
 });

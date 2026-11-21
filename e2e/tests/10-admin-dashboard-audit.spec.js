@@ -34,6 +34,24 @@ test.describe('Auditoría Integral: Dashboard Administrativo y Menú Lateral', (
       });
     });
 
+    await page.route('**/api/v1/hospital/census*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          sedePublicId: 'site-1',
+          sedeNombre: 'Hospital Central Valledupar',
+          totalCamas: 120,
+          ocupadas: 84,
+          disponibles: 36,
+          enLimpieza: 0,
+          enMantenimiento: 0,
+          tasaOcupacionPorcentaje: 70,
+          areas: []
+        })
+      });
+    });
+
     // Mock de métricas para el Dashboard
     await page.route('**/api/v1/admin/sites*', async (route) => {
       await route.fulfill({
