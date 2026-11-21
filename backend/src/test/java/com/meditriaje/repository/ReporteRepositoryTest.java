@@ -1,95 +1,85 @@
 package com.meditriaje.repository;
 
 import com.meditriaje.dto.report.DistribucionItemDto;
-import org.junit.jupiter.api.BeforeEach;
+import com.meditriaje.repository.ReporteRepository.CountRow;
+import com.meditriaje.repository.ReporteRepository.DispensationStatusRow;
+import com.meditriaje.repository.ReporteRepository.DistributionRow;
+import com.meditriaje.repository.plsql.PackageGateway;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowCallbackHandler;
+import org.springframework.jdbc.core.namedparam.SqlParameterSource;
 
-import java.sql.ResultSet;
+import java.math.BigDecimal;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@ExtendWith(MockitoExtension.class)
+/** Reportes operativos vía PKG_REPORTS (sin SQL en Java). */
 class ReporteRepositoryTest {
 
-    @Mock
-    private JdbcTemplate jdbcTemplate;
-
-    private ReporteRepository reporteRepository;
-
-    @BeforeEach
-    void setUp() {
-        reporteRepository = new ReporteRepository(jdbcTemplate);
-    }
+    private final PackageGateway gateway = mock(PackageGateway.class);
+    private final ReporteRepository reporteRepository = new ReporteRepository(gateway);
 
     @Test
-    @DisplayName("contarCitasPorEstado - mapea estados correctamente")
-    void contarCitasPorEstado_exito() throws Exception {
+    @DisplayName("contarCitasPorEstado - envía ventana temporal y mapea estados")
+    void contarCitasPorEstado_exito() {
         Instant desde = Instant.now().minusSeconds(86400);
         Instant hasta = Instant.now();
 
-        doAnswer(invocation -> {
-            RowCallbackHandler rch = invocation.getArgument(1);
-            ResultSet rs1 = mock(ResultSet.class);
-            when(rs1.getString("ESTADO")).thenReturn("ATENDIDA");
-            when(rs1.getLong("TOTAL")).thenReturn(15L);
-            rch.processRow(rs1);
-
-            ResultSet rs2 = mock(ResultSet.class);
-            when(rs2.getString("ESTADO")).thenReturn("CANCELADA");
-            when(rs2.getLong("TOTAL")).thenReturn(3L);
-            rch.processRow(rs2);
-            return null;
-        }).when(jdbcTemplate).query(contains("FROM CITA"), any(RowCallbackHandler.class), any(Object[].class));
+        when(gateway.<CountRow>list(eq(ReporteRepository.COUNT_APPOINTMENTS_BY_STATUS), any(SqlParameterSource.class), eq("o_rows")))
+                .thenReturn(List.of(
+                        new CountRow("ATENDIDA", 15L),
+                        new CountRow("CANCELADA", 3L)
+                ));
 
         Map<String, Long> estados = reporteRepository.contarCitasPorEstado(desde, hasta);
 
-        assertThat(estados).containsEntry("ATENDIDA", 15L);
-        assertThat(estados).containsEntry("CANCELADA", 3L);
+        assertThat(estados).containsEntry("ATENDIDA", 15L).containsEntry("CANCELADA", 3L);
+        verify(gateway).list(eq(ReporteRepository.COUNT_APPOINTMENTS_BY_STATUS), argThat((SqlParameterSource p) ->
+                Timestamp.from(desde).equals(p.getValue("p_from"))
+                        && Timestamp.from(hasta).equals(p.getValue("p_to"))), eq("o_rows"));
     }
 
     @Test
-    @DisplayName("obtenerCitasPorEspecialidad - calcula porcentajes y orden")
+    @DisplayName("obtenerCitasPorEspecialidad - calcula porcentajes y redondeo")
     void obtenerCitasPorEspecialidad_exito() {
-        when(jdbcTemplate.queryForList(contains("JOIN ESPECIALIDAD"), any(Object[].class)))
+        when(gateway.<DistributionRow>list(eq(ReporteRepository.LIST_APPOINTMENTS_BY_SPECIALTY), any(SqlParameterSource.class), eq("o_rows")))
                 .thenReturn(List.of(
-                        Map.of("PUBLIC_ID", "esp-1", "NOMBRE", "Medicina General", "TOTAL", 75L),
-                        Map.of("PUBLIC_ID", "esp-2", "NOMBRE", "Pediatría", "TOTAL", 25L)
+                        new DistributionRow("esp-1", "Medicina General", 2L),
+                        new DistributionRow("esp-2", "Pediatría", 1L)
                 ));
 
         List<DistribucionItemDto> items = reporteRepository.obtenerCitasPorEspecialidad(null, null);
 
         assertThat(items).hasSize(2);
+        assertThat(items.get(0).publicId()).isEqualTo("esp-1");
         assertThat(items.get(0).etiqueta()).isEqualTo("Medicina General");
-        assertThat(items.get(0).cantidad()).isEqualTo(75L);
-        assertThat(items.get(0).porcentaje()).isEqualTo(75.0);
+        assertThat(items.get(0).cantidad()).isEqualTo(2L);
+        assertThat(items.get(0).porcentaje()).isEqualTo(66.67);
 
         assertThat(items.get(1).etiqueta()).isEqualTo("Pediatría");
-        assertThat(items.get(1).cantidad()).isEqualTo(25L);
-        assertThat(items.get(1).porcentaje()).isEqualTo(25.0);
+        assertThat(items.get(1).cantidad()).isEqualTo(1L);
+        assertThat(items.get(1).porcentaje()).isEqualTo(33.33);
     }
 
     @Test
     @DisplayName("obtenerCitasPorSede - agrupa por sede hospitalaria")
     void obtenerCitasPorSede_exito() {
-        when(jdbcTemplate.queryForList(contains("JOIN SEDE"), any(Object[].class)))
+        when(gateway.<DistributionRow>list(eq(ReporteRepository.LIST_APPOINTMENTS_BY_SITE), any(SqlParameterSource.class), eq("o_rows")))
                 .thenReturn(List.of(
-                        Map.of("PUBLIC_ID", "sed-1", "NOMBRE", "Sede Norte", "TOTAL", 60L),
-                        Map.of("PUBLIC_ID", "sed-2", "NOMBRE", "Sede Centro", "TOTAL", 40L)
+                        new DistributionRow("sed-1", "Sede Norte", 60L),
+                        new DistributionRow("sed-2", "Sede Centro", 40L)
                 ));
 
         List<DistribucionItemDto> items = reporteRepository.obtenerCitasPorSede(null, null);
@@ -100,71 +90,63 @@ class ReporteRepositoryTest {
     }
 
     @Test
-    @DisplayName("contarTriajesPorNivel y emergencias - consulta correcta")
-    void contarTriajes_exito() throws Exception {
-        doAnswer(invocation -> {
-            RowCallbackHandler rch = invocation.getArgument(1);
-            ResultSet rs = mock(ResultSet.class);
-            when(rs.getString("NIVEL_PRIORIDAD")).thenReturn("II");
-            when(rs.getLong("TOTAL")).thenReturn(8L);
-            rch.processRow(rs);
-            return null;
-        }).when(jdbcTemplate).query(contains("FROM TRIAJE WHERE 1=1"), any(RowCallbackHandler.class), any(Object[].class));
-
-        when(jdbcTemplate.queryForObject(contains("WHERE ES_EMERGENCIA = 1"), eq(Long.class), any(Object[].class)))
-                .thenReturn(4L);
+    @DisplayName("contarTriajesPorNivel, emergencias y rutas - consulta correcta")
+    void contarTriajes_exito() {
+        when(gateway.<CountRow>list(eq(ReporteRepository.COUNT_TRIAGES_BY_LEVEL), any(SqlParameterSource.class), eq("o_rows")))
+                .thenReturn(List.of(new CountRow("II", 8L)));
+        when(gateway.callFunction(eq(ReporteRepository.COUNT_EMERGENCY_TRIAGES), any(SqlParameterSource.class)))
+                .thenReturn(new BigDecimal("4"));
+        when(gateway.<DistributionRow>list(eq(ReporteRepository.LIST_TRIAGES_BY_ROUTE), any(SqlParameterSource.class), eq("o_rows")))
+                .thenReturn(List.of(new DistributionRow("URGENCIAS", "URGENCIAS", 5L)));
 
         Map<String, Long> niveles = reporteRepository.contarTriajesPorNivel(null, null);
         long emergencias = reporteRepository.contarTriajesEmergencia(null, null);
+        List<DistribucionItemDto> rutas = reporteRepository.obtenerTriajesPorRuta(null, null);
 
         assertThat(niveles).containsEntry("II", 8L);
         assertThat(emergencias).isEqualTo(4L);
+        assertThat(rutas).containsExactly(new DistribucionItemDto("URGENCIAS", "URGENCIAS", 5L, 100.0));
     }
 
     @Test
-    @DisplayName("contarRecetasPorEstadoDispensacion - mapea pendientes, parciales y totales")
-    void contarRecetasPorEstadoDispensacion_exito() throws Exception {
-        doAnswer(invocation -> {
-            RowCallbackHandler rch = invocation.getArgument(1);
-            ResultSet rs = mock(ResultSet.class);
-            when(rs.getLong("PENDIENTES")).thenReturn(10L);
-            when(rs.getLong("PARCIALES")).thenReturn(5L);
-            when(rs.getLong("TOTALES")).thenReturn(20L);
-            rch.processRow(rs);
-            return null;
-        }).when(jdbcTemplate).query(contains("FROM RECETA r"), any(RowCallbackHandler.class), any(Object[].class));
-
-        when(jdbcTemplate.queryForObject(contains("SELECT COUNT(*) FROM RECETA"), eq(Long.class), any(Object[].class)))
-                .thenReturn(35L);
-        when(jdbcTemplate.queryForObject(contains("COALESCE(SUM(dd.CANTIDAD_ENTREGADA)"), eq(Long.class), any(Object[].class)))
-                .thenReturn(150L);
+    @DisplayName("contarRecetasPorEstadoDispensacion - mapea pendientes, parciales, totales y default en cero")
+    void contarRecetasPorEstadoDispensacion_exito() {
+        when(gateway.<DispensationStatusRow>single(eq(ReporteRepository.COUNT_DISPENSATION_STATUSES), any(SqlParameterSource.class), eq("o_rows")))
+                .thenReturn(Optional.of(new DispensationStatusRow(10L, 5L, 20L)))
+                .thenReturn(Optional.empty());
+        when(gateway.callFunction(eq(ReporteRepository.COUNT_PRESCRIPTIONS), any(SqlParameterSource.class)))
+                .thenReturn(new BigDecimal("35"));
+        when(gateway.callFunction(eq(ReporteRepository.SUM_DISPENSED_UNITS), any(SqlParameterSource.class)))
+                .thenReturn(new BigDecimal("150"));
 
         long emitidas = reporteRepository.contarRecetasEmitidas(null, null);
         long unidades = reporteRepository.contarUnidadesDispensadas(null, null);
         Map<String, Long> estados = reporteRepository.contarRecetasPorEstadoDispensacion(null, null);
+        Map<String, Long> vacio = reporteRepository.contarRecetasPorEstadoDispensacion(null, null);
 
         assertThat(emitidas).isEqualTo(35L);
         assertThat(unidades).isEqualTo(150L);
-        assertThat(estados.get("PENDIENTE")).isEqualTo(10L);
-        assertThat(estados.get("DISPENSADA_PARCIAL")).isEqualTo(5L);
-        assertThat(estados.get("DISPENSADA_TOTAL")).isEqualTo(20L);
+        assertThat(estados).containsEntry("PENDIENTE", 10L)
+                .containsEntry("DISPENSADA_PARCIAL", 5L)
+                .containsEntry("DISPENSADA_TOTAL", 20L);
+        assertThat(vacio).containsEntry("PENDIENTE", 0L)
+                .containsEntry("DISPENSADA_PARCIAL", 0L)
+                .containsEntry("DISPENSADA_TOTAL", 0L);
     }
 
     @Test
-    @DisplayName("contarActivacionesBreakGlass y activos - métricas de emergencia")
+    @DisplayName("contarActivacionesBreakGlass y activos - métricas de emergencia y guarda de nulo")
     void metricasBreakGlass_exito() {
-        when(jdbcTemplate.queryForObject(contains("FROM ACCESO_BREAK_GLASS WHERE 1=1"), eq(Long.class), any(Object[].class)))
-                .thenReturn(6L);
-        when(jdbcTemplate.queryForObject(contains("WHERE FECHA_EXPIRACION > ?"), eq(Long.class), any()))
-                .thenReturn(2L);
-
-        when(jdbcTemplate.queryForList(contains("FROM ACCESO_BREAK_GLASS bg"), any(Object[].class)))
-                .thenReturn(List.of(
-                        Map.of("PUBLIC_ID", "esp-1", "NOMBRE", "Urgencias", "TOTAL", 6L)
-                ));
+        Instant ahora = Instant.now();
+        when(gateway.callFunction(eq(ReporteRepository.COUNT_BREAK_GLASS_ACTIVATIONS), any(SqlParameterSource.class)))
+                .thenReturn(new BigDecimal("6"));
+        when(gateway.callFunction(eq(ReporteRepository.COUNT_BREAK_GLASS_ACTIVE), any(SqlParameterSource.class)))
+                .thenReturn(new BigDecimal("2"));
+        when(gateway.<DistributionRow>list(eq(ReporteRepository.LIST_BREAK_GLASS_BY_SPECIALTY), any(SqlParameterSource.class), eq("o_rows")))
+                .thenReturn(List.of(new DistributionRow("esp-1", "Urgencias", 6L)));
 
         long total = reporteRepository.contarActivacionesBreakGlass(null, null);
-        long activas = reporteRepository.contarBreakGlassActivos(Instant.now());
+        long activas = reporteRepository.contarBreakGlassActivos(ahora);
         List<DistribucionItemDto> porEsp = reporteRepository.obtenerBreakGlassPorEspecialidad(null, null);
 
         assertThat(total).isEqualTo(6L);
@@ -172,5 +154,8 @@ class ReporteRepositoryTest {
         assertThat(porEsp).hasSize(1);
         assertThat(porEsp.get(0).cantidad()).isEqualTo(6L);
         assertThat(porEsp.get(0).porcentaje()).isEqualTo(100.0);
+
+        assertThatThrownBy(() -> reporteRepository.contarBreakGlassActivos(null))
+                .isInstanceOf(NullPointerException.class);
     }
 }

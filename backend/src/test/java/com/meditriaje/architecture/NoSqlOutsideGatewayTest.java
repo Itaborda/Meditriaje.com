@@ -68,7 +68,6 @@ class NoSqlOutsideGatewayTest {
             "com/meditriaje/repository/ProcedimientoHospitalarioRepository.java",
             "com/meditriaje/repository/RecetaRepository.java",
             "com/meditriaje/repository/RecordatorioCitaRepository.java",
-            "com/meditriaje/repository/ReporteRepository.java",
             "com/meditriaje/repository/RepresentacionLegalRepository.java",
             "com/meditriaje/repository/SeguimientoQrRepository.java",
             "com/meditriaje/repository/SeguimientoRepository.java",
