@@ -5,33 +5,33 @@ import com.meditriaje.dto.clinical.EnmiendaResponse;
 import com.meditriaje.dto.clinical.SignosVitalesDto;
 import com.meditriaje.model.Atencion;
 import com.meditriaje.model.SignoVital;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
-import org.springframework.stereotype.Repository;
-
-import java.math.BigDecimal;
-import java.sql.PreparedStatement;
+import com.meditriaje.repository.plsql.PackageGateway;
+import com.meditriaje.repository.plsql.ProcedureSpec;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.SqlParameterSource;
+import org.springframework.stereotype.Repository;
 
 /**
- * Repositorio JDBC para la entidad {@code ATENCION} y {@code SIGNO_VITAL}.
- * Implementa persistencia y consultas clínicas con SQL 100% parametrizado (ADR-001, ADR-007, ADR-008, HU-07).
+ * Repositorio de {@code ATENCION}, {@code SIGNO_VITAL} y {@code ATENCION_ENMIENDA} a través de
+ * {@code PKG_CLINICAL} (ADR-007, ADR-008, HU-07, HU-09). No contiene SQL: declara las rutinas del paquete y
+ * delega la llamada en {@link PackageGateway}.
  */
 @Repository
 public class AtencionRepository {
 
-    private final JdbcTemplate jdbcTemplate;
+    static final String PACKAGE = "PKG_CLINICAL";
 
-    private final RowMapper<Atencion> atencionRowMapper = (rs, rowNum) -> {
+    static final RowMapper<Atencion> ENCOUNTER_MAPPER = (rs, rowNum) -> {
         Timestamp tsCierre = rs.getTimestamp("FECHA_CIERRE");
         Timestamp tsCreated = rs.getTimestamp("CREATED_AT");
         Long diagId = rs.getObject("DIAGNOSTICO_PRINCIPAL_ID") != null ? rs.getLong("DIAGNOSTICO_PRINCIPAL_ID") : null;
@@ -48,12 +48,156 @@ public class AtencionRepository {
                 rs.getString("INDICACIONES"),
                 rs.getString("ESTADO"),
                 tsCierre != null ? tsCierre.toInstant() : null,
-                tsCreated != null ? tsCreated.toInstant() : null
-        );
+                tsCreated != null ? tsCreated.toInstant() : null);
     };
 
-    public AtencionRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "jdbcTemplate no puede ser nulo");
+    static final RowMapper<SignosVitalesDto> VITAL_SIGNS_MAPPER = (rs, rowNum) -> new SignosVitalesDto(
+            getNullableInt(rs, "PRESION_SISTOLICA"),
+            getNullableInt(rs, "PRESION_DIASTOLICA"),
+            getNullableInt(rs, "FRECUENCIA_CARDIACA"),
+            getNullableInt(rs, "FRECUENCIA_RESPIRATORIA"),
+            rs.getBigDecimal("TEMPERATURA"),
+            getNullableInt(rs, "SATURACION_OXIGENO"),
+            rs.getBigDecimal("PESO_KG"),
+            rs.getBigDecimal("TALLA_CM"));
+
+    static final RowMapper<EnmiendaResponse> AMENDMENT_MAPPER = (rs, rowNum) -> {
+        Timestamp ts = rs.getTimestamp("FECHA_ENMIENDA");
+        return new EnmiendaResponse(
+                rs.getString("PROFESIONAL_PUBLIC_ID"),
+                rs.getString("PROFESIONAL_NOMBRE"),
+                rs.getString("MOTIVO"),
+                rs.getString("CONTENIDO"),
+                ts != null ? ts.toInstant() : null);
+    };
+
+    /** Fila de detalle sin signos ni enmiendas; se completan después de leer el cursor. */
+    record EncounterDetailRow(Long encounterId, AtencionResponse base) {}
+
+    static final RowMapper<EncounterDetailRow> DETAIL_MAPPER = (rs, rowNum) -> {
+        Timestamp tsCreated = rs.getTimestamp("CREATED_AT");
+        Timestamp tsCierre = rs.getTimestamp("FECHA_CIERRE");
+        return new EncounterDetailRow(rs.getLong("ATENCION_ID"), new AtencionResponse(
+                rs.getString("ATENCION_PUBLIC_ID"),
+                rs.getString("CITA_PUBLIC_ID"),
+                rs.getString("PACIENTE_PUBLIC_ID"),
+                rs.getString("PACIENTE_NOMBRE"),
+                rs.getString("PROFESIONAL_PUBLIC_ID"),
+                rs.getString("PROFESIONAL_NOMBRE"),
+                rs.getString("ESPECIALIDAD_NOMBRE"),
+                rs.getString("ESTADO"),
+                tsCreated != null ? tsCreated.toInstant() : null,
+                tsCierre != null ? tsCierre.toInstant() : null,
+                rs.getString("DIAGNOSTICO_CODIGO"),
+                rs.getString("DIAGNOSTICO_DESCRIPCION"),
+                rs.getString("MOTIVO_CONSULTA"),
+                rs.getString("EVOLUCION"),
+                rs.getString("INDICACIONES"),
+                null,
+                List.of()));
+    };
+
+    static final ProcedureSpec CREATE_ENCOUNTER = ProcedureSpec.procedure(PACKAGE, "create_encounter")
+            .in("p_public_id", Types.VARCHAR)
+            .in("p_appointment_id", Types.NUMERIC)
+            .in("p_patient_id", Types.NUMERIC)
+            .in("p_professional_id", Types.NUMERIC)
+            .in("p_status", Types.VARCHAR)
+            .out("o_id", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec GET_ENCOUNTER_BY_PUBLIC_ID = ProcedureSpec.procedure(
+                    PACKAGE, "get_encounter_by_public_id")
+            .in("p_public_id", Types.VARCHAR)
+            .cursor("o_rows", ENCOUNTER_MAPPER)
+            .build();
+
+    static final ProcedureSpec GET_ENCOUNTER_BY_ID = ProcedureSpec.procedure(PACKAGE, "get_encounter_by_id")
+            .in("p_id", Types.NUMERIC)
+            .cursor("o_rows", ENCOUNTER_MAPPER)
+            .build();
+
+    static final ProcedureSpec GET_ENCOUNTER_BY_APPOINTMENT_ID = ProcedureSpec.procedure(
+                    PACKAGE, "get_encounter_by_appointment_id")
+            .in("p_appointment_id", Types.NUMERIC)
+            .cursor("o_rows", ENCOUNTER_MAPPER)
+            .build();
+
+    static final ProcedureSpec COUNT_ENCOUNTERS_BY_APPOINTMENT = ProcedureSpec.function(
+                    PACKAGE, "count_encounters_by_appointment", "result", Types.NUMERIC)
+            .in("p_appointment_id", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec CLOSE_ENCOUNTER = ProcedureSpec.procedure(PACKAGE, "close_encounter")
+            .in("p_id", Types.NUMERIC)
+            .in("p_diagnosis_id", Types.NUMERIC)
+            .in("p_reason", Types.VARCHAR)
+            .in("p_evolution", Types.VARCHAR)
+            .in("p_instructions", Types.VARCHAR)
+            .in("p_closed_at", Types.TIMESTAMP)
+            .out("o_affected", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec CREATE_VITAL_SIGNS = ProcedureSpec.procedure(PACKAGE, "create_vital_signs")
+            .in("p_encounter_id", Types.NUMERIC)
+            .in("p_systolic", Types.NUMERIC)
+            .in("p_diastolic", Types.NUMERIC)
+            .in("p_heart_rate", Types.NUMERIC)
+            .in("p_respiratory_rate", Types.NUMERIC)
+            .in("p_temperature", Types.NUMERIC)
+            .in("p_oxygen_saturation", Types.NUMERIC)
+            .in("p_weight_kg", Types.NUMERIC)
+            .in("p_height_cm", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec LIST_VITAL_SIGNS = ProcedureSpec.procedure(PACKAGE, "list_vital_signs_by_encounter")
+            .in("p_encounter_id", Types.NUMERIC)
+            .cursor("o_rows", VITAL_SIGNS_MAPPER)
+            .build();
+
+    static final ProcedureSpec GET_ENCOUNTER_DETAIL = ProcedureSpec.procedure(
+                    PACKAGE, "get_encounter_detail_by_public_id")
+            .in("p_public_id", Types.VARCHAR)
+            .cursor("o_rows", DETAIL_MAPPER)
+            .build();
+
+    static final ProcedureSpec CREATE_AMENDMENT = ProcedureSpec.procedure(PACKAGE, "create_amendment")
+            .in("p_encounter_id", Types.NUMERIC)
+            .in("p_professional_id", Types.NUMERIC)
+            .in("p_reason", Types.VARCHAR)
+            .in("p_content", Types.VARCHAR)
+            .in("p_amended_at", Types.TIMESTAMP)
+            .out("o_id", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec LIST_AMENDMENTS = ProcedureSpec.procedure(PACKAGE, "list_amendments_by_encounter")
+            .in("p_encounter_id", Types.NUMERIC)
+            .cursor("o_rows", AMENDMENT_MAPPER)
+            .build();
+
+    static final ProcedureSpec COUNT_ENCOUNTERS_SINCE = ProcedureSpec.function(
+                    PACKAGE, "count_encounters_since", "result", Types.NUMERIC)
+            .in("p_patient_id", Types.NUMERIC)
+            .in("p_professional_id", Types.NUMERIC)
+            .in("p_since", Types.TIMESTAMP)
+            .build();
+
+    static final ProcedureSpec LIST_PATIENT_HISTORY = ProcedureSpec.procedure(PACKAGE, "list_patient_history")
+            .in("p_patient_id", Types.NUMERIC)
+            .in("p_offset", Types.NUMERIC)
+            .in("p_size", Types.NUMERIC)
+            .cursor("o_rows", DETAIL_MAPPER)
+            .build();
+
+    static final ProcedureSpec COUNT_PATIENT_HISTORY = ProcedureSpec.function(
+                    PACKAGE, "count_patient_history", "result", Types.NUMERIC)
+            .in("p_patient_id", Types.NUMERIC)
+            .build();
+
+    private final PackageGateway gateway;
+
+    public AtencionRepository(PackageGateway gateway) {
+        this.gateway = Objects.requireNonNull(gateway, "gateway no puede ser nulo");
     }
 
     /**
@@ -64,24 +208,13 @@ public class AtencionRepository {
      */
     public Long crear(Atencion atencion) {
         Objects.requireNonNull(atencion, "atencion no puede ser nula");
-
-        String sql = """
-            INSERT INTO ATENCION (PUBLIC_ID, CITA_ID, PACIENTE_ID, PROFESIONAL_ID, ESTADO)
-            VALUES (?, ?, ?, ?, ?)
-            """;
-
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(sql, new String[]{"ID"});
-            ps.setString(1, atencion.publicId());
-            ps.setLong(2, atencion.citaId());
-            ps.setLong(3, atencion.pacienteId());
-            ps.setLong(4, atencion.profesionalId());
-            ps.setString(5, atencion.estado() != null ? atencion.estado() : "ABIERTA");
-            return ps;
-        }, keyHolder);
-
-        Number key = keyHolder.getKey();
+        Map<String, Object> out = gateway.execute(CREATE_ENCOUNTER, new MapSqlParameterSource()
+                .addValue("p_public_id", atencion.publicId())
+                .addValue("p_appointment_id", Objects.requireNonNull(atencion.citaId()))
+                .addValue("p_patient_id", Objects.requireNonNull(atencion.pacienteId()))
+                .addValue("p_professional_id", Objects.requireNonNull(atencion.profesionalId()))
+                .addValue("p_status", atencion.estado() != null ? atencion.estado() : "ABIERTA"));
+        Number key = (Number) out.get("o_id");
         if (key == null) {
             throw new IllegalStateException("No se pudo obtener el ID autogenerado para la atencion clinica.");
         }
@@ -92,64 +225,40 @@ public class AtencionRepository {
         if (publicId == null || publicId.isBlank()) {
             return Optional.empty();
         }
-        String sql = """
-            SELECT ID, PUBLIC_ID, CITA_ID, PACIENTE_ID, PROFESIONAL_ID, DIAGNOSTICO_PRINCIPAL_ID,
-                   MOTIVO_CONSULTA, EVOLUCION, INDICACIONES, ESTADO, FECHA_CIERRE, CREATED_AT
-            FROM ATENCION
-            WHERE PUBLIC_ID = ?
-            """;
-        List<Atencion> lista = jdbcTemplate.query(sql, atencionRowMapper, publicId);
-        return lista.stream().findFirst();
+        return first(GET_ENCOUNTER_BY_PUBLIC_ID, new MapSqlParameterSource("p_public_id", publicId));
     }
 
     public Optional<Atencion> buscarEntidadPorId(Long id) {
         if (id == null) {
             return Optional.empty();
         }
-        String sql = """
-            SELECT ID, PUBLIC_ID, CITA_ID, PACIENTE_ID, PROFESIONAL_ID, DIAGNOSTICO_PRINCIPAL_ID,
-                   MOTIVO_CONSULTA, EVOLUCION, INDICACIONES, ESTADO, FECHA_CIERRE, CREATED_AT
-            FROM ATENCION
-            WHERE ID = ?
-            """;
-        List<Atencion> lista = jdbcTemplate.query(sql, atencionRowMapper, id);
-        return lista.stream().findFirst();
+        return first(GET_ENCOUNTER_BY_ID, new MapSqlParameterSource("p_id", id));
     }
 
     public Optional<Atencion> buscarEntidadPorCitaId(Long citaId) {
         if (citaId == null) {
             return Optional.empty();
         }
-        String sql = """
-            SELECT ID, PUBLIC_ID, CITA_ID, PACIENTE_ID, PROFESIONAL_ID, DIAGNOSTICO_PRINCIPAL_ID,
-                   MOTIVO_CONSULTA, EVOLUCION, INDICACIONES, ESTADO, FECHA_CIERRE, CREATED_AT
-            FROM ATENCION
-            WHERE CITA_ID = ?
-            """;
-        List<Atencion> lista = jdbcTemplate.query(sql, atencionRowMapper, citaId);
-        return lista.stream().findFirst();
+        return first(GET_ENCOUNTER_BY_APPOINTMENT_ID, new MapSqlParameterSource("p_appointment_id", citaId));
     }
 
     public boolean existePorCitaId(Long citaId) {
         if (citaId == null) {
             return false;
         }
-        String sql = "SELECT COUNT(*) FROM ATENCION WHERE CITA_ID = ?";
-        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, citaId);
-        return count != null && count > 0;
+        Number count = gateway.callFunction(COUNT_ENCOUNTERS_BY_APPOINTMENT,
+                new MapSqlParameterSource("p_appointment_id", citaId));
+        return count != null && count.longValue() > 0;
     }
 
-    /**
-     * Cierra y consolida una atención médica haciéndola inmutable (ADR-008).
-     */
+    /** Cierra y consolida una atención médica haciéndola inmutable (ADR-008). */
     public void cerrarAtencion(
             Long atencionId,
             Long diagnosticoId,
             String motivoConsulta,
             String evolucion,
             String indicaciones,
-            Instant fechaCierre
-    ) {
+            Instant fechaCierre) {
         Objects.requireNonNull(atencionId, "atencionId no puede ser nulo");
         Objects.requireNonNull(diagnosticoId, "diagnosticoId no puede ser nulo");
         Objects.requireNonNull(motivoConsulta, "motivoConsulta no puede ser nulo");
@@ -157,156 +266,56 @@ public class AtencionRepository {
         Objects.requireNonNull(indicaciones, "indicaciones no puede ser nulo");
         Objects.requireNonNull(fechaCierre, "fechaCierre no puede ser nula");
 
-        String sql = """
-            UPDATE ATENCION
-            SET ESTADO = 'CERRADA',
-                FECHA_CIERRE = ?,
-                DIAGNOSTICO_PRINCIPAL_ID = ?,
-                MOTIVO_CONSULTA = ?,
-                EVOLUCION = ?,
-                INDICACIONES = ?
-            WHERE ID = ? AND ESTADO = 'ABIERTA'
-            """;
+        Map<String, Object> out = gateway.execute(CLOSE_ENCOUNTER, new MapSqlParameterSource()
+                .addValue("p_id", atencionId)
+                .addValue("p_diagnosis_id", diagnosticoId)
+                .addValue("p_reason", motivoConsulta)
+                .addValue("p_evolution", evolucion)
+                .addValue("p_instructions", indicaciones)
+                .addValue("p_closed_at", Timestamp.from(fechaCierre)));
 
-        int filas = jdbcTemplate.update(
-                sql,
-                Timestamp.from(fechaCierre),
-                diagnosticoId,
-                motivoConsulta,
-                evolucion,
-                indicaciones,
-                atencionId
-        );
-
-        if (filas == 0) {
+        if (((Number) out.get("o_affected")).intValue() == 0) {
             throw new IllegalStateException("No fue posible cerrar la atencion: no existe o ya se encuentra cerrada.");
         }
     }
 
-    /**
-     * Persiste los signos vitales medidos durante la atención médica.
-     */
+    /** Persiste los signos vitales medidos durante la atención médica. */
     public void guardarSignosVitales(SignoVital sv) {
         Objects.requireNonNull(sv, "SignoVital no puede ser nulo");
         Objects.requireNonNull(sv.atencionId(), "atencionId no puede ser nulo");
 
-        String sql = """
-            INSERT INTO SIGNO_VITAL (
-                ATENCION_ID, PRESION_SISTOLICA, PRESION_DIASTOLICA, FRECUENCIA_CARDIACA,
-                FRECUENCIA_RESPIRATORIA, TEMPERATURA, SATURACION_OXIGENO, PESO_KG, TALLA_CM
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """;
-
-        jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(sql);
-            ps.setLong(1, sv.atencionId());
-            setNullableInt(ps, 2, sv.presionSistolica());
-            setNullableInt(ps, 3, sv.presionDiastolica());
-            setNullableInt(ps, 4, sv.frecuenciaCardiaca());
-            setNullableInt(ps, 5, sv.frecuenciaRespiratoria());
-            setNullableBigDecimal(ps, 6, sv.temperatura());
-            setNullableInt(ps, 7, sv.saturacionOxigeno());
-            setNullableBigDecimal(ps, 8, sv.pesoKg());
-            setNullableBigDecimal(ps, 9, sv.tallaCm());
-            return ps;
-        });
+        gateway.execute(CREATE_VITAL_SIGNS, new MapSqlParameterSource()
+                .addValue("p_encounter_id", sv.atencionId())
+                .addValue("p_systolic", sv.presionSistolica(), Types.NUMERIC)
+                .addValue("p_diastolic", sv.presionDiastolica(), Types.NUMERIC)
+                .addValue("p_heart_rate", sv.frecuenciaCardiaca(), Types.NUMERIC)
+                .addValue("p_respiratory_rate", sv.frecuenciaRespiratoria(), Types.NUMERIC)
+                .addValue("p_temperature", sv.temperatura(), Types.NUMERIC)
+                .addValue("p_oxygen_saturation", sv.saturacionOxigeno(), Types.NUMERIC)
+                .addValue("p_weight_kg", sv.pesoKg(), Types.NUMERIC)
+                .addValue("p_height_cm", sv.tallaCm(), Types.NUMERIC));
     }
 
     public Optional<SignosVitalesDto> buscarSignosVitalesPorAtencionId(Long atencionId) {
         if (atencionId == null) {
             return Optional.empty();
         }
-        String sql = """
-            SELECT PRESION_SISTOLICA, PRESION_DIASTOLICA, FRECUENCIA_CARDIACA,
-                   FRECUENCIA_RESPIRATORIA, TEMPERATURA, SATURACION_OXIGENO, PESO_KG, TALLA_CM
-            FROM SIGNO_VITAL
-            WHERE ATENCION_ID = ?
-            """;
-
-        List<SignosVitalesDto> lista = jdbcTemplate.query(sql, (rs, rowNum) -> new SignosVitalesDto(
-                getNullableInt(rs, "PRESION_SISTOLICA"),
-                getNullableInt(rs, "PRESION_DIASTOLICA"),
-                getNullableInt(rs, "FRECUENCIA_CARDIACA"),
-                getNullableInt(rs, "FRECUENCIA_RESPIRATORIA"),
-                rs.getBigDecimal("TEMPERATURA"),
-                getNullableInt(rs, "SATURACION_OXIGENO"),
-                rs.getBigDecimal("PESO_KG"),
-                rs.getBigDecimal("TALLA_CM")
-        ), atencionId);
-
+        List<SignosVitalesDto> lista = gateway.list(LIST_VITAL_SIGNS,
+                new MapSqlParameterSource("p_encounter_id", atencionId), "o_rows");
         return lista.stream().findFirst();
     }
 
-    /**
-     * Consulta detallada de una atención médica con JOINs relacionales y signos vitales (HU-07, HU-09).
-     */
+    /** Consulta detallada de una atención médica con sus datos relacionados y signos vitales (HU-07, HU-09). */
     public Optional<AtencionResponse> buscarDetallePorPublicId(String publicId) {
         if (publicId == null || publicId.isBlank()) {
             return Optional.empty();
         }
-
-        String sql = """
-            SELECT a.ID AS ATENCION_ID,
-                   a.PUBLIC_ID AS ATENCION_PUBLIC_ID,
-                   c.PUBLIC_ID AS CITA_PUBLIC_ID,
-                   p.PUBLIC_ID AS PACIENTE_PUBLIC_ID,
-                   TRIM(p.NOMBRES || ' ' || p.APELLIDOS) AS PACIENTE_NOMBRE,
-                   pr.PUBLIC_ID AS PROFESIONAL_PUBLIC_ID,
-                   TRIM(pr.NOMBRES || ' ' || pr.APELLIDOS) AS PROFESIONAL_NOMBRE,
-                   e.NOMBRE AS ESPECIALIDAD_NOMBRE,
-                   a.ESTADO,
-                   a.CREATED_AT,
-                   a.FECHA_CIERRE,
-                   d.CODIGO AS DIAGNOSTICO_CODIGO,
-                   d.DESCRIPCION AS DIAGNOSTICO_DESCRIPCION,
-                   a.MOTIVO_CONSULTA,
-                   a.EVOLUCION,
-                   a.INDICACIONES
-            FROM ATENCION a
-            JOIN CITA c ON a.CITA_ID = c.ID
-            JOIN PACIENTE p ON a.PACIENTE_ID = p.ID
-            JOIN PROFESIONAL pr ON a.PROFESIONAL_ID = pr.ID
-            JOIN DISPONIBILIDAD_SLOT s ON c.SLOT_ID = s.ID
-            JOIN ESPECIALIDAD e ON s.ESPECIALIDAD_ID = e.ID
-            LEFT JOIN DIAGNOSTICO_CIE10 d ON a.DIAGNOSTICO_PRINCIPAL_ID = d.ID
-            WHERE a.PUBLIC_ID = ?
-            """;
-
-        List<AtencionResponse> lista = jdbcTemplate.query(sql, (rs, rowNum) -> {
-            Long atencionId = rs.getLong("ATENCION_ID");
-            SignosVitalesDto signos = buscarSignosVitalesPorAtencionId(atencionId).orElse(null);
-            List<EnmiendaResponse> enmiendas = buscarEnmiendasPorAtencionId(atencionId);
-
-            Timestamp tsCreated = rs.getTimestamp("CREATED_AT");
-            Timestamp tsCierre = rs.getTimestamp("FECHA_CIERRE");
-
-            return new AtencionResponse(
-                    rs.getString("ATENCION_PUBLIC_ID"),
-                    rs.getString("CITA_PUBLIC_ID"),
-                    rs.getString("PACIENTE_PUBLIC_ID"),
-                    rs.getString("PACIENTE_NOMBRE"),
-                    rs.getString("PROFESIONAL_PUBLIC_ID"),
-                    rs.getString("PROFESIONAL_NOMBRE"),
-                    rs.getString("ESPECIALIDAD_NOMBRE"),
-                    rs.getString("ESTADO"),
-                    tsCreated != null ? tsCreated.toInstant() : null,
-                    tsCierre != null ? tsCierre.toInstant() : null,
-                    rs.getString("DIAGNOSTICO_CODIGO"),
-                    rs.getString("DIAGNOSTICO_DESCRIPCION"),
-                    rs.getString("MOTIVO_CONSULTA"),
-                    rs.getString("EVOLUCION"),
-                    rs.getString("INDICACIONES"),
-                    signos,
-                    enmiendas
-            );
-        }, publicId);
-
-        return lista.stream().findFirst();
+        List<EncounterDetailRow> rows = gateway.list(GET_ENCOUNTER_DETAIL,
+                new MapSqlParameterSource("p_public_id", publicId), "o_rows");
+        return rows.stream().findFirst().map(this::complete);
     }
 
-    /**
-     * Registra una enmienda o aclaración médica inmutable en ATENCION_ENMIENDA (ADR-008).
-     */
+    /** Registra una enmienda o aclaración médica inmutable en ATENCION_ENMIENDA (ADR-008). */
     public Long crearEnmienda(Long atencionId, Long profesionalId, String motivo, String contenido, Instant fechaEnmienda) {
         Objects.requireNonNull(atencionId, "atencionId no puede ser nulo");
         Objects.requireNonNull(profesionalId, "profesionalId no puede ser nulo");
@@ -314,93 +323,44 @@ public class AtencionRepository {
         Objects.requireNonNull(contenido, "contenido no puede ser nulo");
         Objects.requireNonNull(fechaEnmienda, "fechaEnmienda no puede ser nula");
 
-        String sql = """
-            INSERT INTO ATENCION_ENMIENDA (
-                ATENCION_ID, PROFESIONAL_ID, MOTIVO, CONTENIDO, FECHA_ENMIENDA
-            ) VALUES (?, ?, ?, ?, ?)
-            """;
-
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-
-        jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(sql, new String[]{"ID"});
-            ps.setLong(1, atencionId);
-            ps.setLong(2, profesionalId);
-            ps.setString(3, motivo);
-            ps.setString(4, contenido);
-            ps.setTimestamp(5, Timestamp.from(fechaEnmienda));
-            return ps;
-        }, keyHolder);
-
-        Number key = keyHolder.getKey();
+        Map<String, Object> out = gateway.execute(CREATE_AMENDMENT, new MapSqlParameterSource()
+                .addValue("p_encounter_id", atencionId)
+                .addValue("p_professional_id", profesionalId)
+                .addValue("p_reason", motivo)
+                .addValue("p_content", contenido)
+                .addValue("p_amended_at", Timestamp.from(fechaEnmienda)));
+        Number key = (Number) out.get("o_id");
         if (key == null) {
             throw new IllegalStateException("Error al registrar la enmienda en la base de datos.");
         }
         return key.longValue();
     }
 
-    /**
-     * Consulta las enmiendas médicas asociadas a una atención en orden cronológico ascendente (ADR-008).
-     */
+    /** Consulta las enmiendas médicas asociadas a una atención en orden cronológico ascendente (ADR-008). */
     public List<EnmiendaResponse> buscarEnmiendasPorAtencionId(Long atencionId) {
         if (atencionId == null) {
             return List.of();
         }
-
-        String sql = """
-            SELECT pr.PUBLIC_ID AS PROFESIONAL_PUBLIC_ID,
-                   TRIM(pr.NOMBRES || ' ' || pr.APELLIDOS) AS PROFESIONAL_NOMBRE,
-                   ae.MOTIVO,
-                   ae.CONTENIDO,
-                   ae.FECHA_ENMIENDA
-            FROM ATENCION_ENMIENDA ae
-            JOIN PROFESIONAL pr ON ae.PROFESIONAL_ID = pr.ID
-            WHERE ae.ATENCION_ID = ?
-            ORDER BY ae.FECHA_ENMIENDA ASC, ae.ID ASC
-            """;
-
-        return jdbcTemplate.query(sql, (rs, rowNum) -> {
-            Timestamp ts = rs.getTimestamp("FECHA_ENMIENDA");
-            return new EnmiendaResponse(
-                    rs.getString("PROFESIONAL_PUBLIC_ID"),
-                    rs.getString("PROFESIONAL_NOMBRE"),
-                    rs.getString("MOTIVO"),
-                    rs.getString("CONTENIDO"),
-                    ts != null ? ts.toInstant() : null
-            );
-        }, atencionId);
+        return gateway.list(LIST_AMENDMENTS, new MapSqlParameterSource("p_encounter_id", atencionId), "o_rows");
     }
 
     /**
-     * Verifica si existe una atención médica previa entre el profesional y el paciente
-     * realizada dentro de la ventana temporal especificada (ADR-007).
+     * Verifica si existe una atención médica previa entre el profesional y el paciente realizada dentro de la
+     * ventana temporal especificada (ADR-007).
      */
     public boolean existeAtencionPreviaEnVentana(Long profesionalId, Long pacienteId, Instant fechaLimite) {
         Objects.requireNonNull(profesionalId, "profesionalId no puede ser nulo");
         Objects.requireNonNull(pacienteId, "pacienteId no puede ser nulo");
         Objects.requireNonNull(fechaLimite, "fechaLimite no puede ser nulo");
 
-        String sql = """
-            SELECT COUNT(*)
-            FROM ATENCION a
-            WHERE a.PACIENTE_ID = ?
-              AND a.PROFESIONAL_ID = ?
-              AND a.CREATED_AT >= ?
-            """;
-
-        Integer count = jdbcTemplate.queryForObject(
-                sql,
-                Integer.class,
-                pacienteId,
-                profesionalId,
-                Timestamp.from(fechaLimite)
-        );
-        return count != null && count > 0;
+        Number count = gateway.callFunction(COUNT_ENCOUNTERS_SINCE, new MapSqlParameterSource()
+                .addValue("p_patient_id", pacienteId)
+                .addValue("p_professional_id", profesionalId)
+                .addValue("p_since", Timestamp.from(fechaLimite)));
+        return count != null && count.longValue() > 0;
     }
 
-    /**
-     * Consulta paginada del historial de atenciones médicas de un paciente con sus signos y enmiendas (HU-09).
-     */
+    /** Consulta paginada del historial de atenciones médicas de un paciente con sus signos y enmiendas (HU-09). */
     public List<AtencionResponse> listarHistoriaPaciente(Long pacienteId, int page, int size) {
         if (pacienteId == null) {
             return List.of();
@@ -409,91 +369,50 @@ public class AtencionRepository {
         int safeSize = Math.max(1, Math.min(size, 100));
         int offset = safePage * safeSize;
 
-        String sql = """
-            SELECT a.ID AS ATENCION_ID,
-                   a.PUBLIC_ID AS ATENCION_PUBLIC_ID,
-                   c.PUBLIC_ID AS CITA_PUBLIC_ID,
-                   p.PUBLIC_ID AS PACIENTE_PUBLIC_ID,
-                   TRIM(p.NOMBRES || ' ' || p.APELLIDOS) AS PACIENTE_NOMBRE,
-                   pr.PUBLIC_ID AS PROFESIONAL_PUBLIC_ID,
-                   TRIM(pr.NOMBRES || ' ' || pr.APELLIDOS) AS PROFESIONAL_NOMBRE,
-                   e.NOMBRE AS ESPECIALIDAD_NOMBRE,
-                   a.ESTADO,
-                   a.CREATED_AT,
-                   a.FECHA_CIERRE,
-                   d.CODIGO AS DIAGNOSTICO_CODIGO,
-                   d.DESCRIPCION AS DIAGNOSTICO_DESCRIPCION,
-                   a.MOTIVO_CONSULTA,
-                   a.EVOLUCION,
-                   a.INDICACIONES
-            FROM ATENCION a
-            JOIN CITA c ON a.CITA_ID = c.ID
-            JOIN PACIENTE p ON a.PACIENTE_ID = p.ID
-            JOIN PROFESIONAL pr ON a.PROFESIONAL_ID = pr.ID
-            JOIN DISPONIBILIDAD_SLOT s ON c.SLOT_ID = s.ID
-            JOIN ESPECIALIDAD e ON s.ESPECIALIDAD_ID = e.ID
-            LEFT JOIN DIAGNOSTICO_CIE10 d ON a.DIAGNOSTICO_PRINCIPAL_ID = d.ID
-            WHERE a.PACIENTE_ID = ?
-            ORDER BY a.CREATED_AT DESC, a.ID DESC
-            OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
-            """;
-
-        return jdbcTemplate.query(sql, (rs, rowNum) -> {
-            Long atencionId = rs.getLong("ATENCION_ID");
-            SignosVitalesDto signos = buscarSignosVitalesPorAtencionId(atencionId).orElse(null);
-            List<EnmiendaResponse> enmiendas = buscarEnmiendasPorAtencionId(atencionId);
-
-            Timestamp tsCreated = rs.getTimestamp("CREATED_AT");
-            Timestamp tsCierre = rs.getTimestamp("FECHA_CIERRE");
-
-            return new AtencionResponse(
-                    rs.getString("ATENCION_PUBLIC_ID"),
-                    rs.getString("CITA_PUBLIC_ID"),
-                    rs.getString("PACIENTE_PUBLIC_ID"),
-                    rs.getString("PACIENTE_NOMBRE"),
-                    rs.getString("PROFESIONAL_PUBLIC_ID"),
-                    rs.getString("PROFESIONAL_NOMBRE"),
-                    rs.getString("ESPECIALIDAD_NOMBRE"),
-                    rs.getString("ESTADO"),
-                    tsCreated != null ? tsCreated.toInstant() : null,
-                    tsCierre != null ? tsCierre.toInstant() : null,
-                    rs.getString("DIAGNOSTICO_CODIGO"),
-                    rs.getString("DIAGNOSTICO_DESCRIPCION"),
-                    rs.getString("MOTIVO_CONSULTA"),
-                    rs.getString("EVOLUCION"),
-                    rs.getString("INDICACIONES"),
-                    signos,
-                    enmiendas
-            );
-        }, pacienteId, offset, safeSize);
+        List<EncounterDetailRow> rows = gateway.list(LIST_PATIENT_HISTORY, new MapSqlParameterSource()
+                .addValue("p_patient_id", pacienteId)
+                .addValue("p_offset", offset)
+                .addValue("p_size", safeSize), "o_rows");
+        return rows.stream().map(this::complete).toList();
     }
 
-    /**
-     * Cuenta el número total de atenciones médicas registradas para un paciente (HU-09).
-     */
+    /** Cuenta el número total de atenciones médicas registradas para un paciente (HU-09). */
     public int contarHistoriaPaciente(Long pacienteId) {
         if (pacienteId == null) {
             return 0;
         }
-        String sql = "SELECT COUNT(*) FROM ATENCION WHERE PACIENTE_ID = ?";
-        Integer total = jdbcTemplate.queryForObject(sql, Integer.class, pacienteId);
-        return total != null ? total : 0;
+        Number total = gateway.callFunction(COUNT_PATIENT_HISTORY, new MapSqlParameterSource("p_patient_id", pacienteId));
+        return total != null ? total.intValue() : 0;
     }
 
-    private static void setNullableInt(PreparedStatement ps, int paramIndex, Integer value) throws SQLException {
-        if (value != null) {
-            ps.setInt(paramIndex, value);
-        } else {
-            ps.setNull(paramIndex, Types.INTEGER);
-        }
+    private Optional<Atencion> first(ProcedureSpec spec, SqlParameterSource params) {
+        List<Atencion> lista = gateway.list(spec, params, "o_rows");
+        return lista.stream().findFirst();
     }
 
-    private static void setNullableBigDecimal(PreparedStatement ps, int paramIndex, BigDecimal value) throws SQLException {
-        if (value != null) {
-            ps.setBigDecimal(paramIndex, value);
-        } else {
-            ps.setNull(paramIndex, Types.DECIMAL);
-        }
+    /** Completa la fila de detalle con los signos vitales y las enmiendas de la atención. */
+    private AtencionResponse complete(EncounterDetailRow row) {
+        AtencionResponse b = row.base();
+        SignosVitalesDto signos = buscarSignosVitalesPorAtencionId(row.encounterId()).orElse(null);
+        List<EnmiendaResponse> enmiendas = buscarEnmiendasPorAtencionId(row.encounterId());
+        return new AtencionResponse(
+                b.publicId(),
+                b.citaPublicId(),
+                b.pacientePublicId(),
+                b.pacienteNombre(),
+                b.profesionalPublicId(),
+                b.profesionalNombre(),
+                b.especialidadNombre(),
+                b.estado(),
+                b.createdAt(),
+                b.fechaCierre(),
+                b.diagnosticoCodigo(),
+                b.diagnosticoDescripcion(),
+                b.motivoConsulta(),
+                b.evolucion(),
+                b.indicaciones(),
+                signos,
+                enmiendas);
     }
 
     private static Integer getNullableInt(ResultSet rs, String colName) throws SQLException {

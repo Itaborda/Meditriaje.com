@@ -2,34 +2,28 @@ package com.meditriaje.repository;
 
 import com.meditriaje.dto.followup.SeguimientoResponse;
 import com.meditriaje.model.SeguimientoPostAtencion;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
-import org.springframework.stereotype.Repository;
-
+import com.meditriaje.repository.plsql.PackageGateway;
+import com.meditriaje.repository.plsql.ProcedureSpec;
 import java.sql.Date;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.time.Instant;
-import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.stereotype.Repository;
 
 /**
- * Repositorio JDBC para la entidad {@code SEGUIMIENTO_POST_ATENCION} (ADR-015, F2.2).
- * Utiliza SQL 100% parametrizado y evita exponer claves autonuméricas en DTOs.
+ * Repositorio de {@code SEGUIMIENTO_POST_ATENCION} (ADR-015, F2.2) a través de {@code PKG_CLINICAL}. No contiene
+ * SQL y evita exponer claves autonuméricas en DTOs.
  */
 @Repository
 public class SeguimientoRepository {
 
-    private final JdbcTemplate jdbcTemplate;
-
-    private final RowMapper<SeguimientoPostAtencion> entidadRowMapper = (rs, rowNum) -> {
+    static final RowMapper<SeguimientoPostAtencion> ENTITY_MAPPER = (rs, rowNum) -> {
         Date dControl = rs.getDate("FECHA_SUGERIDA_CONTROL");
         Timestamp tsResp = rs.getTimestamp("FECHA_RESPUESTA_PACIENTE");
         Timestamp tsCreated = rs.getTimestamp("CREATED_AT");
@@ -48,11 +42,10 @@ public class SeguimientoRepository {
                 tsResp != null ? tsResp.toInstant() : null,
                 rs.getString("REPORTE_PACIENTE"),
                 tsCreated != null ? tsCreated.toInstant() : null,
-                tsUpdated != null ? tsUpdated.toInstant() : null
-        );
+                tsUpdated != null ? tsUpdated.toInstant() : null);
     };
 
-    private final RowMapper<SeguimientoResponse> responseRowMapper = (rs, rowNum) -> {
+    static final RowMapper<SeguimientoResponse> RESPONSE_MAPPER = (rs, rowNum) -> {
         Date dControl = rs.getDate("FECHA_SUGERIDA_CONTROL");
         Timestamp tsResp = rs.getTimestamp("FECHA_RESPUESTA_PACIENTE");
         Timestamp tsCreated = rs.getTimestamp("CREATED_AT");
@@ -73,220 +66,168 @@ public class SeguimientoRepository {
                 tsResp != null ? tsResp.toInstant() : null,
                 rs.getString("REPORTE_PACIENTE"),
                 tsCreated != null ? tsCreated.toInstant() : null,
-                tsUpdated != null ? tsUpdated.toInstant() : null
-        );
+                tsUpdated != null ? tsUpdated.toInstant() : null);
     };
 
-    public SeguimientoRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "jdbcTemplate no puede ser nulo");
+    static final ProcedureSpec CREATE_FOLLOW_UP = ProcedureSpec.procedure(AtencionRepository.PACKAGE, "create_follow_up")
+            .in("p_public_id", Types.VARCHAR)
+            .in("p_encounter_id", Types.NUMERIC)
+            .in("p_patient_id", Types.NUMERIC)
+            .in("p_professional_id", Types.NUMERIC)
+            .in("p_type", Types.VARCHAR)
+            .in("p_instructions", Types.VARCHAR)
+            .in("p_suggested_control_date", Types.DATE)
+            .in("p_status", Types.VARCHAR)
+            .in("p_patient_answered_at", Types.TIMESTAMP)
+            .in("p_patient_report", Types.VARCHAR)
+            .in("p_created_at", Types.TIMESTAMP)
+            .in("p_updated_at", Types.TIMESTAMP)
+            .out("o_id", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec GET_BY_PUBLIC_ID = ProcedureSpec.procedure(
+                    AtencionRepository.PACKAGE, "get_follow_up_by_public_id")
+            .in("p_public_id", Types.VARCHAR)
+            .cursor("o_rows", ENTITY_MAPPER)
+            .build();
+
+    static final ProcedureSpec GET_BY_ID = ProcedureSpec.procedure(AtencionRepository.PACKAGE, "get_follow_up_by_id")
+            .in("p_id", Types.NUMERIC)
+            .cursor("o_rows", ENTITY_MAPPER)
+            .build();
+
+    static final ProcedureSpec GET_VIEW_BY_PUBLIC_ID = ProcedureSpec.procedure(
+                    AtencionRepository.PACKAGE, "get_follow_up_view_by_public_id")
+            .in("p_public_id", Types.VARCHAR)
+            .cursor("o_rows", RESPONSE_MAPPER)
+            .build();
+
+    static final ProcedureSpec REGISTER_REPORT = ProcedureSpec.procedure(
+                    AtencionRepository.PACKAGE, "register_follow_up_report")
+            .in("p_id", Types.NUMERIC)
+            .in("p_report", Types.VARCHAR)
+            .in("p_answered_at", Types.TIMESTAMP)
+            .build();
+
+    static final ProcedureSpec UPDATE_STATUS = ProcedureSpec.procedure(
+                    AtencionRepository.PACKAGE, "update_follow_up_status")
+            .in("p_id", Types.NUMERIC)
+            .in("p_status", Types.VARCHAR)
+            .build();
+
+    static final ProcedureSpec LIST_BY_ENCOUNTER = ProcedureSpec.procedure(
+                    AtencionRepository.PACKAGE, "list_follow_ups_by_encounter")
+            .in("p_encounter_id", Types.NUMERIC)
+            .cursor("o_rows", RESPONSE_MAPPER)
+            .build();
+
+    static final ProcedureSpec LIST_BY_PATIENT = ProcedureSpec.procedure(
+                    AtencionRepository.PACKAGE, "list_follow_ups_by_patient")
+            .in("p_patient_id", Types.NUMERIC)
+            .in("p_status", Types.VARCHAR)
+            .in("p_offset", Types.NUMERIC)
+            .in("p_size", Types.NUMERIC)
+            .cursor("o_rows", RESPONSE_MAPPER)
+            .build();
+
+    static final ProcedureSpec COUNT_BY_PATIENT = ProcedureSpec.function(
+                    AtencionRepository.PACKAGE, "count_follow_ups_by_patient", "result", Types.NUMERIC)
+            .in("p_patient_id", Types.NUMERIC)
+            .in("p_status", Types.VARCHAR)
+            .build();
+
+    private final PackageGateway gateway;
+
+    public SeguimientoRepository(PackageGateway gateway) {
+        this.gateway = Objects.requireNonNull(gateway, "gateway no puede ser nulo");
     }
 
-    /**
-     * Inserta un nuevo seguimiento post-atención en la base de datos.
-     */
+    /** Inserta un nuevo seguimiento post-atención en la base de datos. */
     public Long guardar(SeguimientoPostAtencion s) {
         Objects.requireNonNull(s, "SeguimientoPostAtencion no puede ser nulo");
-        String sql = """
-                INSERT INTO SEGUIMIENTO_POST_ATENCION (
-                    PUBLIC_ID, ATENCION_ID, PACIENTE_ID, PROFESIONAL_ID,
-                    TIPO, INDICACIONES, FECHA_SUGERIDA_CONTROL, ESTADO,
-                    FECHA_RESPUESTA_PACIENTE, REPORTE_PACIENTE, CREATED_AT, UPDATED_AT
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """;
-
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-
-        jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(sql, new String[]{"ID"});
-            ps.setString(1, s.publicId());
-            ps.setLong(2, s.atencionId());
-            ps.setLong(3, s.pacienteId());
-            ps.setLong(4, s.profesionalId());
-            ps.setString(5, s.tipo());
-            ps.setString(6, s.indicaciones());
-            if (s.fechaSugeridaControl() != null) {
-                ps.setDate(7, Date.valueOf(s.fechaSugeridaControl()));
-            } else {
-                ps.setNull(7, java.sql.Types.DATE);
-            }
-            ps.setString(8, s.estado() != null ? s.estado() : "PENDIENTE");
-            if (s.fechaRespuestaPaciente() != null) {
-                ps.setTimestamp(9, Timestamp.from(s.fechaRespuestaPaciente()));
-            } else {
-                ps.setNull(9, java.sql.Types.TIMESTAMP);
-            }
-            ps.setString(10, s.reportePaciente());
-            ps.setTimestamp(11, Timestamp.from(s.createdAt() != null ? s.createdAt() : Instant.now()));
-            ps.setTimestamp(12, Timestamp.from(s.updatedAt() != null ? s.updatedAt() : Instant.now()));
-            return ps;
-        }, keyHolder);
-
-        Number key = keyHolder.getKey();
+        Map<String, Object> out = gateway.execute(CREATE_FOLLOW_UP, new MapSqlParameterSource()
+                .addValue("p_public_id", s.publicId())
+                .addValue("p_encounter_id", Objects.requireNonNull(s.atencionId()))
+                .addValue("p_patient_id", Objects.requireNonNull(s.pacienteId()))
+                .addValue("p_professional_id", Objects.requireNonNull(s.profesionalId()))
+                .addValue("p_type", s.tipo())
+                .addValue("p_instructions", s.indicaciones())
+                .addValue("p_suggested_control_date",
+                        s.fechaSugeridaControl() != null ? Date.valueOf(s.fechaSugeridaControl()) : null, Types.DATE)
+                .addValue("p_status", s.estado() != null ? s.estado() : "PENDIENTE")
+                .addValue("p_patient_answered_at",
+                        s.fechaRespuestaPaciente() != null ? Timestamp.from(s.fechaRespuestaPaciente()) : null,
+                        Types.TIMESTAMP)
+                .addValue("p_patient_report", s.reportePaciente(), Types.VARCHAR)
+                .addValue("p_created_at", Timestamp.from(s.createdAt() != null ? s.createdAt() : Instant.now()))
+                .addValue("p_updated_at", Timestamp.from(s.updatedAt() != null ? s.updatedAt() : Instant.now())));
+        Number key = (Number) out.get("o_id");
         if (key == null) {
             throw new IllegalStateException("Error al obtener ID autogenerado para el seguimiento.");
         }
         return key.longValue();
     }
 
-    /**
-     * Busca la entidad por su identificador público (UUID).
-     */
+    /** Busca la entidad por su identificador público (UUID). */
     public Optional<SeguimientoPostAtencion> buscarEntidadPorPublicId(String publicId) {
-        String sql = """
-                SELECT ID, PUBLIC_ID, ATENCION_ID, PACIENTE_ID, PROFESIONAL_ID,
-                       TIPO, INDICACIONES, FECHA_SUGERIDA_CONTROL, ESTADO,
-                       FECHA_RESPUESTA_PACIENTE, REPORTE_PACIENTE, CREATED_AT, UPDATED_AT
-                FROM SEGUIMIENTO_POST_ATENCION
-                WHERE PUBLIC_ID = ?
-                """;
-        List<SeguimientoPostAtencion> lista = jdbcTemplate.query(sql, entidadRowMapper, publicId);
+        List<SeguimientoPostAtencion> lista =
+                gateway.list(GET_BY_PUBLIC_ID, new MapSqlParameterSource("p_public_id", publicId), "o_rows");
         return lista.stream().findFirst();
     }
 
-    /**
-     * Busca la entidad por su ID primario numérico.
-     */
+    /** Busca la entidad por su ID primario numérico. */
     public Optional<SeguimientoPostAtencion> buscarEntidadPorId(Long id) {
-        String sql = """
-                SELECT ID, PUBLIC_ID, ATENCION_ID, PACIENTE_ID, PROFESIONAL_ID,
-                       TIPO, INDICACIONES, FECHA_SUGERIDA_CONTROL, ESTADO,
-                       FECHA_RESPUESTA_PACIENTE, REPORTE_PACIENTE, CREATED_AT, UPDATED_AT
-                FROM SEGUIMIENTO_POST_ATENCION
-                WHERE ID = ?
-                """;
-        List<SeguimientoPostAtencion> lista = jdbcTemplate.query(sql, entidadRowMapper, id);
+        List<SeguimientoPostAtencion> lista =
+                gateway.list(GET_BY_ID, new MapSqlParameterSource("p_id", id), "o_rows");
         return lista.stream().findFirst();
     }
 
-    /**
-     * Busca un seguimiento y lo mapea al DTO completo con información relacionada.
-     */
+    /** Busca un seguimiento y lo mapea al DTO completo con información relacionada. */
     public Optional<SeguimientoResponse> buscarPorPublicId(String publicId) {
-        String sql = """
-                SELECT s.ID, s.PUBLIC_ID, s.ATENCION_ID, s.PACIENTE_ID, s.PROFESIONAL_ID,
-                       s.TIPO, s.INDICACIONES, s.FECHA_SUGERIDA_CONTROL, s.ESTADO,
-                       s.FECHA_RESPUESTA_PACIENTE, s.REPORTE_PACIENTE, s.CREATED_AT, s.UPDATED_AT,
-                       a.PUBLIC_ID AS ATENCION_PUBLIC_ID,
-                       p.PUBLIC_ID AS PACIENTE_PUBLIC_ID,
-                       TRIM(p.NOMBRES || ' ' || p.APELLIDOS) AS PACIENTE_NOMBRE,
-                       prof.PUBLIC_ID AS PROFESIONAL_PUBLIC_ID,
-                       TRIM(prof.NOMBRES || ' ' || prof.APELLIDOS) AS PROFESIONAL_NOMBRE,
-                       esp.NOMBRE AS ESPECIALIDAD_NOMBRE
-                FROM SEGUIMIENTO_POST_ATENCION s
-                JOIN ATENCION a ON s.ATENCION_ID = a.ID
-                JOIN PACIENTE p ON s.PACIENTE_ID = p.ID
-                JOIN PROFESIONAL prof ON s.PROFESIONAL_ID = prof.ID
-                JOIN ESPECIALIDAD esp ON prof.ESPECIALIDAD_ID = esp.ID
-                WHERE s.PUBLIC_ID = ?
-                """;
-        List<SeguimientoResponse> lista = jdbcTemplate.query(sql, responseRowMapper, publicId);
+        List<SeguimientoResponse> lista =
+                gateway.list(GET_VIEW_BY_PUBLIC_ID, new MapSqlParameterSource("p_public_id", publicId), "o_rows");
         return lista.stream().findFirst();
     }
 
-    /**
-     * Registra el reporte de evolución aportado por el paciente y marca el seguimiento como COMPLETADO.
-     */
+    /** Registra el reporte de evolución aportado por el paciente y marca el seguimiento como COMPLETADO. */
     public void registrarReportePaciente(Long id, String reportePaciente, Instant fechaRespuesta) {
-        String sql = """
-                UPDATE SEGUIMIENTO_POST_ATENCION
-                SET REPORTE_PACIENTE = ?,
-                    FECHA_RESPUESTA_PACIENTE = ?,
-                    ESTADO = 'COMPLETADO',
-                    UPDATED_AT = CURRENT_TIMESTAMP
-                WHERE ID = ?
-                """;
-        jdbcTemplate.update(sql, reportePaciente, Timestamp.from(fechaRespuesta), id);
+        gateway.execute(REGISTER_REPORT, new MapSqlParameterSource()
+                .addValue("p_id", id)
+                .addValue("p_report", reportePaciente)
+                .addValue("p_answered_at", Timestamp.from(fechaRespuesta)));
     }
 
-    /**
-     * Actualiza el estado de un seguimiento (p. ej. CANCELADO).
-     */
+    /** Actualiza el estado de un seguimiento (p. ej. CANCELADO). */
     public void actualizarEstado(Long id, String nuevoEstado) {
-        String sql = """
-                UPDATE SEGUIMIENTO_POST_ATENCION
-                SET ESTADO = ?,
-                    UPDATED_AT = CURRENT_TIMESTAMP
-                WHERE ID = ?
-                """;
-        jdbcTemplate.update(sql, nuevoEstado, id);
+        gateway.execute(UPDATE_STATUS, new MapSqlParameterSource()
+                .addValue("p_id", id)
+                .addValue("p_status", nuevoEstado));
     }
 
-    /**
-     * Lista los seguimientos asociados a una atención médica específica.
-     */
+    /** Lista los seguimientos asociados a una atención médica específica. */
     public List<SeguimientoResponse> listarPorAtencionId(Long atencionId) {
-        String sql = """
-                SELECT s.ID, s.PUBLIC_ID, s.ATENCION_ID, s.PACIENTE_ID, s.PROFESIONAL_ID,
-                       s.TIPO, s.INDICACIONES, s.FECHA_SUGERIDA_CONTROL, s.ESTADO,
-                       s.FECHA_RESPUESTA_PACIENTE, s.REPORTE_PACIENTE, s.CREATED_AT, s.UPDATED_AT,
-                       a.PUBLIC_ID AS ATENCION_PUBLIC_ID,
-                       p.PUBLIC_ID AS PACIENTE_PUBLIC_ID,
-                       TRIM(p.NOMBRES || ' ' || p.APELLIDOS) AS PACIENTE_NOMBRE,
-                       prof.PUBLIC_ID AS PROFESIONAL_PUBLIC_ID,
-                       TRIM(prof.NOMBRES || ' ' || prof.APELLIDOS) AS PROFESIONAL_NOMBRE,
-                       esp.NOMBRE AS ESPECIALIDAD_NOMBRE
-                FROM SEGUIMIENTO_POST_ATENCION s
-                JOIN ATENCION a ON s.ATENCION_ID = a.ID
-                JOIN PACIENTE p ON s.PACIENTE_ID = p.ID
-                JOIN PROFESIONAL prof ON s.PROFESIONAL_ID = prof.ID
-                JOIN ESPECIALIDAD esp ON prof.ESPECIALIDAD_ID = esp.ID
-                WHERE s.ATENCION_ID = ?
-                ORDER BY s.CREATED_AT ASC, s.ID ASC
-                """;
-        return jdbcTemplate.query(sql, responseRowMapper, atencionId);
+        return gateway.list(LIST_BY_ENCOUNTER, new MapSqlParameterSource("p_encounter_id", atencionId), "o_rows");
     }
 
-    /**
-     * Lista paginada de seguimientos pertenecientes a un paciente con filtro opcional de estado.
-     */
+    /** Lista paginada de seguimientos pertenecientes a un paciente con filtro opcional de estado. */
     public List<SeguimientoResponse> listarPorPacienteId(Long pacienteId, String estadoFiltro, int page, int size) {
-        StringBuilder sql = new StringBuilder("""
-                SELECT s.ID, s.PUBLIC_ID, s.ATENCION_ID, s.PACIENTE_ID, s.PROFESIONAL_ID,
-                       s.TIPO, s.INDICACIONES, s.FECHA_SUGERIDA_CONTROL, s.ESTADO,
-                       s.FECHA_RESPUESTA_PACIENTE, s.REPORTE_PACIENTE, s.CREATED_AT, s.UPDATED_AT,
-                       a.PUBLIC_ID AS ATENCION_PUBLIC_ID,
-                       p.PUBLIC_ID AS PACIENTE_PUBLIC_ID,
-                       TRIM(p.NOMBRES || ' ' || p.APELLIDOS) AS PACIENTE_NOMBRE,
-                       prof.PUBLIC_ID AS PROFESIONAL_PUBLIC_ID,
-                       TRIM(prof.NOMBRES || ' ' || prof.APELLIDOS) AS PROFESIONAL_NOMBRE,
-                       esp.NOMBRE AS ESPECIALIDAD_NOMBRE
-                FROM SEGUIMIENTO_POST_ATENCION s
-                JOIN ATENCION a ON s.ATENCION_ID = a.ID
-                JOIN PACIENTE p ON s.PACIENTE_ID = p.ID
-                JOIN PROFESIONAL prof ON s.PROFESIONAL_ID = prof.ID
-                JOIN ESPECIALIDAD esp ON prof.ESPECIALIDAD_ID = esp.ID
-                WHERE s.PACIENTE_ID = ?
-                """);
-
-        List<Object> params = new ArrayList<>();
-        params.add(pacienteId);
-
-        if (estadoFiltro != null && !estadoFiltro.isBlank()) {
-            sql.append(" AND s.ESTADO = ? ");
-            params.add(estadoFiltro.toUpperCase().trim());
-        }
-
-        sql.append(" ORDER BY s.CREATED_AT DESC, s.ID DESC OFFSET ? ROWS FETCH NEXT ? ROWS ONLY");
-        params.add(page * size);
-        params.add(size);
-
-        return jdbcTemplate.query(sql.toString(), responseRowMapper, params.toArray());
+        return gateway.list(LIST_BY_PATIENT, new MapSqlParameterSource()
+                .addValue("p_patient_id", pacienteId)
+                .addValue("p_status", normalizeStatus(estadoFiltro), Types.VARCHAR)
+                .addValue("p_offset", page * size)
+                .addValue("p_size", size), "o_rows");
     }
 
-    /**
-     * Conteo total de seguimientos de un paciente con filtro opcional de estado.
-     */
+    /** Conteo total de seguimientos de un paciente con filtro opcional de estado. */
     public int contarPorPacienteId(Long pacienteId, String estadoFiltro) {
-        StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM SEGUIMIENTO_POST_ATENCION WHERE PACIENTE_ID = ?");
-        List<Object> params = new ArrayList<>();
-        params.add(pacienteId);
+        Number count = gateway.callFunction(COUNT_BY_PATIENT, new MapSqlParameterSource()
+                .addValue("p_patient_id", pacienteId)
+                .addValue("p_status", normalizeStatus(estadoFiltro), Types.VARCHAR));
+        return count != null ? count.intValue() : 0;
+    }
 
-        if (estadoFiltro != null && !estadoFiltro.isBlank()) {
-            sql.append(" AND ESTADO = ?");
-            params.add(estadoFiltro.toUpperCase().trim());
-        }
-
-        Integer count = jdbcTemplate.queryForObject(sql.toString(), Integer.class, params.toArray());
-        return count != null ? count : 0;
+    /** Filtro de estado en mayúsculas; nulo cuando no se debe filtrar. */
+    private static String normalizeStatus(String estadoFiltro) {
+        return estadoFiltro != null && !estadoFiltro.isBlank() ? estadoFiltro.toUpperCase().trim() : null;
     }
 }
