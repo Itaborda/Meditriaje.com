@@ -40,11 +40,8 @@ class NoSqlOutsideGatewayTest {
 
     /** Lista congelada de clases heredadas con SQL. SOLO SE PUEDE REDUCIR. */
     static final Set<String> LEGACY_ALLOWLIST = Set.of(
-            "com/meditriaje/demo/DemoDataSeeder.java",
-            "com/meditriaje/repository/AccesoTemporalQrRepository.java",
             "com/meditriaje/repository/AfiliacionPacienteRepository.java",
             "com/meditriaje/repository/AlergiaRepository.java",
-            "com/meditriaje/repository/AlertaOperativaRepository.java",
             "com/meditriaje/repository/AreaHospitalariaRepository.java",
             "com/meditriaje/repository/AtencionRepository.java",
             "com/meditriaje/repository/AusenciaMedicaRepository.java",
@@ -69,7 +66,6 @@ class NoSqlOutsideGatewayTest {
             "com/meditriaje/repository/RecetaRepository.java",
             "com/meditriaje/repository/RecordatorioCitaRepository.java",
             "com/meditriaje/repository/RepresentacionLegalRepository.java",
-            "com/meditriaje/repository/SeguimientoQrRepository.java",
             "com/meditriaje/repository/SeguimientoRepository.java",
             "com/meditriaje/repository/TriajeReglasRepository.java",
             "com/meditriaje/repository/TriajeRepository.java",

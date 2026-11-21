@@ -2,29 +2,34 @@ package com.meditriaje.repository;
 
 import com.meditriaje.dto.operational.AlertaOperativaResponse;
 import com.meditriaje.model.AlertaOperativa;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.meditriaje.repository.plsql.PackageGateway;
+import com.meditriaje.repository.plsql.ProcedureSpec;
 import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.stereotype.Repository;
 
-import java.sql.PreparedStatement;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
+/**
+ * Repositorio para la entidad {@code ALERTA_OPERATIVA} (Fase O, ADR-027).
+ * Delega en {@code PKG_OPERATIONS} mediante {@link PackageGateway} y no contiene SQL.
+ */
 @Repository
 public class AlertaOperativaRepository {
 
-    private final JdbcTemplate jdbcTemplate;
+    static final String PACKAGE = "PKG_OPERATIONS";
 
-    private final RowMapper<AlertaOperativa> rowMapper = (rs, rowNum) -> {
+    static final RowMapper<AlertaOperativa> ENTITY_MAPPER = (rs, rowNum) -> {
         Timestamp tsRec = rs.getTimestamp("RECONOCIDO_AT");
         Timestamp tsCreated = rs.getTimestamp("CREADO_AT");
-        Long recUser = rs.getObject("RECONOCIDO_POR_USUARIO_ID") != null ? rs.getLong("RECONOCIDO_POR_USUARIO_ID") : null;
+        Long recUser = rs.getObject("RECONOCIDO_POR_USUARIO_ID") != null
+                ? rs.getLong("RECONOCIDO_POR_USUARIO_ID") : null;
         return new AlertaOperativa(
                 rs.getLong("ID"),
                 rs.getString("PUBLIC_ID"),
@@ -40,7 +45,7 @@ public class AlertaOperativaRepository {
         );
     };
 
-    private final RowMapper<AlertaOperativaResponse> responseRowMapper = (rs, rowNum) -> {
+    static final RowMapper<AlertaOperativaResponse> RESPONSE_MAPPER = (rs, rowNum) -> {
         Timestamp tsRec = rs.getTimestamp("RECONOCIDO_AT");
         Timestamp tsCreated = rs.getTimestamp("CREADO_AT");
         return new AlertaOperativaResponse(
@@ -58,90 +63,94 @@ public class AlertaOperativaRepository {
         );
     };
 
-    public AlertaOperativaRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "jdbcTemplate no puede ser nulo");
+    static final ProcedureSpec CREATE_OPERATIONAL_ALERT =
+            ProcedureSpec.procedure(PACKAGE, "create_operational_alert")
+                    .in("p_public_id", Types.VARCHAR)
+                    .in("p_alert_type", Types.VARCHAR)
+                    .in("p_severity", Types.VARCHAR)
+                    .in("p_message", Types.VARCHAR)
+                    .in("p_status", Types.VARCHAR)
+                    .out("o_id", Types.NUMERIC)
+                    .build();
+
+    static final ProcedureSpec GET_OPERATIONAL_ALERT_BY_ID =
+            ProcedureSpec.procedure(PACKAGE, "get_operational_alert_by_id")
+                    .in("p_id", Types.NUMERIC)
+                    .cursor("o_alert", ENTITY_MAPPER)
+                    .build();
+
+    static final ProcedureSpec GET_OPERATIONAL_ALERT_BY_PUBLIC_ID =
+            ProcedureSpec.procedure(PACKAGE, "get_operational_alert_by_public_id")
+                    .in("p_public_id", Types.VARCHAR)
+                    .cursor("o_alert", ENTITY_MAPPER)
+                    .build();
+
+    static final ProcedureSpec LIST_OPERATIONAL_ALERTS =
+            ProcedureSpec.procedure(PACKAGE, "list_operational_alerts")
+                    .in("p_site_id", Types.NUMERIC)
+                    .in("p_status", Types.VARCHAR)
+                    .cursor("o_rows", RESPONSE_MAPPER)
+                    .build();
+
+    static final ProcedureSpec ACKNOWLEDGE_OPERATIONAL_ALERT =
+            ProcedureSpec.procedure(PACKAGE, "acknowledge_operational_alert")
+                    .in("p_id", Types.NUMERIC)
+                    .in("p_user_id", Types.NUMERIC)
+                    .in("p_acknowledged_at", Types.TIMESTAMP)
+                    .in("p_reason", Types.VARCHAR)
+                    .build();
+
+    private final PackageGateway gateway;
+
+    public AlertaOperativaRepository(PackageGateway gateway) {
+        this.gateway = Objects.requireNonNull(gateway, "gateway no puede ser nulo");
     }
 
     public AlertaOperativa guardar(AlertaOperativa a) {
-        String sql = """
-                INSERT INTO ALERTA_OPERATIVA (
-                    PUBLIC_ID, SEDE_ID, TIPO_ALERTA, NIVEL_SEVERIDAD, MENSAJE, ESTADO
-                ) VALUES (?, ?, ?, ?, ?, ?)
-                """;
-
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(sql, new String[]{"ID"});
-            ps.setString(1, a.publicId());
-            ps.setLong(2, a.sedeId());
-            ps.setString(3, a.tipoAlerta());
-            ps.setString(4, a.nivelSeveridad());
-            ps.setString(5, a.mensaje());
-            ps.setString(6, a.estado() != null ? a.estado() : "ACTIVA");
-            return ps;
-        }, keyHolder);
-
-        Number key = keyHolder.getKey();
+        Objects.requireNonNull(a, "alerta no puede ser nula");
+        Map<String, Object> out = gateway.execute(CREATE_OPERATIONAL_ALERT, new MapSqlParameterSource()
+                .addValue("p_public_id", a.publicId(), Types.VARCHAR)
+                .addValue("p_alert_type", a.tipoAlerta(), Types.VARCHAR)
+                .addValue("p_severity", a.nivelSeveridad(), Types.VARCHAR)
+                .addValue("p_message", a.mensaje(), Types.VARCHAR)
+                .addValue("p_status", a.estado() != null ? a.estado() : "ACTIVA", Types.VARCHAR));
+        Number key = (Number) out.get("o_id");
         Long id = key != null ? key.longValue() : null;
         return buscarPorId(id).orElseThrow(() -> new IllegalStateException("Error al recuperar alerta guardada"));
     }
 
     public Optional<AlertaOperativa> buscarPorId(Long id) {
-        if (id == null) return Optional.empty();
-        String sql = "SELECT * FROM ALERTA_OPERATIVA WHERE ID = ?";
-        List<AlertaOperativa> list = jdbcTemplate.query(sql, rowMapper, id);
-        return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
+        if (id == null) {
+            return Optional.empty();
+        }
+        return gateway.single(
+                GET_OPERATIONAL_ALERT_BY_ID,
+                new MapSqlParameterSource().addValue("p_id", id, Types.NUMERIC),
+                "o_alert");
     }
 
     public Optional<AlertaOperativa> buscarPorPublicId(String publicId) {
-        if (publicId == null || publicId.isBlank()) return Optional.empty();
-        String sql = "SELECT * FROM ALERTA_OPERATIVA WHERE PUBLIC_ID = ?";
-        List<AlertaOperativa> list = jdbcTemplate.query(sql, rowMapper, publicId);
-        return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
+        if (publicId == null || publicId.isBlank()) {
+            return Optional.empty();
+        }
+        return gateway.single(
+                GET_OPERATIONAL_ALERT_BY_PUBLIC_ID,
+                new MapSqlParameterSource().addValue("p_public_id", publicId, Types.VARCHAR),
+                "o_alert");
     }
 
     public List<AlertaOperativaResponse> listarPorSede(Long sedeId, String estado) {
-        StringBuilder sql = new StringBuilder("""
-                SELECT a.PUBLIC_ID,
-                       s.PUBLIC_ID AS SEDE_PUB_ID,
-                       s.NOMBRE AS SEDE_NOMBRE,
-                       a.TIPO_ALERTA,
-                       a.NIVEL_SEVERIDAD,
-                       a.MENSAJE,
-                       a.ESTADO,
-                       u.EMAIL AS RECONOCIDO_POR_EMAIL,
-                       a.RECONOCIDO_AT,
-                       a.MOTIVO_RECONOCIMIENTO,
-                       a.CREADO_AT
-                FROM ALERTA_OPERATIVA a
-                JOIN SEDE s ON a.SEDE_ID = s.ID
-                LEFT JOIN USUARIO u ON a.RECONOCIDO_POR_USUARIO_ID = u.ID
-                WHERE 1=1
-                """);
-
-        List<Object> params = new ArrayList<>();
-        if (sedeId != null) {
-            sql.append(" AND a.SEDE_ID = ?");
-            params.add(sedeId);
-        }
-        if (estado != null && !estado.isBlank()) {
-            sql.append(" AND a.ESTADO = ?");
-            params.add(estado);
-        }
-        sql.append(" ORDER BY a.CREADO_AT DESC");
-
-        return jdbcTemplate.query(sql.toString(), responseRowMapper, params.toArray());
+        String status = (estado != null && !estado.isBlank()) ? estado : null;
+        return gateway.list(LIST_OPERATIONAL_ALERTS, new MapSqlParameterSource()
+                .addValue("p_site_id", sedeId, Types.NUMERIC)
+                .addValue("p_status", status, Types.VARCHAR), "o_rows");
     }
 
     public void reconocerAlerta(Long id, Long usuarioId, Instant ahora, String motivo) {
-        String sql = """
-                UPDATE ALERTA_OPERATIVA
-                SET ESTADO = 'RECONOCIDA',
-                    RECONOCIDO_POR_USUARIO_ID = ?,
-                    RECONOCIDO_AT = ?,
-                    MOTIVO_RECONOCIMIENTO = ?
-                WHERE ID = ?
-                """;
-        jdbcTemplate.update(sql, usuarioId, Timestamp.from(ahora), motivo, id);
+        gateway.execute(ACKNOWLEDGE_OPERATIONAL_ALERT, new MapSqlParameterSource()
+                .addValue("p_id", id, Types.NUMERIC)
+                .addValue("p_user_id", usuarioId, Types.NUMERIC)
+                .addValue("p_acknowledged_at", ahora != null ? Timestamp.from(ahora) : null, Types.TIMESTAMP)
+                .addValue("p_reason", motivo, Types.VARCHAR));
     }
 }

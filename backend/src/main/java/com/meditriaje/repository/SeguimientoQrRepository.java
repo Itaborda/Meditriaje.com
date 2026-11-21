@@ -1,25 +1,28 @@
 package com.meditriaje.repository;
 
 import com.meditriaje.model.SeguimientoIntrahospitalarioQr;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.meditriaje.repository.plsql.PackageGateway;
+import com.meditriaje.repository.plsql.ProcedureSpec;
 import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.stereotype.Repository;
 
-import java.sql.PreparedStatement;
 import java.sql.Timestamp;
-import java.time.Instant;
-import java.util.List;
+import java.sql.Types;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
+/**
+ * Repositorio para la entidad {@code SEGUIMIENTO_INTRAHOSPITALARIO_QR} (Fase O, ADR-028).
+ * Delega en {@code PKG_OPERATIONS} mediante {@link PackageGateway} sin SQL.
+ */
 @Repository
 public class SeguimientoQrRepository {
 
-    private final JdbcTemplate jdbcTemplate;
+    static final String PACKAGE = "PKG_OPERATIONS";
 
-    private final RowMapper<SeguimientoIntrahospitalarioQr> rowMapper = (rs, rowNum) -> {
+    static final RowMapper<SeguimientoIntrahospitalarioQr> ENTITY_MAPPER = (rs, rowNum) -> {
         Timestamp tsCreated = rs.getTimestamp("CREADO_AT");
         Timestamp tsExp = rs.getTimestamp("EXPIRA_AT");
         return new SeguimientoIntrahospitalarioQr(
@@ -34,57 +37,89 @@ public class SeguimientoQrRepository {
         );
     };
 
-    public SeguimientoQrRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "jdbcTemplate no puede ser nulo");
+    static final ProcedureSpec CREATE_INPATIENT_QR = ProcedureSpec.procedure(PACKAGE, "create_inpatient_qr")
+            .in("p_public_id", Types.VARCHAR)
+            .in("p_episode_id", Types.NUMERIC)
+            .in("p_token", Types.VARCHAR)
+            .in("p_location_text", Types.VARCHAR)
+            .in("p_status", Types.VARCHAR)
+            .in("p_expires_at", Types.TIMESTAMP)
+            .out("o_id", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec GET_INPATIENT_QR_BY_ID = ProcedureSpec.procedure(PACKAGE, "get_inpatient_qr_by_id")
+            .in("p_id", Types.NUMERIC)
+            .cursor("o_qr", ENTITY_MAPPER)
+            .build();
+
+    static final ProcedureSpec GET_INPATIENT_QR_BY_TOKEN =
+            ProcedureSpec.procedure(PACKAGE, "get_inpatient_qr_by_token")
+                    .in("p_token", Types.VARCHAR)
+                    .cursor("o_qr", ENTITY_MAPPER)
+                    .build();
+
+    static final ProcedureSpec GET_ACTIVE_INPATIENT_QR_BY_EPISODE =
+            ProcedureSpec.procedure(PACKAGE, "get_active_inpatient_qr_by_episode")
+                    .in("p_episode_id", Types.NUMERIC)
+                    .cursor("o_qr", ENTITY_MAPPER)
+                    .build();
+
+    static final ProcedureSpec UPDATE_INPATIENT_QR_LOCATION =
+            ProcedureSpec.procedure(PACKAGE, "update_inpatient_qr_location")
+                    .in("p_id", Types.NUMERIC)
+                    .in("p_location_text", Types.VARCHAR)
+                    .build();
+
+    private final PackageGateway gateway;
+
+    public SeguimientoQrRepository(PackageGateway gateway) {
+        this.gateway = Objects.requireNonNull(gateway, "gateway no puede ser nulo");
     }
 
     public SeguimientoIntrahospitalarioQr guardar(SeguimientoIntrahospitalarioQr q) {
-        String sql = """
-                INSERT INTO SEGUIMIENTO_INTRAHOSPITALARIO_QR (
-                    PUBLIC_ID, EPISODIO_ID, CODIGO_QR_TOKEN, UBICACION_ACTUAL_TEXTO,
-                    ESTADO, EXPIRA_AT
-                ) VALUES (?, ?, ?, ?, ?, ?)
-                """;
-
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(sql, new String[]{"ID"});
-            ps.setString(1, q.publicId());
-            ps.setLong(2, q.episodioId());
-            ps.setString(3, q.codigoQrToken());
-            ps.setString(4, q.ubicacionActualTexto());
-            ps.setString(5, q.estado() != null ? q.estado() : "ACTIVO");
-            ps.setTimestamp(6, q.expiraAt() != null ? Timestamp.from(q.expiraAt()) : null);
-            return ps;
-        }, keyHolder);
-
-        Number key = keyHolder.getKey();
+        Objects.requireNonNull(q, "seguimiento QR no puede ser nulo");
+        Map<String, Object> out = gateway.execute(CREATE_INPATIENT_QR, new MapSqlParameterSource()
+                .addValue("p_public_id", q.publicId(), Types.VARCHAR)
+                .addValue("p_episode_id", q.episodioId(), Types.NUMERIC)
+                .addValue("p_token", q.codigoQrToken(), Types.VARCHAR)
+                .addValue("p_location_text", q.ubicacionActualTexto(), Types.VARCHAR)
+                .addValue("p_status", q.estado() != null ? q.estado() : "ACTIVO", Types.VARCHAR)
+                .addValue("p_expires_at", q.expiraAt() != null ? Timestamp.from(q.expiraAt()) : null, Types.TIMESTAMP));
+        Number key = (Number) out.get("o_id");
         Long id = key != null ? key.longValue() : null;
         return buscarPorId(id).orElseThrow(() -> new IllegalStateException("Error al recuperar token QR guardado"));
     }
 
     public Optional<SeguimientoIntrahospitalarioQr> buscarPorId(Long id) {
-        if (id == null) return Optional.empty();
-        String sql = "SELECT * FROM SEGUIMIENTO_INTRAHOSPITALARIO_QR WHERE ID = ?";
-        List<SeguimientoIntrahospitalarioQr> list = jdbcTemplate.query(sql, rowMapper, id);
-        return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
+        if (id == null) {
+            return Optional.empty();
+        }
+        return gateway.single(
+                GET_INPATIENT_QR_BY_ID,
+                new MapSqlParameterSource().addValue("p_id", id, Types.NUMERIC),
+                "o_qr");
     }
 
     public Optional<SeguimientoIntrahospitalarioQr> buscarPorToken(String token) {
-        if (token == null || token.isBlank()) return Optional.empty();
-        String sql = "SELECT * FROM SEGUIMIENTO_INTRAHOSPITALARIO_QR WHERE CODIGO_QR_TOKEN = ?";
-        List<SeguimientoIntrahospitalarioQr> list = jdbcTemplate.query(sql, rowMapper, token);
-        return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
+        if (token == null || token.isBlank()) {
+            return Optional.empty();
+        }
+        return gateway.single(
+                GET_INPATIENT_QR_BY_TOKEN,
+                new MapSqlParameterSource().addValue("p_token", token, Types.VARCHAR),
+                "o_qr");
     }
 
     public Optional<SeguimientoIntrahospitalarioQr> buscarActivoPorEpisodioId(Long episodioId) {
-        String sql = "SELECT * FROM SEGUIMIENTO_INTRAHOSPITALARIO_QR WHERE EPISODIO_ID = ? AND ESTADO = 'ACTIVO' ORDER BY CREADO_AT DESC";
-        List<SeguimientoIntrahospitalarioQr> list = jdbcTemplate.query(sql, rowMapper, episodioId);
-        return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
+        return gateway.single(
+                GET_ACTIVE_INPATIENT_QR_BY_EPISODE,
+                new MapSqlParameterSource().addValue("p_episode_id", episodioId, Types.NUMERIC),
+                "o_qr");
     }
 
     public void actualizarUbicacion(Long id, String nuevaUbicacion) {
-        String sql = "UPDATE SEGUIMIENTO_INTRAHOSPITALARIO_QR SET UBICACION_ACTUAL_TEXTO = ? WHERE ID = ?";
-        jdbcTemplate.update(sql, nuevaUbicacion, id);
+        gateway.execute(UPDATE_INPATIENT_QR_LOCATION, new MapSqlParameterSource()
+                .addValue("p_id", id, Types.NUMERIC)
+                .addValue("p_location_text", nuevaUbicacion, Types.VARCHAR));
     }
 }

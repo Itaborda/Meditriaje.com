@@ -30,6 +30,7 @@ import com.meditriaje.model.Paciente;
 import com.meditriaje.model.Profesional;
 import com.meditriaje.model.Usuario;
 import com.meditriaje.repository.CitaRepository;
+import com.meditriaje.repository.DemoSeedRepository;
 import com.meditriaje.repository.DisponibilidadSlotRepository;
 import com.meditriaje.repository.EspecialidadRepository;
 import com.meditriaje.repository.MedicamentoRepository;
@@ -52,7 +53,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.annotation.Order;
 import org.springframework.core.env.Environment;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
@@ -90,7 +90,7 @@ public class DemoDataSeeder implements CommandLineRunner {
     private static final String IP_LOCAL = "127.0.0.1";
 
     private final Environment environment;
-    private final JdbcTemplate jdbcTemplate;
+    private final DemoSeedRepository demoSeedRepository;
     private final PasswordEncoder passwordEncoder;
     private final UsuarioRepository usuarioRepository;
     private final PacienteRepository pacienteRepository;
@@ -113,7 +113,7 @@ public class DemoDataSeeder implements CommandLineRunner {
 
     public DemoDataSeeder(
             Environment environment,
-            JdbcTemplate jdbcTemplate,
+            DemoSeedRepository demoSeedRepository,
             PasswordEncoder passwordEncoder,
             UsuarioRepository usuarioRepository,
             PacienteRepository pacienteRepository,
@@ -135,7 +135,7 @@ public class DemoDataSeeder implements CommandLineRunner {
             DispensationService dispensationService
     ) {
         this.environment = Objects.requireNonNull(environment, "environment no puede ser nulo");
-        this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "jdbcTemplate no puede ser nulo");
+        this.demoSeedRepository = Objects.requireNonNull(demoSeedRepository, "demoSeedRepository no puede ser nulo");
         this.passwordEncoder = Objects.requireNonNull(passwordEncoder, "passwordEncoder no puede ser nulo");
         this.usuarioRepository = Objects.requireNonNull(usuarioRepository, "usuarioRepository no puede ser nulo");
         this.pacienteRepository = Objects.requireNonNull(pacienteRepository, "pacienteRepository no puede ser nulo");
@@ -200,12 +200,9 @@ public class DemoDataSeeder implements CommandLineRunner {
         }
 
         // 3. Blindaje de aislamiento: NEGATIVA a ejecutarse si hay usuarios de otros dominios
-        Integer usuariosNoDemo = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM USUARIO WHERE LOWER(EMAIL) NOT LIKE '%" + DEMO_DOMAIN.toLowerCase() + "'",
-                Integer.class
-        );
+        int usuariosNoDemo = demoSeedRepository.contarUsuariosFueraDeDominio(DEMO_DOMAIN);
 
-        if (usuariosNoDemo != null && usuariosNoDemo > 0) {
+        if (usuariosNoDemo > 0) {
             String errorAislamiento = "DemoDataSeeder: ABORTADO POR SEGURIDAD. La base de datos contiene " + usuariosNoDemo +
                     " usuario(s) que no pertenecen al dominio reservado '" + DEMO_DOMAIN + "'. " +
                     "Para prevenir contaminación accidental de datos reales o entornos no demo, la siembra ha sido rechazada.";
@@ -214,12 +211,9 @@ public class DemoDataSeeder implements CommandLineRunner {
         }
 
         // 4. Idempotencia: si ya existen usuarios demo sembrados, omitir
-        Integer usuariosDemo = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM USUARIO WHERE LOWER(EMAIL) LIKE '%" + DEMO_DOMAIN.toLowerCase() + "'",
-                Integer.class
-        );
+        int usuariosDemo = demoSeedRepository.contarUsuariosEnDominio(DEMO_DOMAIN);
 
-        if (usuariosDemo != null && usuariosDemo >= 17) {
+        if (usuariosDemo >= 17) {
             log.info("DemoDataSeeder: Datos de demostración ya sembrados ({} usuarios '{}' detectados). Omitiendo siembra.",
                     usuariosDemo, DEMO_DOMAIN);
             return;
@@ -583,11 +577,7 @@ public class DemoDataSeeder implements CommandLineRunner {
                     );
 
                     // Para cumplir la regla temporal (now >= inicio de la cita), ajustar transitoriamente el horario del slot
-                    jdbcTemplate.update(
-                            "UPDATE DISPONIBILIDAD_SLOT SET FECHA_HORA_INICIO = CURRENT_TIMESTAMP - INTERVAL '1' HOUR, " +
-                                    "FECHA_HORA_FIN = CURRENT_TIMESTAMP - INTERVAL '40' MINUTE WHERE PUBLIC_ID = ?",
-                            slot7.publicId()
-                    );
+                    demoSeedRepository.moverSlotAlPasadoParaDemo(slot7.publicId());
 
                     appointmentService.marcarNoAsistio(
                             cita7.publicId(),

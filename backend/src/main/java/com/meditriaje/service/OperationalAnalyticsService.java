@@ -3,6 +3,7 @@ package com.meditriaje.service;
 import com.meditriaje.dto.hospital.CensoCamasResponse;
 import com.meditriaje.dto.emergency.ItemColaUrgenciaResponse;
 import com.meditriaje.dto.operational.*;
+import com.meditriaje.exception.ConflictoOperacionException;
 import com.meditriaje.exception.RecursoNoEncontradoException;
 import com.meditriaje.model.*;
 import com.meditriaje.repository.*;
@@ -159,7 +160,7 @@ public class OperationalAnalyticsService {
                         null,
                         Instant.now(clock)
                 ));
-            } catch (DataIntegrityViolationException ignored) {
+            } catch (DataIntegrityViolationException | ConflictoOperacionException ignored) {
                 // Deduplicado de forma segura por el índice único UQ_ALERTA_OPERATIVA_ACTIVA (V025)
             }
         }
