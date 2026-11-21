@@ -2,12 +2,12 @@
 <html lang="es" data-theme="light">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>MediTriaje 2.0 — Plataforma de Triaje, Citas e Historia Clínica</title>
   <link rel="icon" type="image/png" href="assets/images/favicon.png">
-  <link rel="stylesheet" href="css/tokens.css?v=2.0.4">
-  <link rel="stylesheet" href="css/base.css?v=2.0.4">
-  <link rel="stylesheet" href="css/components.css?v=2.0.4">
+  <link rel="stylesheet" href="css/tokens.css?v=2.0.5">
+  <link rel="stylesheet" href="css/base.css?v=2.0.5">
+  <link rel="stylesheet" href="css/components.css?v=2.0.5">
 </head>
 <body>
   <!-- Enlace accesible de salto al contenido -->
@@ -18,7 +18,7 @@
     <div class="container navbar-inner">
       <div class="flex items-center gap-2">
         <!-- Botón accesible para alternar barra lateral en móviles / responsive -->
-        <button id="sidebarToggleBtn" type="button" class="btn btn-ghost btn--sm btn--icon-only sidebar-toggle-btn" aria-label="Abrir menú lateral" aria-controls="app-sidebar" aria-expanded="false" title="Menú lateral" style="display: none;">
+        <button id="sidebarToggleBtn" type="button" class="btn btn-ghost btn--sm btn--icon-only sidebar-toggle-btn" aria-label="Abrir menú lateral" aria-controls="app-sidebar" aria-expanded="false" title="Menú lateral">
           <svg class="icon icon-menu" viewBox="0 0 24 24" aria-hidden="true">
             <line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>
           </svg>
@@ -77,8 +77,8 @@
   </footer>
 
   <!-- Barra de Navegación Inferior Móvil (Para pacientes autenticados) -->
-  <nav class="bottom-nav" id="bottom-nav" style="display: none;" aria-label="Navegación móvil del paciente">
-    <a href="#/patient/dashboard" class="bottom-nav-item is-active">
+  <nav class="bottom-nav" id="bottom-nav" aria-label="Navegación móvil del paciente">
+    <a href="#/patient/dashboard" class="bottom-nav-item">
       <svg class="icon icon-hospital" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v4"/><path d="M14 14h-4"/><path d="M14 18h-4"/><path d="M14 8h-4"/><path d="M18 12h-4"/><path d="M6 12h4"/><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M10 22v-4h4v4"/></svg>
       <span>Inicio</span>
     </a>
@@ -110,6 +110,6 @@
   <script src="js/lib/qrcode.min.js"></script>
 
   <!-- Script Modular de la Aplicación -->
-  <script type="module" src="js/app.js?v=2.0.4"></script>
+  <script type="module" src="js/app.js?v=2.0.5"></script>
 </body>
 </html>

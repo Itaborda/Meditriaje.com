@@ -19,13 +19,13 @@ let censusState = {
 function formatBedBadge(estado) {
   switch (estado) {
     case 'DISPONIBLE':
-      return `<span class="badge" style="background-color: var(--teal-600, #059669); color: #fff; font-weight: 600;">Disponible</span>`;
+      return `<span class="badge badge--confirmed font-semibold">Disponible</span>`;
     case 'OCUPADA':
-      return `<span class="badge" style="background-color: var(--danger, #dc2626); color: #fff; font-weight: 600;">Ocupada</span>`;
+      return `<span class="badge badge--cancelled font-semibold">Ocupada</span>`;
     case 'LIMPIEZA':
-      return `<span class="badge" style="background-color: #d97706; color: #fff; font-weight: 600;">En Limpieza</span>`;
+      return `<span class="badge badge--warning font-semibold">En Limpieza</span>`;
     case 'MANTENIMIENTO':
-      return `<span class="badge" style="background-color: #64748b; color: #fff; font-weight: 600;">Mantenimiento</span>`;
+      return `<span class="badge badge--neutral font-semibold">Mantenimiento</span>`;
     default:
       return `<span class="badge badge--dark">${esc(estado)}</span>`;
   }
@@ -59,35 +59,35 @@ export async function hospitalCensusView(container) {
       </div>
 
       <!-- Tarjetas de Métricas de Capacidad (KPIs) -->
-      <div class="grid grid-cols-2 grid-cols-3-md grid-cols-6-lg gap-3 mb-6" id="censusKpiGrid">
+      <div class="grid grid-cols-2 grid-cols-3-sm grid-cols-6-lg gap-3 mb-6" id="censusKpiGrid">
         <div class="card p-3 text-center">
           <div class="text-xs text-muted font-bold uppercase">Total Camas</div>
-          <div class="text-2xl font-bold mt-1" id="kpiTotalCamas">0</div>
+          <div class="text-2xl font-bold mt-1 tabular-nums" id="kpiTotalCamas">0</div>
         </div>
 
-        <div class="card p-3 text-center" style="border-top: 3px solid var(--danger, #dc2626);">
+        <div class="card p-3 text-center" style="border-top: 3px solid var(--danger);">
           <div class="text-xs text-muted font-bold uppercase">Ocupadas</div>
-          <div class="text-2xl font-bold mt-1 text-danger" id="kpiOcupadas">0</div>
+          <div class="text-2xl font-bold mt-1 text-danger tabular-nums" id="kpiOcupadas">0</div>
         </div>
 
-        <div class="card p-3 text-center" style="border-top: 3px solid #059669;">
+        <div class="card p-3 text-center" style="border-top: 3px solid var(--success);">
           <div class="text-xs text-muted font-bold uppercase">Disponibles</div>
-          <div class="text-2xl font-bold mt-1 text-success" id="kpiDisponibles">0</div>
+          <div class="text-2xl font-bold mt-1 text-success tabular-nums" id="kpiDisponibles">0</div>
         </div>
 
-        <div class="card p-3 text-center" style="border-top: 3px solid #d97706;">
+        <div class="card p-3 text-center" style="border-top: 3px solid var(--warning);">
           <div class="text-xs text-muted font-bold uppercase">Limpieza</div>
-          <div class="text-2xl font-bold mt-1" style="color: #d97706;" id="kpiLimpieza">0</div>
+          <div class="text-2xl font-bold mt-1 text-warning tabular-nums" id="kpiLimpieza">0</div>
         </div>
 
-        <div class="card p-3 text-center" style="border-top: 3px solid #64748b;">
+        <div class="card p-3 text-center" style="border-top: 3px solid var(--border-strong);">
           <div class="text-xs text-muted font-bold uppercase">Mantenimiento</div>
-          <div class="text-2xl font-bold mt-1 text-muted" id="kpiMantenimiento">0</div>
+          <div class="text-2xl font-bold mt-1 text-muted tabular-nums" id="kpiMantenimiento">0</div>
         </div>
 
         <div class="card p-3 text-center" style="border-top: 3px solid var(--primary);">
           <div class="text-xs text-muted font-bold uppercase">% Ocupación</div>
-          <div class="text-2xl font-bold mt-1" style="color: var(--primary);" id="kpiTasaOcupacion">0%</div>
+          <div class="text-2xl font-bold mt-1 text-primary tabular-nums" id="kpiTasaOcupacion">0%</div>
         </div>
       </div>
 
@@ -289,20 +289,20 @@ function renderBeds() {
 
         <div class="mt-3 pt-2 border-t flex items-center justify-end gap-1">
           ${isLimpieza ? `
-            <button type="button" class="btn btn-xs btn-primary btn-bed-action" data-id="${esc(b.publicId)}" data-status="DISPONIBLE" title="Liberar cama a Disponible tras desinfección">
+            <button type="button" class="btn btn--xs btn-primary btn-bed-action" data-id="${esc(b.publicId)}" data-status="DISPONIBLE" title="Liberar cama a Disponible tras desinfección">
               ${ui.icon('check', 'icon icon--xs')}
               <span>Marcar Disponible</span>
             </button>
           ` : ''}
 
           ${b.estado === 'DISPONIBLE' ? `
-            <button type="button" class="btn btn-xs btn-ghost btn-bed-action" data-id="${esc(b.publicId)}" data-status="MANTENIMIENTO" title="Poner en mantenimiento">
+            <button type="button" class="btn btn--xs btn-ghost btn-bed-action" data-id="${esc(b.publicId)}" data-status="MANTENIMIENTO" title="Poner en mantenimiento">
               <span>Mantenimiento</span>
             </button>
           ` : ''}
 
           ${b.estado === 'MANTENIMIENTO' ? `
-            <button type="button" class="btn btn-xs btn-ghost btn-bed-action" data-id="${esc(b.publicId)}" data-status="DISPONIBLE" title="Habilitar cama">
+            <button type="button" class="btn btn--xs btn-ghost btn-bed-action" data-id="${esc(b.publicId)}" data-status="DISPONIBLE" title="Habilitar cama">
               <span>Habilitar</span>
             </button>
           ` : ''}

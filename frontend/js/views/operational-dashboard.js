@@ -90,7 +90,7 @@ export async function renderOperationalDashboard(container) {
              aria-live="assertive" 
              style="display: none;">
       <div class="operational-banner-content">
-        <span aria-hidden="true" style="font-size: 1.5rem;">⚠️</span>
+        <span aria-hidden="true" style="display: inline-flex; color: var(--danger); flex-shrink: 0;">${ui.icon('alert-triangle', 'icon icon--lg')}</span>
         <div>
           <strong style="font-weight: var(--weight-bold); font-size: var(--text-sm);">ALERTA DE SATURACIÓN OPERATIVA EN CURSO:</strong>
           <div id="texto-alerta-critica" style="font-size: var(--text-sm); margin-top: 2px;">
@@ -120,9 +120,9 @@ export async function renderOperationalDashboard(container) {
         </div>
 
         <div class="operational-pill-group" id="kpi-pills-camas" aria-label="Desglose por estado de camas">
-          <span class="operational-pill" title="Disponibles">🟢 Libres: <strong id="kpi-camas-libres-val">0</strong></span>
-          <span class="operational-pill" title="En proceso de desinfección">🟡 Limpieza: <strong id="kpi-camas-limpieza-val">0</strong></span>
-          <span class="operational-pill" title="En mantenimiento">🔧 Mant.: <strong id="kpi-camas-mant-val">0</strong></span>
+          <span class="operational-pill" title="Disponibles"><span class="status-dot-pill status-dot-pill--success" aria-hidden="true"></span> Libres: <strong class="tabular-nums" id="kpi-camas-libres-val">0</strong></span>
+          <span class="operational-pill" title="En proceso de desinfección"><span class="status-dot-pill status-dot-pill--warning" aria-hidden="true"></span> Limpieza: <strong class="tabular-nums" id="kpi-camas-limpieza-val">0</strong></span>
+          <span class="operational-pill" title="En mantenimiento"><span class="status-dot-pill status-dot-pill--muted" aria-hidden="true"></span> Mant.: <strong class="tabular-nums" id="kpi-camas-mant-val">0</strong></span>
         </div>
       </article>
 
@@ -332,7 +332,7 @@ export async function renderOperationalDashboard(container) {
       <form id="form-scan-qr" style="display: flex; gap: var(--space-2); max-width: 520px; flex-wrap: wrap;">
         <input type="text" 
                id="input-token-qr" 
-               class="form-control" 
+               class="form-input form-control" 
                placeholder="Ej: QROP-7A1B2C3D4E" 
                aria-label="Token de manilla o cabecera hospitalaria" 
                required 

@@ -106,6 +106,26 @@ function getAssistantRoleConfig() {
     };
   }
 
+  if (auth.isEnfermeria) {
+    return {
+      rol: 'ROLE_ENFERMERIA',
+      subtitulo: 'Urgencias y Enfermería',
+      bienvenidaHtml: `
+        <p class="m-0 mb-2">
+          👋 <strong>¡Hola!</strong> Asistente operativo de enfermería.
+        </p>
+        <p class="m-0 text-xs text-muted">
+          Puedo orientarte en la <strong>admisión presencial de urgencias</strong>, clasificación de triaje bajo la <strong>Resolución 5596 de 2015</strong>, reconciliación de pacientes provisionales (NN) y consulta del <strong>censo hospitalario de camas</strong>.
+        </p>
+      `,
+      chips: [
+        { label: '🏥 Admisión y registro NN', query: '¿Cómo admitir un paciente en urgencias o registrar identidad provisional NN?' },
+        { label: '🏷️ Triaje Resolución 5596', query: '¿Cuáles son los 5 niveles de prioridad del triaje?' },
+        { label: '🛏️ Censo de camas', query: '¿Cómo se consulta y actualiza el censo hospitalario de camas?' }
+      ]
+    };
+  }
+
   // Rol por defecto: PACIENTE
   return {
     rol: 'ROLE_PACIENTE',
@@ -423,11 +443,11 @@ function inyectarEstilosWidget() {
   style.textContent = `
        .assistant-fab {
          position: fixed;
-         bottom: calc(var(--space-6) + 60px);
-         right: var(--space-6);
-         z-index: 1000;
-         height: 56px;
-         padding: 4px 18px 4px 4px;
+         bottom: var(--space-5);
+         right: var(--space-5);
+         z-index: 970;
+         height: 52px;
+         padding: 4px 16px 4px 4px;
          border-radius: var(--radius-full);
          background-color: var(--primary);
          color: var(--on-primary);
@@ -441,12 +461,12 @@ function inyectarEstilosWidget() {
          transition: transform var(--duration-fast) var(--ease), background-color var(--duration-fast) var(--ease);
        }
        .assistant-fab:hover {
-         transform: scale(1.04);
+         transform: scale(1.03);
          background-color: var(--primary-hover);
        }
        .assistant-fab-avatar {
-         width: 44px;
-         height: 44px;
+         width: 42px;
+         height: 42px;
          flex: none;
          display: grid;
          place-items: center;
@@ -456,8 +476,8 @@ function inyectarEstilosWidget() {
        }
        .assistant-fab-avatar img {
          display: block;
-         width: 34px;
-         height: 34px;
+         width: 32px;
+         height: 32px;
          object-fit: contain;
        }
        .assistant-fab-label {
@@ -471,13 +491,13 @@ function inyectarEstilosWidget() {
        }
     .assistant-panel {
       position: fixed;
-      bottom: calc(var(--space-6) + 120px);
-      right: var(--space-6);
+      bottom: calc(var(--space-5) + 64px);
+      right: var(--space-5);
       z-index: 1001;
       width: 380px;
       max-width: calc(100vw - 32px);
       height: 520px;
-      max-height: calc(100vh - 140px);
+      max-height: calc(100vh - 150px);
       background-color: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius-lg);
@@ -502,6 +522,13 @@ function inyectarEstilosWidget() {
       display: flex;
       align-items: center;
       justify-content: space-between;
+    }
+    .assistant-panel-header .text-white {
+      color: var(--on-primary);
+    }
+    .assistant-panel-header .text-teal-100 {
+      color: var(--on-primary);
+      opacity: 0.9;
     }
     .assistant-avatar {
       width: 32px;
@@ -534,7 +561,7 @@ function inyectarEstilosWidget() {
       display: flex;
       flex-direction: column;
       gap: var(--space-3);
-      background-color: var(--slate-50);
+      background-color: var(--bg);
     }
     .assistant-msg {
       display: flex;
@@ -573,14 +600,14 @@ function inyectarEstilosWidget() {
       font-size: 11px;
       font-weight: var(--weight-bold);
       color: var(--danger);
-      background: #FFFFFF;
+      background: var(--surface);
       padding: 2px 6px;
       border-radius: var(--radius-sm);
       border: 1px solid var(--danger);
     }
     .assistant-msg-time {
       font-size: 10px;
-      color: var(--slate-400);
+      color: var(--text-muted);
       margin-top: 2px;
       padding: 0 4px;
     }
@@ -596,29 +623,29 @@ function inyectarEstilosWidget() {
       gap: 6px;
     }
     .assistant-chip {
-      background-color: var(--slate-100);
-      color: var(--slate-800);
-      border: 1px solid var(--slate-200);
+      background-color: var(--surface-2);
+      color: var(--text);
+      border: 1px solid var(--border);
       border-radius: var(--radius-sm);
       padding: 6px 8px;
       font-size: 11px;
       text-align: left;
       cursor: pointer;
-      transition: background-color var(--duration-fast);
+      transition: background-color var(--duration-fast), border-color var(--duration-fast);
     }
     .assistant-chip:hover {
-      background-color: var(--teal-50);
-      border-color: var(--teal-300);
+      background-color: var(--primary-soft);
+      border-color: var(--primary-soft-border);
       color: var(--primary);
     }
     .assistant-chip--danger {
-      border-color: #FCA5A5;
+      border-color: var(--danger-border);
       color: var(--danger);
     }
     .assistant-chip--danger:hover {
-      background-color: #FEE2E2;
+      background-color: var(--danger-bg);
       border-color: var(--danger);
-      color: var(--danger);
+      color: var(--on-danger-bg);
     }
     .assistant-panel-footer {
       padding: var(--space-3);
@@ -657,13 +684,13 @@ function inyectarEstilosWidget() {
     }
     .assistant-disclaimer {
       font-size: 10px;
-      color: var(--slate-500);
+      color: var(--text-muted);
       text-align: center;
       margin-top: 6px;
     }
     .assistant-legal-tag {
       font-size: 10px;
-      color: var(--slate-500);
+      color: var(--text-muted);
       font-style: italic;
       border-top: 1px dotted var(--border);
       padding-top: 4px;
@@ -673,7 +700,7 @@ function inyectarEstilosWidget() {
       width: 6px;
       height: 6px;
       margin: 0 2px;
-      background: var(--slate-400);
+      background: var(--text-muted);
       border-radius: 50%;
       animation: typing 1.4s infinite ease-in-out both;
     }
@@ -683,14 +710,27 @@ function inyectarEstilosWidget() {
       0%, 80%, 100% { transform: scale(0); }
       40% { transform: scale(1); }
     }
-    @media (max-width: 640px) {
+    @media (max-width: 768px) {
       .assistant-fab {
-        bottom: calc(var(--space-4) + 60px);
+        height: 48px;
+        padding: 3px 12px 3px 3px;
+        bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
         right: var(--space-4);
+      }
+      .assistant-fab-avatar {
+        width: 38px;
+        height: 38px;
+      }
+      .assistant-fab-avatar img {
+        width: 28px;
+        height: 28px;
+      }
+      body.has-bottom-nav .assistant-fab {
+        bottom: calc(var(--bottom-nav-height, 4rem) + 12px + env(safe-area-inset-bottom));
       }
       .assistant-fab-label--long {
         display: none;
-         }
+      }
       .assistant-fab-label--short {
         display: inline;
       }
@@ -698,10 +738,12 @@ function inyectarEstilosWidget() {
         right: var(--space-4);
         left: var(--space-4);
         width: auto;
-        bottom: calc(var(--space-4) + 120px);
+        max-height: calc(100vh - 150px);
+        bottom: calc(var(--space-4) + 60px + env(safe-area-inset-bottom));
       }
-
-
+      body.has-bottom-nav .assistant-panel {
+        bottom: calc(var(--bottom-nav-height, 4rem) + 68px + env(safe-area-inset-bottom));
+      }
     }
   `;
   document.head.appendChild(style);

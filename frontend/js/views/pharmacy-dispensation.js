@@ -97,9 +97,9 @@ export async function pharmacyDispensationView(container) {
       </div>
 
       <!-- Área de Búsqueda de Recetas -->
-      <div class="card p-5 mb-6" style="background-color: var(--surface-1);">
+      <div class="card p-5 mb-6">
         <form id="pharmacySearchForm" class="flex flex-wrap items-end gap-3">
-          <div class="form-group m-0" style="flex: 1; min-width: 280px;">
+          <div class="form-group m-0" style="flex: 1; min-width: 220px;">
             <label for="pharmacySearchInput" class="form-label text-xs font-bold uppercase tracking-wider text-muted">
               Código de Reclamación o Documento del Paciente
             </label>
@@ -133,7 +133,7 @@ export async function pharmacyDispensationView(container) {
             ${ui.icon('search', 'icon icon--lg')}
           </div>
           <h3 class="text-base font-semibold mb-1">Ingresa el código o documento para iniciar</h3>
-          <p class="text-xs text-muted m-0">El paciente presenta su código de reclamación alfanumérico generado en su portal.</p>
+          <p class="text-xs text-muted m-0 mx-auto" style="max-width: 44ch;">El paciente presenta su código de reclamación alfanumérico generado en su portal.</p>
         </div>
       </div>
 
@@ -174,7 +174,7 @@ function renderInitialState(container) {
         ${ui.icon('search', 'icon icon--lg')}
       </div>
       <h3 class="text-base font-semibold mb-1">Ingresa el código o documento para iniciar</h3>
-      <p class="text-xs text-muted m-0">El paciente presenta su código de reclamación alfanumérico generado en su portal.</p>
+      <p class="text-xs text-muted m-0 mx-auto" style="max-width: 44ch;">El paciente presenta su código de reclamación alfanumérico generado en su portal.</p>
     </div>
   `;
 }
@@ -691,7 +691,7 @@ function renderComprobante(container, comprobante) {
   const r = pharmacyState.selectedReceta;
 
   mainContent.innerHTML = `
-    <div class="card p-8 mb-6" style="background-color: var(--surface-1); border-top: 6px solid var(--primary); max-width: 720px; margin: 0 auto;">
+    <div class="card p-8 mb-6" style="border-top: 6px solid var(--primary); max-width: 720px; margin: 0 auto;">
       
       <!-- Encabezado del comprobante -->
       <div class="flex items-center justify-between pb-4 border-b mb-5">

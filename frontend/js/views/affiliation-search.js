@@ -4,6 +4,7 @@
  */
 
 import { affiliationApi } from '../api.js';
+import { ui } from '../ui.js';
 
 export async function renderAffiliationSearch(container) {
   container.innerHTML = `
@@ -130,7 +131,7 @@ export async function renderAffiliationSearch(container) {
         badgeEstado.className = 'badge badge-secondary';
       }
     } catch (err) {
-      alert(err.message || 'Error consultando aseguramiento.');
+      ui.showToast(err.message || 'Error consultando aseguramiento.', 'error');
     } finally {
       btnConsultar.disabled = false;
       btnConsultar.textContent = 'Consultar Estado de Afiliación';

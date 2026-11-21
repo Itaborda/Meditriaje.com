@@ -433,19 +433,20 @@ function injectStyles() {
     #${HOST_ID} { font-family: var(--font-sans, system-ui, sans-serif); }
     .a11y-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
     .a11y-icon { width: 22px; height: 22px; flex: none; }
-    .a11y-icon--fab { width: 28px; height: 28px; }
 
     .a11y-fab {
       position: fixed; right: 0; top: 45%; transform: translateY(-50%);
-      z-index: 1001; width: 50px; height: 58px; padding: 0 0 0 4px;
-      border: 2px solid var(--surface, #fff); border-right: 0;
-      border-radius: 29px 0 0 29px;
+      z-index: 980; width: 42px; height: 50px; padding: 0 0 0 3px;
+      border: 1px solid var(--surface, #fff); border-right: 0;
+      border-radius: 25px 0 0 25px;
       background: var(--primary, #0f766e); color: var(--on-primary, #fff);
-      box-shadow: var(--shadow-lg, 0 12px 32px rgba(15,23,42,.2));
+      box-shadow: var(--shadow-md, 0 4px 16px rgba(15,23,42,.18));
       display: flex; align-items: center; justify-content: center; cursor: pointer;
-      transition: width .15s ease, background-color .15s ease;
+      opacity: 0.94;
+      transition: width .15s ease, background-color .15s ease, opacity .15s ease;
     }
-    .a11y-fab:hover, .a11y-fab:focus-visible { width: 58px; background: var(--primary-hover, #115e59); }
+    .a11y-fab:hover, .a11y-fab:focus-visible { width: 50px; opacity: 1; background: var(--primary-hover, #115e59); }
+    .a11y-icon--fab { width: 22px; height: 22px; }
     .a11y-fab:focus-visible, .a11y-tile:focus-visible, .a11y-switch:focus-visible,
     .a11y-close:focus-visible, .a11y-reset:focus-visible, #a11y-cb-type:focus-visible {
       outline: 3px solid var(--primary, #0f766e); outline-offset: 2px;
@@ -519,7 +520,18 @@ function injectStyles() {
     .a11y-guide { position: fixed; left: 0; right: 0; top: 40%; height: 56px; z-index: 1090; pointer-events: none;
       background: rgba(250, 204, 21, .22); border-top: 3px solid #facc15; border-bottom: 3px solid #facc15; }
 
-    @media (max-width: 480px) {
+    @media (max-width: 768px) {
+      .a11y-fab {
+        width: 38px;
+        height: 44px;
+        top: auto;
+        bottom: calc(82px + env(safe-area-inset-bottom));
+        transform: none;
+        opacity: 0.9;
+      }
+      body.has-bottom-nav .a11y-fab {
+        bottom: calc(var(--bottom-nav-height, 4rem) + 74px + env(safe-area-inset-bottom));
+      }
       .a11y-panel { top: 8px; right: 8px; bottom: 8px; width: calc(100vw - 16px); }
     }
 

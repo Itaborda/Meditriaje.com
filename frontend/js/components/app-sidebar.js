@@ -335,13 +335,12 @@ export function updateSidebar() {
   if (!auth.isAuthenticated) {
     sidebarElement.style.display = 'none';
     document.body.classList.remove('has-sidebar');
-    if (toggleBtnNavbar) toggleBtnNavbar.style.display = 'none';
+    document.body.classList.remove('sidebar-is-pinned');
     return;
   }
 
   sidebarElement.style.display = 'flex';
   document.body.classList.add('has-sidebar');
-  if (toggleBtnNavbar) toggleBtnNavbar.style.display = 'inline-flex';
 
   const sections = getNavigationConfig();
   const roleInfo = getRoleBadgeInfo();
@@ -426,12 +425,6 @@ export function updateSidebar() {
       </div>
     </div>
   `;
-
-  document.getElementById('btnCloseSidebarMobile')?.addEventListener('click', (e) => {
-    console.log('[DEBUG] btnCloseSidebarMobile DIRECT listener fired');
-    e.stopPropagation();
-    closeMobileSidebar();
-  });
 
   // Re-aplicar estado visual de pinned
   setPinnedState(isPinned);

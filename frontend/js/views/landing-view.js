@@ -98,12 +98,12 @@ export async function landingView(container) {
             <span class="window-dot window-dot--yellow"></span>
             <span class="window-dot window-dot--green"></span>
           </div>
-          <span class="text-xs font-mono text-muted" style="margin-left: 8px;">
-            https://meditraje.vercel.app · Sesión Segura (TLS Directo)
+          <span class="text-xs font-mono text-muted truncate min-w-0" style="margin-left: 8px; flex: 1;">
+            meditriaje.app · Sesión Segura (TLS Directo)
           </span>
-          <span style="margin-left: auto;" class="flex items-center gap-2 text-xs font-medium text-success">
+          <span style="margin-left: auto; flex-shrink: 0;" class="flex items-center gap-2 text-xs font-medium text-success">
             <span class="pulse-dot"></span>
-            <span>Servicios Asistenciales en Línea</span>
+            <span>Servicios en Línea</span>
           </span>
         </div>
 
@@ -352,7 +352,7 @@ export async function landingView(container) {
               <span style="color: var(--success); display: inline-flex;">${ui.icon('shield', 'icon icon--xs')}</span>
               <span>Prescripción Criptográfica</span>
             </div>
-            <img src="assets/images/prescription-record-3d.jpg" alt="Prescripción médica digital y carné de emergencia QR 3D" loading="lazy" width="600" height="380">
+            <img src="assets/images/prescription-record-3d.jpg" alt="Prescripción médica digital y carné de emergencia QR 3D" loading="eager" width="600" height="380">
             <div class="hero-visual-badge hero-visual-badge--bottom">
               <span style="color: var(--primary); display: inline-flex;">${ui.icon('lock', 'icon icon--xs')}</span>
               <span>ADR-007 Inmutable</span>

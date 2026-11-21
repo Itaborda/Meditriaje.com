@@ -156,12 +156,12 @@ async function renderAdminDashboardHome(container) {
             <span class="text-xs text-muted font-medium uppercase tracking-wide">Camas Hospitalarias</span>
             <div class="stat-icon-wrapper" aria-hidden="true">${ui.icon('hospital', 'icon icon--md')}</div>
           </div>
-          <div class="text-3xl font-bold mb-1" id="dashMetricBeds" aria-live="polite">
+          <div class="text-3xl font-bold mb-1 tabular-nums" id="dashMetricBeds" aria-live="polite">
             <span class="skeleton" style="display:inline-block; width:3.5rem; height:2rem; border-radius:var(--radius-sm);" aria-hidden="true"></span>
           </div>
-          <div class="text-xs text-muted flex justify-between items-center">
+          <div class="text-xs text-muted flex justify-between items-center gap-2">
             <span>Camas registradas</span>
-            <a href="#/hospital/census" class="text-primary font-medium hover:underline flex items-center gap-1">
+            <a href="#/hospital/census" class="text-primary font-medium hover:underline flex items-center gap-1 whitespace-nowrap shrink-0">
               <span>Ver censo</span>
               <span aria-hidden="true">&rarr;</span>
             </a>
@@ -173,12 +173,12 @@ async function renderAdminDashboardHome(container) {
             <span class="text-xs text-muted font-medium uppercase tracking-wide">Cuerpo Médico</span>
             <div class="stat-icon-wrapper" aria-hidden="true">${ui.icon('users', 'icon icon--md')}</div>
           </div>
-          <div class="text-3xl font-bold mb-1" id="dashMetricPros" aria-live="polite">
+          <div class="text-3xl font-bold mb-1 tabular-nums" id="dashMetricPros" aria-live="polite">
             <span class="skeleton" style="display:inline-block; width:3.5rem; height:2rem; border-radius:var(--radius-sm);" aria-hidden="true"></span>
           </div>
-          <div class="text-xs text-muted flex justify-between items-center">
-            <span>Profesionales habilitados</span>
-            <a href="#/admin/professionals" class="text-primary font-medium hover:underline flex items-center gap-1">
+          <div class="text-xs text-muted flex justify-between items-center gap-2">
+            <span>Profesionales</span>
+            <a href="#/admin/professionals" class="text-primary font-medium hover:underline flex items-center gap-1 whitespace-nowrap shrink-0">
               <span>Ver personal</span>
               <span aria-hidden="true">&rarr;</span>
             </a>
@@ -190,12 +190,12 @@ async function renderAdminDashboardHome(container) {
             <span class="text-xs text-muted font-medium uppercase tracking-wide">Especialidades</span>
             <div class="stat-icon-wrapper" aria-hidden="true">${ui.icon('stethoscope', 'icon icon--md')}</div>
           </div>
-          <div class="text-3xl font-bold mb-1" id="dashMetricSpecs" aria-live="polite">
+          <div class="text-3xl font-bold mb-1 tabular-nums" id="dashMetricSpecs" aria-live="polite">
             <span class="skeleton" style="display:inline-block; width:3.5rem; height:2rem; border-radius:var(--radius-sm);" aria-hidden="true"></span>
           </div>
-          <div class="text-xs text-muted flex justify-between items-center">
-            <span>Catálogo clínico activo</span>
-            <a href="#/admin/specialties" class="text-primary font-medium hover:underline flex items-center gap-1">
+          <div class="text-xs text-muted flex justify-between items-center gap-2">
+            <span>Catálogo activo</span>
+            <a href="#/admin/specialties" class="text-primary font-medium hover:underline flex items-center gap-1 whitespace-nowrap shrink-0">
               <span>Ver catálogo</span>
               <span aria-hidden="true">&rarr;</span>
             </a>
@@ -207,12 +207,12 @@ async function renderAdminDashboardHome(container) {
             <span class="text-xs text-muted font-medium uppercase tracking-wide">Turnos Programados</span>
             <div class="stat-icon-wrapper" aria-hidden="true">${ui.icon('clock', 'icon icon--md')}</div>
           </div>
-          <div class="text-3xl font-bold mb-1" id="dashMetricSlots" aria-live="polite">
+          <div class="text-3xl font-bold mb-1 tabular-nums" id="dashMetricSlots" aria-live="polite">
             <span class="skeleton" style="display:inline-block; width:3.5rem; height:2rem; border-radius:var(--radius-sm);" aria-hidden="true"></span>
           </div>
-          <div class="text-xs text-muted flex justify-between items-center">
+          <div class="text-xs text-muted flex justify-between items-center gap-2">
             <span>Slots generados</span>
-            <a href="#/admin/slots" class="text-primary font-medium hover:underline flex items-center gap-1">
+            <a href="#/admin/slots" class="text-primary font-medium hover:underline flex items-center gap-1 whitespace-nowrap shrink-0">
               <span>Gestionar slots</span>
               <span aria-hidden="true">&rarr;</span>
             </a>

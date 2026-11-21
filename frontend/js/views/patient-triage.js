@@ -19,6 +19,28 @@ let triageState = {
   activeCategory: 'TODOS'
 };
 
+const CATEGORY_LABELS = {
+  TODOS: 'Todos los síntomas',
+  CARDIOVASCULAR: 'Cardiovascular',
+  DERMATOLOGICO: 'Dermatológico',
+  DIGESTIVO: 'Digestivo',
+  GENERAL: 'General',
+  GINECOLOGICO: 'Ginecológico',
+  MUSCULOESQUELETICO: 'Musculoesquelético',
+  NEUROLOGICO: 'Neurológico',
+  OFTALMOLOGICO: 'Oftalmológico',
+  OTORRINOLARINGOLOGICO: 'Otorrinolaringológico',
+  PSIQUIATRICO: 'Psiquiátrico',
+  RESPIRATORIO: 'Respiratorio',
+  UROLOGICO: 'Urológico'
+};
+
+function formatCategoryLabel(cat) {
+  if (!cat) return 'General';
+  if (CATEGORY_LABELS[cat]) return CATEGORY_LABELS[cat];
+  return cat.replace(/_/g, ' ').toLowerCase().replace(/(^|\s)\S/g, l => l.toUpperCase());
+}
+
 /**
  * Reinicia el estado del asistente de triaje a sus valores iniciales.
  */
@@ -91,11 +113,11 @@ function renderWizard(container) {
       </div>
 
       <!-- Barra de Progreso Accesible -->
-      <div class="wizard-stepper" aria-label="Progreso del triaje">
+      <div class="wizard-stepper flex-wrap gap-2" aria-label="Progreso del triaje">
         <span class="wizard-step-label">
           Paso ${triageState.step} de 2: ${triageState.step === 1 ? 'Selección de síntomas' : 'Intensidad y duración'}
         </span>
-        <span class="text-xs text-muted font-medium">${triageState.selectedSymptoms.size} síntoma(s) seleccionados</span>
+        <span class="text-xs text-muted font-medium tabular-nums">${triageState.selectedSymptoms.size} síntoma(s) seleccionados</span>
       </div>
       <div class="wizard-progress-bar" role="progressbar" aria-valuenow="${triageState.step * 50}" aria-valuemin="0" aria-valuemax="100">
         <div class="wizard-progress-fill" style="width: ${triageState.step * 50}%;"></div>
@@ -152,9 +174,9 @@ function renderStep1(stepContainer, mainContainer) {
                 type="button" 
                 class="chip ${triageState.activeCategory === cat ? 'is-selected' : ''}" 
                 data-category="${cat}"
-                style="padding: var(--space-1) var(--space-3); min-height: 2rem; font-size: var(--text-xs);"
+                style="padding: var(--space-1) var(--space-3); min-height: 2.25rem; font-size: var(--text-xs);"
               >
-                ${cat === 'TODOS' ? 'Todos los síntomas' : cat}
+                ${formatCategoryLabel(cat)}
               </button>
             `).join('')}
           </div>
@@ -164,7 +186,7 @@ function renderStep1(stepContainer, mainContainer) {
         <div class="mb-4">
           <div class="flex items-center justify-between mb-2">
             <span class="text-xs text-muted font-semibold uppercase tracking-wider">Síntomas disponibles:</span>
-            <span id="symptomCounter" class="text-xs text-muted font-medium"></span>
+            <span id="symptomCounter" class="text-xs text-muted font-medium tabular-nums"></span>
           </div>
           <div class="chip-group" id="symptomsList" style="max-height: 380px; overflow-y: auto; padding: var(--space-1);">
             <!-- Se llena dinámicamente -->
@@ -172,7 +194,7 @@ function renderStep1(stepContainer, mainContainer) {
         </div>
       </div>
       
-      <div class="card-footer flex items-center justify-between gap-3">
+      <div class="card-footer flex flex-wrap items-center justify-between gap-3">
         <a href="#/patient/dashboard" class="btn btn-secondary">
           Cancelar
         </a>
@@ -617,7 +639,7 @@ export function renderEmergencyView(container, resultado) {
             </div>
             <div class="flex flex-wrap gap-2 mt-1">
               ${alarmSymptomItems.map(item => `
-                <span class="badge" style="background-color: #FFFFFF; color: var(--danger); border: 1px solid var(--danger); font-weight: var(--weight-semibold); font-size: var(--text-sm); padding: var(--space-1) var(--space-3);">
+                <span class="badge badge--triage-1" style="background-color: var(--surface); color: var(--danger); border: 1px solid var(--danger); font-weight: var(--weight-semibold); font-size: var(--text-sm); padding: var(--space-1) var(--space-3);">
                   ${item}
                 </span>
               `).join('')}

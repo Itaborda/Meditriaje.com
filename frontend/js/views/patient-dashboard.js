@@ -6,7 +6,7 @@
 import { api } from '../api.js';
 import { auth } from '../auth.js';
 import { router } from '../router.js';
-import { ui } from '../ui.js';
+import { ui, esc } from '../ui.js';
 
 /**
  * Formatea una fecha ISO a formato colombiano legible
@@ -57,8 +57,8 @@ export async function patientDashboardView(container) {
 
       <!-- Tarjeta destacada de Triaje -->
       <div class="card card--highlight mb-8">
-        <div class="card-header flex items-center gap-3">
-          <div style="background-color: var(--teal-100); color: var(--primary); padding: 8px; border-radius: var(--radius-md); display: flex;">
+        <div class="card-header flex items-center justify-start gap-3">
+          <div style="background-color: var(--primary-soft); border: 1px solid var(--primary-soft-border); color: var(--primary); padding: 10px; border-radius: var(--radius-md); display: flex; flex-shrink: 0;">
             ${ui.icon('activity', 'icon icon--md')}
           </div>
           <div>
@@ -166,11 +166,11 @@ export async function patientDashboardView(container) {
       <div class="card mb-8" id="cardPatientAllergies" style="border-left: 4px solid var(--warning);">
         <div class="card-body flex flex-wrap items-center justify-between gap-4">
           <div class="flex items-center gap-3">
-            <div style="background-color: var(--warning-bg); color: var(--warning-text, #854D0E); width: 44px; height: 44px; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            <div style="background-color: var(--warning-bg); color: var(--on-warning-bg); width: 44px; height: 44px; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
               ${ui.icon('alert-circle', 'icon icon--md')}
             </div>
             <div>
-              <div class="flex items-center gap-2 mb-1">
+              <div class="flex flex-wrap items-center gap-2 mb-1">
                 <h3 class="text-lg font-bold" style="color: var(--text);">Mis Alergias e Hipersensibilidades</h3>
                 <span class="badge badge--warning text-xs font-semibold">Trazabilidad Clínica</span>
               </div>
@@ -205,13 +205,13 @@ export async function patientDashboardView(container) {
     const p = perfilResult.value;
     const nombreCompleto = `${p.nombres || ''} ${p.apellidos || ''}`.trim() || auth.user?.email || 'Paciente';
     greetingEl.querySelector('div').innerHTML = `
-      <h1 class="text-2xl font-bold mb-1">¡Hola, ${nombreCompleto}!</h1>
-      <p class="text-muted text-sm">Documento: ${p.tipoDocumento} ${p.numeroDocumento} · Portal personal de salud</p>
+      <h1 class="text-2xl font-bold mb-1">¡Hola, ${esc(nombreCompleto)}!</h1>
+      <p class="text-muted text-sm">Documento: ${esc(p.tipoDocumento)} ${esc(p.numeroDocumento)} · Portal personal de salud</p>
     `;
   } else {
     greetingEl.querySelector('div').innerHTML = `
       <h1 class="text-2xl font-bold mb-1">¡Bienvenido a MediTriaje!</h1>
-      <p class="text-muted text-sm">${auth.user?.email || 'Portal del paciente'}</p>
+      <p class="text-muted text-sm">${esc(auth.user?.email || 'Portal del paciente')}</p>
     `;
   }
 
