@@ -1,9 +1,9 @@
 package com.meditriaje.service;
 
-import com.meditriaje.dto.availability.DisponibilidadSlotResponse;
+import com.meditriaje.dto.availability.AvailabilitySlotResponse;
 import com.meditriaje.dto.common.PaginatedResponse;
-import com.meditriaje.exception.DatosInvalidosException;
-import com.meditriaje.repository.DisponibilidadSlotRepository;
+import com.meditriaje.exception.InvalidDataException;
+import com.meditriaje.repository.AvailabilitySlotRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,18 +26,18 @@ import java.util.Set;
 @Transactional(readOnly = true)
 public class AvailabilityService {
 
-    public static final ZoneId ZONE_BOGOTA = ZoneId.of("America/Bogota");
-    private static final Set<String> MODALIDADES_PERMITIDAS = Set.of("PRESENCIAL", "TELEMEDICINA");
+    public static final ZoneId BOGOTA_ZONE = ZoneId.of("America/Bogota");
+    private static final Set<String> ALLOWED_MODALITIES = Set.of("PRESENCIAL", "TELEMEDICINA");
 
-    private final DisponibilidadSlotRepository slotRepository;
+    private final AvailabilitySlotRepository slotRepository;
     private final Clock clock;
 
     @Autowired
-    public AvailabilityService(DisponibilidadSlotRepository slotRepository) {
+    public AvailabilityService(AvailabilitySlotRepository slotRepository) {
         this(slotRepository, Clock.systemUTC());
     }
 
-    public AvailabilityService(DisponibilidadSlotRepository slotRepository, Clock clock) {
+    public AvailabilityService(AvailabilitySlotRepository slotRepository, Clock clock) {
         this.slotRepository = Objects.requireNonNull(slotRepository, "DisponibilidadSlotRepository no puede ser nulo");
         this.clock = Objects.requireNonNull(clock, "Clock no puede ser nulo");
     }
@@ -46,31 +46,28 @@ public class AvailabilityService {
      * Consulta disponibilidad de slots libres futuros con filtros opcionales y paginación.
      *
      * @param especialidadPublicId UUID público de la especialidad (opcional)
-     * @param sedePublicId UUID público de la sede (opcional)
      * @param modalidad Modalidad de atención ('PRESENCIAL' o 'TELEMEDICINA', opcional)
      * @param fecha Fecha específica a consultar en zona horaria America/Bogota (opcional)
      * @param page Número de página (>= 0)
      * @param size Tamaño de página (1 a 100)
      * @return Respuesta paginada con slots disponibles
      */
-    public PaginatedResponse<DisponibilidadSlotResponse> consultarDisponibilidad(
+    public PaginatedResponse<AvailabilitySlotResponse> checkAvailability(
             String especialidadPublicId,
-            String sedePublicId,
             String modalidad,
             LocalDate fecha,
             int page,
             int size
     ) {
-        return consultarDisponibilidad(especialidadPublicId, null, sedePublicId, modalidad, fecha, page, size);
+        return checkAvailability(especialidadPublicId, null, modalidad, fecha, page, size);
     }
 
     /**
      * Consulta disponibilidad de slots libres futuros con filtros opcionales (incluyendo profesional) y paginación.
      */
-    public PaginatedResponse<DisponibilidadSlotResponse> consultarDisponibilidad(
+    public PaginatedResponse<AvailabilitySlotResponse> checkAvailability(
             String especialidadPublicId,
             String profesionalPublicId,
-            String sedePublicId,
             String modalidad,
             LocalDate fecha,
             int page,
@@ -78,18 +75,18 @@ public class AvailabilityService {
     ) {
         // Validación de paginación
         if (page < 0) {
-            throw new DatosInvalidosException("El número de página no puede ser menor a 0.");
+            throw new InvalidDataException("El número de página no puede ser menor a 0.");
         }
         if (size < 1 || size > 100) {
-            throw new DatosInvalidosException("El tamaño de página debe estar entre 1 y 100.");
+            throw new InvalidDataException("El tamaño de página debe estar entre 1 y 100.");
         }
 
         // Validación de modalidad
         String modalidadFiltro = null;
         if (modalidad != null && !modalidad.isBlank()) {
             modalidadFiltro = modalidad.trim().toUpperCase(Locale.ROOT);
-            if (!MODALIDADES_PERMITIDAS.contains(modalidadFiltro)) {
-                throw new DatosInvalidosException(
+            if (!ALLOWED_MODALITIES.contains(modalidadFiltro)) {
+                throw new InvalidDataException(
                         "Modalidad inválida: '" + modalidad + "'. Los valores permitidos son: PRESENCIAL, TELEMEDICINA."
                 );
             }
@@ -101,17 +98,16 @@ public class AvailabilityService {
         String profFiltro = (profesionalPublicId != null && !profesionalPublicId.isBlank())
                 ? profesionalPublicId.trim()
                 : null;
-        String sedeFiltro = (sedePublicId != null && !sedePublicId.isBlank())
-                ? sedePublicId.trim()
-                : null;
+        // Hospital único: no hay filtro de sede.
+        String sedeFiltro = null;
 
         Instant now = clock.instant();
         Instant fechaDesde;
         Instant fechaHasta;
 
         if (fecha != null) {
-            ZonedDateTime startOfDay = fecha.atStartOfDay(ZONE_BOGOTA);
-            ZonedDateTime endOfDay = fecha.atTime(23, 59, 59, 999_999_999).atZone(ZONE_BOGOTA);
+            ZonedDateTime startOfDay = fecha.atStartOfDay(BOGOTA_ZONE);
+            ZonedDateTime endOfDay = fecha.atTime(23, 59, 59, 999_999_999).atZone(BOGOTA_ZONE);
             Instant startInstant = startOfDay.toInstant();
             Instant endInstant = endOfDay.toInstant();
 
@@ -129,11 +125,11 @@ public class AvailabilityService {
             fechaHasta = null;
         }
 
-        List<DisponibilidadSlotResponse> items;
+        List<AvailabilitySlotResponse> items;
         int total;
 
         if (profFiltro != null) {
-            items = slotRepository.consultarDisponibles(
+            items = slotRepository.findAvailable(
                     espFiltro,
                     profFiltro,
                     sedeFiltro,
@@ -143,7 +139,7 @@ public class AvailabilityService {
                     page,
                     size
             );
-            total = slotRepository.contarDisponibles(
+            total = slotRepository.countAvailable(
                     espFiltro,
                     profFiltro,
                     sedeFiltro,
@@ -152,7 +148,7 @@ public class AvailabilityService {
                     fechaHasta
             );
         } else {
-            items = slotRepository.consultarDisponibles(
+            items = slotRepository.findAvailable(
                     espFiltro,
                     sedeFiltro,
                     modalidadFiltro,
@@ -161,7 +157,7 @@ public class AvailabilityService {
                     page,
                     size
             );
-            total = slotRepository.contarDisponibles(
+            total = slotRepository.countAvailable(
                     espFiltro,
                     sedeFiltro,
                     modalidadFiltro,

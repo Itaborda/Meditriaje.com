@@ -1,35 +1,35 @@
 package com.meditriaje.service;
 
-import com.meditriaje.dto.clinical.AtencionResponse;
-import com.meditriaje.dto.clinical.CerrarAtencionRequest;
-import com.meditriaje.dto.clinical.CrearEnmiendaRequest;
-import com.meditriaje.dto.clinical.EnmiendaResponse;
-import com.meditriaje.dto.clinical.IniciarAtencionRequest;
-import com.meditriaje.dto.clinical.SignosVitalesDto;
+import com.meditriaje.dto.clinical.ClinicalAttentionResponse;
+import com.meditriaje.dto.clinical.CloseAttentionRequest;
+import com.meditriaje.dto.clinical.CreateAmendmentRequest;
+import com.meditriaje.dto.clinical.AmendmentResponse;
+import com.meditriaje.dto.clinical.StartAttentionRequest;
+import com.meditriaje.dto.clinical.VitalSignsDto;
 import com.meditriaje.dto.common.PaginatedResponse;
-import com.meditriaje.exception.AccesoNoAutorizadoException;
-import com.meditriaje.exception.DatosInvalidosException;
-import com.meditriaje.exception.RecursoNoEncontradoException;
-import com.meditriaje.model.AccionAuditable;
-import com.meditriaje.model.Atencion;
-import com.meditriaje.model.Cita;
-import com.meditriaje.model.CitaStateMachine;
-import com.meditriaje.model.DiagnosticoCie10;
-import com.meditriaje.model.DisponibilidadSlot;
-import com.meditriaje.model.EstadoCita;
-import com.meditriaje.model.EventoAuditoria;
-import com.meditriaje.model.Paciente;
-import com.meditriaje.model.Profesional;
-import com.meditriaje.model.ResultadoAuditoria;
-import com.meditriaje.model.SignoVital;
-import com.meditriaje.model.Usuario;
-import com.meditriaje.repository.AtencionRepository;
-import com.meditriaje.repository.CitaRepository;
-import com.meditriaje.repository.DiagnosticoCie10Repository;
-import com.meditriaje.repository.DisponibilidadSlotRepository;
-import com.meditriaje.repository.PacienteRepository;
-import com.meditriaje.repository.ProfesionalRepository;
-import com.meditriaje.repository.UsuarioRepository;
+import com.meditriaje.exception.UnauthorizedAccessException;
+import com.meditriaje.exception.InvalidDataException;
+import com.meditriaje.exception.ResourceNotFoundException;
+import com.meditriaje.model.AuditableAction;
+import com.meditriaje.model.ClinicalAttention;
+import com.meditriaje.model.Appointment;
+import com.meditriaje.model.AppointmentStateMachine;
+import com.meditriaje.model.Cie10Diagnosis;
+import com.meditriaje.model.AvailabilitySlot;
+import com.meditriaje.model.AppointmentStatus;
+import com.meditriaje.model.AuditEvent;
+import com.meditriaje.model.Patient;
+import com.meditriaje.model.Professional;
+import com.meditriaje.model.AuditResult;
+import com.meditriaje.model.VitalSign;
+import com.meditriaje.model.User;
+import com.meditriaje.repository.ClinicalAttentionRepository;
+import com.meditriaje.repository.AppointmentRepository;
+import com.meditriaje.repository.Cie10DiagnosisRepository;
+import com.meditriaje.repository.AvailabilitySlotRepository;
+import com.meditriaje.repository.PatientRepository;
+import com.meditriaje.repository.ProfessionalRepository;
+import com.meditriaje.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.stereotype.Service;
@@ -50,66 +50,66 @@ import java.util.UUID;
 @Service
 public class ClinicalAttentionService {
 
-    public static final ZoneId ZONE_BOGOTA = ZoneId.of("America/Bogota");
+    public static final ZoneId BOGOTA_ZONE = ZoneId.of("America/Bogota");
 
-    private final UsuarioRepository usuarioRepository;
-    private final PacienteRepository pacienteRepository;
-    private final ProfesionalRepository profesionalRepository;
-    private final CitaRepository citaRepository;
-    private final DisponibilidadSlotRepository disponibilidadSlotRepository;
-    private final AtencionRepository atencionRepository;
-    private final DiagnosticoCie10Repository diagnosticoCie10Repository;
-    private final AccesoClinicoService accesoClinicoService;
-    private final AuditoriaService auditoriaService;
+    private final UserRepository userRepository;
+    private final PatientRepository patientRepository;
+    private final ProfessionalRepository professionalRepository;
+    private final AppointmentRepository appointmentRepository;
+    private final AvailabilitySlotRepository availabilitySlotRepository;
+    private final ClinicalAttentionRepository attentionRepository;
+    private final Cie10DiagnosisRepository cie10DiagnosisRepository;
+    private final ClinicalAccessService clinicalAccessService;
+    private final AuditService auditService;
     private final Clock clock;
 
     @Autowired
     public ClinicalAttentionService(
-            UsuarioRepository usuarioRepository,
-            PacienteRepository pacienteRepository,
-            ProfesionalRepository profesionalRepository,
-            CitaRepository citaRepository,
-            DisponibilidadSlotRepository disponibilidadSlotRepository,
-            AtencionRepository atencionRepository,
-            DiagnosticoCie10Repository diagnosticoCie10Repository,
-            AccesoClinicoService accesoClinicoService,
-            AuditoriaService auditoriaService
+            UserRepository userRepository,
+            PatientRepository patientRepository,
+            ProfessionalRepository professionalRepository,
+            AppointmentRepository appointmentRepository,
+            AvailabilitySlotRepository availabilitySlotRepository,
+            ClinicalAttentionRepository attentionRepository,
+            Cie10DiagnosisRepository cie10DiagnosisRepository,
+            ClinicalAccessService clinicalAccessService,
+            AuditService auditService
     ) {
         this(
-                usuarioRepository,
-                pacienteRepository,
-                profesionalRepository,
-                citaRepository,
-                disponibilidadSlotRepository,
-                atencionRepository,
-                diagnosticoCie10Repository,
-                accesoClinicoService,
-                auditoriaService,
-                Clock.system(ZONE_BOGOTA)
+                userRepository,
+                patientRepository,
+                professionalRepository,
+                appointmentRepository,
+                availabilitySlotRepository,
+                attentionRepository,
+                cie10DiagnosisRepository,
+                clinicalAccessService,
+                auditService,
+                Clock.system(BOGOTA_ZONE)
         );
     }
 
     public ClinicalAttentionService(
-            UsuarioRepository usuarioRepository,
-            PacienteRepository pacienteRepository,
-            ProfesionalRepository profesionalRepository,
-            CitaRepository citaRepository,
-            DisponibilidadSlotRepository disponibilidadSlotRepository,
-            AtencionRepository atencionRepository,
-            DiagnosticoCie10Repository diagnosticoCie10Repository,
-            AccesoClinicoService accesoClinicoService,
-            AuditoriaService auditoriaService,
+            UserRepository userRepository,
+            PatientRepository patientRepository,
+            ProfessionalRepository professionalRepository,
+            AppointmentRepository appointmentRepository,
+            AvailabilitySlotRepository availabilitySlotRepository,
+            ClinicalAttentionRepository attentionRepository,
+            Cie10DiagnosisRepository cie10DiagnosisRepository,
+            ClinicalAccessService clinicalAccessService,
+            AuditService auditService,
             Clock clock
     ) {
-        this.usuarioRepository = Objects.requireNonNull(usuarioRepository, "usuarioRepository no puede ser nulo");
-        this.pacienteRepository = Objects.requireNonNull(pacienteRepository, "pacienteRepository no puede ser nulo");
-        this.profesionalRepository = Objects.requireNonNull(profesionalRepository, "profesionalRepository no puede ser nulo");
-        this.citaRepository = Objects.requireNonNull(citaRepository, "citaRepository no puede ser nulo");
-        this.disponibilidadSlotRepository = Objects.requireNonNull(disponibilidadSlotRepository, "disponibilidadSlotRepository no puede ser nulo");
-        this.atencionRepository = Objects.requireNonNull(atencionRepository, "atencionRepository no puede ser nulo");
-        this.diagnosticoCie10Repository = Objects.requireNonNull(diagnosticoCie10Repository, "diagnosticoCie10Repository no puede ser nulo");
-        this.accesoClinicoService = Objects.requireNonNull(accesoClinicoService, "accesoClinicoService no puede ser nulo");
-        this.auditoriaService = Objects.requireNonNull(auditoriaService, "auditoriaService no puede ser nulo");
+        this.userRepository = Objects.requireNonNull(userRepository, "usuarioRepository no puede ser nulo");
+        this.patientRepository = Objects.requireNonNull(patientRepository, "pacienteRepository no puede ser nulo");
+        this.professionalRepository = Objects.requireNonNull(professionalRepository, "profesionalRepository no puede ser nulo");
+        this.appointmentRepository = Objects.requireNonNull(appointmentRepository, "citaRepository no puede ser nulo");
+        this.availabilitySlotRepository = Objects.requireNonNull(availabilitySlotRepository, "disponibilidadSlotRepository no puede ser nulo");
+        this.attentionRepository = Objects.requireNonNull(attentionRepository, "atencionRepository no puede ser nulo");
+        this.cie10DiagnosisRepository = Objects.requireNonNull(cie10DiagnosisRepository, "diagnosticoCie10Repository no puede ser nulo");
+        this.clinicalAccessService = Objects.requireNonNull(clinicalAccessService, "accesoClinicoService no puede ser nulo");
+        this.auditService = Objects.requireNonNull(auditService, "auditoriaService no puede ser nulo");
         this.clock = Objects.requireNonNull(clock, "clock no puede ser nulo");
     }
 
@@ -118,63 +118,63 @@ public class ClinicalAttentionService {
      * Solo el profesional asignado a la cita puede iniciar la atención.
      */
     @Transactional
-    public AtencionResponse iniciarAtencion(
-            IniciarAtencionRequest request,
+    public ClinicalAttentionResponse startAttention(
+            StartAttentionRequest request,
             String usuarioAutenticadoPublicId,
             String ipOrigen
     ) {
         Objects.requireNonNull(request, "request no puede ser nulo");
 
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario autenticado no encontrado."));
-        Profesional profesional = profesionalRepository.buscarPorUsuarioId(usuario.id())
-                .orElseThrow(() -> new AccesoNoAutorizadoException("Usuario no registrado como profesional asistencial."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario autenticado no encontrado."));
+        Professional profesional = professionalRepository.findByUserId(usuario.id())
+                .orElseThrow(() -> new UnauthorizedAccessException("Usuario no registrado como profesional asistencial."));
 
-        Cita cita = citaRepository.buscarEntidadPorPublicId(request.citaPublicId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Cita medica no encontrada."));
+        Appointment cita = appointmentRepository.findEntityByPublicId(request.appointmentPublicId())
+                .orElseThrow(() -> new ResourceNotFoundException("Cita medica no encontrada."));
 
-        DisponibilidadSlot slot = disponibilidadSlotRepository.buscarPorId(cita.slotId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Slot de disponibilidad no encontrado."));
+        AvailabilitySlot slot = availabilitySlotRepository.findById(cita.slotId())
+                .orElseThrow(() -> new ResourceNotFoundException("Slot de disponibilidad no encontrado."));
 
         // Validar que el médico autenticado es el asignado a la cita
-        if (!slot.profesionalId().equals(profesional.id())) {
-            throw new AccesoNoAutorizadoException("El profesional no esta asignado a esta cita medica.");
+        if (!slot.professionalId().equals(profesional.id())) {
+            throw new UnauthorizedAccessException("El profesional no esta asignado a esta cita medica.");
         }
 
         // Validar estado de la cita
-        if (!"PROGRAMADA".equalsIgnoreCase(cita.estado()) && !"CONFIRMADA".equalsIgnoreCase(cita.estado())) {
-            throw new DatosInvalidosException("La cita no se encuentra en un estado valido para ser atendida (estado actual: " + cita.estado() + ").");
+        if (!"PROGRAMADA".equalsIgnoreCase(cita.status()) && !"CONFIRMADA".equalsIgnoreCase(cita.status())) {
+            throw new InvalidDataException("La cita no se encuentra en un estado valido para ser atendida (estado actual: " + cita.status() + ").");
         }
 
         // Validar relación 1:1 estricta
-        if (atencionRepository.existePorCitaId(cita.id())) {
-            throw new DatosInvalidosException("Ya existe una atencion clinica registrada para esta cita medica.");
+        if (attentionRepository.existsByAppointmentId(cita.id())) {
+            throw new InvalidDataException("Ya existe una atencion clinica registrada para esta cita medica.");
         }
 
         // En el flujo D2, la cita permanece en su estado actual (PROGRAMADA) mientras la atención esté en curso.
         String atencionPublicId = UUID.randomUUID().toString();
-        Atencion atencion = new Atencion(
+        ClinicalAttention atencion = new ClinicalAttention(
                 null,
                 atencionPublicId,
                 cita.id(),
-                cita.pacienteId(),
+                cita.patientId(),
                 profesional.id(),
                 "ABIERTA"
         );
 
-        atencionRepository.crear(atencion);
+        attentionRepository.create(atencion);
 
         // Auditoría inmutable sin datos clínicos (ADR-011)
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.CREACION_ATENCION,
+                AuditableAction.CREACION_ATENCION,
                 "ATENCION",
                 atencionPublicId,
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
-        return atencionRepository.buscarDetallePorPublicId(atencionPublicId)
+        return attentionRepository.findDetailByPublicId(atencionPublicId)
                 .orElseThrow(() -> new IllegalStateException("Error al recuperar la atencion recien creada."));
     }
 
@@ -183,123 +183,127 @@ public class ClinicalAttentionService {
      * Pasa la cita a ATENDIDA y audita el evento.
      */
     @Transactional
-    public AtencionResponse cerrarAtencion(
+    public ClinicalAttentionResponse closeAttention(
             String atencionPublicId,
-            CerrarAtencionRequest request,
+            CloseAttentionRequest request,
             String usuarioAutenticadoPublicId,
             String ipOrigen
     ) {
         Objects.requireNonNull(request, "request no puede ser nulo");
 
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario autenticado no encontrado."));
-        Profesional profesional = profesionalRepository.buscarPorUsuarioId(usuario.id())
-                .orElseThrow(() -> new AccesoNoAutorizadoException("Usuario no registrado como profesional asistencial."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario autenticado no encontrado."));
+        Professional profesional = professionalRepository.findByUserId(usuario.id())
+                .orElseThrow(() -> new UnauthorizedAccessException("Usuario no registrado como profesional asistencial."));
 
-        Atencion atencion = atencionRepository.buscarEntidadPorPublicId(atencionPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Atencion clinica no encontrada."));
+        ClinicalAttention atencion = attentionRepository.findEntityByPublicId(atencionPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Atencion clinica no encontrada."));
 
         // Validar que el profesional es el asignado a la atención
-        if (!atencion.profesionalId().equals(profesional.id())) {
-            throw new AccesoNoAutorizadoException("No tiene autorizacion para cerrar la atencion de otro profesional.");
+        if (!atencion.professionalId().equals(profesional.id())) {
+            throw new UnauthorizedAccessException("No tiene autorizacion para cerrar la atencion de otro profesional.");
         }
 
         // Validar que la atención siga abierta (inmutabilidad ADR-008)
-        if (!atencion.estaAbierta()) {
-            throw new DatosInvalidosException("La atencion clinica ya se encuentra CERRADA y es inmutable.");
+        if (!atencion.isOpen()) {
+            throw new InvalidDataException("La atencion clinica ya se encuentra CERRADA y es inmutable.");
         }
 
         // Validar diagnóstico CIE-10
-        DiagnosticoCie10 diag = diagnosticoCie10Repository.buscarPorCodigo(request.diagnosticoCie10Codigo())
-                .orElseThrow(() -> new DatosInvalidosException("Codigo de diagnostico CIE-10 no encontrado: " + request.diagnosticoCie10Codigo()));
-        if (!diag.estaActivo()) {
-            throw new DatosInvalidosException("El diagnostico CIE-10 seleccionado se encuentra inactivo.");
+        Cie10Diagnosis diag = cie10DiagnosisRepository.findByCode(request.cie10DiagnosisCode())
+                .orElseThrow(() -> new InvalidDataException("Codigo de diagnostico CIE-10 no encontrado: " + request.cie10DiagnosisCode()));
+        if (!diag.isActive()) {
+            throw new InvalidDataException("El diagnostico CIE-10 seleccionado se encuentra inactivo.");
         }
 
         // Validar y registrar signos vitales si fueron provistos
-        SignosVitalesDto signos = request.signosVitales();
-        if (signos != null && signos.tieneValores()) {
-            if (signos.presionSistolica() != null && signos.presionDiastolica() != null
-                    && signos.presionSistolica() <= signos.presionDiastolica()) {
-                throw new DatosInvalidosException("La presion arterial sistolica debe ser estrictamente mayor a la presion diastolica.");
+        VitalSignsDto signos = request.vitalSigns();
+        if (signos != null && signos.hasValues()) {
+            if (signos.systolicPressure() != null && signos.diastolicPressure() != null
+                    && signos.systolicPressure() <= signos.diastolicPressure()) {
+                throw new InvalidDataException("La presion arterial sistolica debe ser estrictamente mayor a la presion diastolica.");
             }
-            SignoVital sv = new SignoVital(
+            VitalSign sv = new VitalSign(
                     atencion.id(),
-                    signos.presionSistolica(),
-                    signos.presionDiastolica(),
-                    signos.frecuenciaCardiaca(),
-                    signos.frecuenciaRespiratoria(),
-                    signos.temperatura(),
-                    signos.saturacionOxigeno(),
-                    signos.pesoKg(),
-                    signos.tallaCm()
+                    signos.systolicPressure(),
+                    signos.diastolicPressure(),
+                    signos.heartRate(),
+                    signos.respiratoryRate(),
+                    signos.temperature(),
+                    signos.oxygenSaturation(),
+                    signos.weightKg(),
+                    signos.heightCm()
             );
-            atencionRepository.guardarSignosVitales(sv);
+            attentionRepository.saveVitalSigns(sv);
         }
 
         // Cerrar atención en base de datos (inmutable)
         Instant fechaCierre = clock.instant();
-        atencionRepository.cerrarAtencion(
+        attentionRepository.closeAttention(
                 atencion.id(),
                 diag.id(),
-                request.motivoConsulta(),
-                request.evolucion(),
-                request.indicaciones(),
+                request.consultationReason(),
+                request.progressNote(),
+                request.instructions(),
                 fechaCierre
         );
 
         // Actualizar estado de la cita a ATENDIDA
-        Cita cita = citaRepository.buscarEntidadPorId(atencion.citaId())
+        Appointment cita = appointmentRepository.findEntityById(atencion.appointmentId())
                 .orElseThrow(() -> new IllegalStateException("Cita vinculada a la atencion no encontrada."));
 
-        EstadoCita estadoOrigen = EstadoCita.valueOf(cita.estado());
-        CitaStateMachine.validarTransicion(estadoOrigen, EstadoCita.ATENDIDA);
-        citaRepository.actualizarEstado(cita.id(), EstadoCita.ATENDIDA.name(), null);
+        AppointmentStatus estadoOrigen = AppointmentStatus.valueOf(cita.status());
+        AppointmentStateMachine.validateTransition(estadoOrigen, AppointmentStatus.ATENDIDA);
+        appointmentRepository.updateStatus(cita.id(), AppointmentStatus.ATENDIDA.name(), null);
 
         // Auditoría inmutable sin datos clínicos ni diagnósticos en logs/auditoría (ADR-011)
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.CIERRE_ATENCION,
+                AuditableAction.CIERRE_ATENCION,
                 "ATENCION",
                 atencionPublicId,
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
-        return atencionRepository.buscarDetallePorPublicId(atencionPublicId)
+        return attentionRepository.findDetailByPublicId(atencionPublicId)
                 .orElseThrow(() -> new IllegalStateException("Error al recuperar la atencion recien cerrada."));
     }
 
     /**
      * Consulta una atención médica por su ID público, validando autorización vía AccesoClinicoService (HU-07, HU-09).
      */
-    public AtencionResponse obtenerPorPublicId(
+    public ClinicalAttentionResponse getByPublicId(
             String atencionPublicId,
             String usuarioAutenticadoPublicId,
             Collection<? extends GrantedAuthority> authorities,
             String ipOrigen
     ) {
-        Atencion atencion = atencionRepository.buscarEntidadPorPublicId(atencionPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Atencion clinica no encontrada."));
+        if (authorities != null && authorities.stream().anyMatch(a -> ClinicalAccessService.ROLE_ADMIN.equals(a.getAuthority()))) {
+            throw new UnauthorizedAccessException("El personal administrativo no tiene acceso a atenciones ni contenido clinico.");
+        }
+
+        ClinicalAttention atencion = attentionRepository.findEntityByPublicId(atencionPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Atencion clinica no encontrada."));
 
         // Autorización centralizada de relación asistencial / pertenencia de paciente
-        accesoClinicoService.validarAccesoHistorialClinico(usuarioAutenticadoPublicId, atencion.pacienteId(), authorities);
+        clinicalAccessService.validateClinicalHistoryAccess(usuarioAutenticadoPublicId, atencion.patientId(), authorities);
 
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
 
         // Auditar consulta de historia clínica
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.CONSULTA_HISTORIA,
+                AuditableAction.CONSULTA_HISTORIA,
                 "ATENCION",
                 atencionPublicId,
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
-        return atencionRepository.buscarDetallePorPublicId(atencionPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Atencion clinica no encontrada."));
+        return attentionRepository.findDetailByPublicId(atencionPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Atencion clinica no encontrada."));
     }
 
     /**
@@ -307,57 +311,57 @@ public class ClinicalAttentionService {
      * Garantiza que la atención esté CERRADA y que el profesional cuente con relación asistencial o sea el autor.
      */
     @Transactional
-    public EnmiendaResponse crearEnmienda(
+    public AmendmentResponse createAmendment(
             String atencionPublicId,
-            CrearEnmiendaRequest request,
+            CreateAmendmentRequest request,
             String usuarioAutenticadoPublicId,
             String ipOrigen
     ) {
         Objects.requireNonNull(request, "request no puede ser nulo");
 
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario autenticado no encontrado."));
-        Profesional profesional = profesionalRepository.buscarPorUsuarioId(usuario.id())
-                .orElseThrow(() -> new AccesoNoAutorizadoException("Usuario no registrado como profesional asistencial."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario autenticado no encontrado."));
+        Professional profesional = professionalRepository.findByUserId(usuario.id())
+                .orElseThrow(() -> new UnauthorizedAccessException("Usuario no registrado como profesional asistencial."));
 
-        Atencion atencion = atencionRepository.buscarEntidadPorPublicId(atencionPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Atencion clinica no encontrada."));
+        ClinicalAttention atencion = attentionRepository.findEntityByPublicId(atencionPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Atencion clinica no encontrada."));
 
         // Inmutabilidad estricta (ADR-008): solo se admiten enmiendas sobre atenciones CERRADAS
-        if (!atencion.estaCerrada()) {
-            throw new DatosInvalidosException("Solo es posible registrar enmiendas sobre atenciones clinicas CERRADAS.");
+        if (!atencion.isClosed()) {
+            throw new InvalidDataException("Solo es posible registrar enmiendas sobre atenciones clinicas CERRADAS.");
         }
 
         // Autorización asistencial (ADR-007): el profesional debe ser el autor o tener relación asistencial activa
-        if (!atencion.profesionalId().equals(profesional.id())) {
-            accesoClinicoService.validarRelacionAsistencial(profesional.id(), atencion.pacienteId());
+        if (!atencion.professionalId().equals(profesional.id())) {
+            clinicalAccessService.validateCareRelationship(profesional.id(), atencion.patientId());
         }
 
         Instant ahora = clock.instant();
-        atencionRepository.crearEnmienda(
+        attentionRepository.createAmendment(
                 atencion.id(),
                 profesional.id(),
-                request.motivo(),
-                request.contenido(),
+                request.reason(),
+                request.content(),
                 ahora
         );
 
         // Auditoría inmutable sin contenido clínico en bitácora (ADR-011)
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.ENMIENDA_ATENCION,
+                AuditableAction.ENMIENDA_ATENCION,
                 "ATENCION",
                 atencionPublicId,
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
-        String nombreCompleto = (profesional.nombres() + " " + profesional.apellidos()).trim();
-        return new EnmiendaResponse(
+        String nombreCompleto = (profesional.firstNames() + " " + profesional.lastNames()).trim();
+        return new AmendmentResponse(
                 profesional.publicId(),
                 nombreCompleto,
-                request.motivo(),
-                request.contenido(),
+                request.reason(),
+                request.content(),
                 ahora
         );
     }
@@ -366,34 +370,34 @@ public class ClinicalAttentionService {
      * Consulta paginada del historial clínico del paciente actualmente autenticado (HU-09).
      * Incluye atenciones, diagnósticos, signos vitales y enmiendas sin exponer IDs numéricos.
      */
-    public PaginatedResponse<AtencionResponse> obtenerMiHistoriaClinica(
+    public PaginatedResponse<ClinicalAttentionResponse> getMyClinicalHistory(
             String usuarioAutenticadoPublicId,
             int page,
             int size,
             String ipOrigen
     ) {
         if (usuarioAutenticadoPublicId == null || usuarioAutenticadoPublicId.isBlank()) {
-            throw new AccesoNoAutorizadoException("Usuario no autenticado.");
+            throw new UnauthorizedAccessException("Usuario no autenticado.");
         }
 
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario autenticado no encontrado."));
-        Paciente paciente = pacienteRepository.buscarPorUsuarioId(usuario.id())
-                .orElseThrow(() -> new AccesoNoAutorizadoException("Usuario no registrado como paciente."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario autenticado no encontrado."));
+        Patient paciente = patientRepository.findByUserId(usuario.id())
+                .orElseThrow(() -> new UnauthorizedAccessException("Usuario no registrado como paciente."));
 
         int safePage = Math.max(0, page);
         int safeSize = Math.max(1, Math.min(size, 100));
 
-        List<AtencionResponse> contenido = atencionRepository.listarHistoriaPaciente(paciente.id(), safePage, safeSize);
-        long total = atencionRepository.contarHistoriaPaciente(paciente.id());
+        List<ClinicalAttentionResponse> contenido = attentionRepository.listPatientHistory(paciente.id(), safePage, safeSize);
+        long total = attentionRepository.countPatientHistory(paciente.id());
 
         // Auditar consulta de historia clínica del paciente (ADR-011)
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.CONSULTA_HISTORIA,
+                AuditableAction.CONSULTA_HISTORIA,
                 "HISTORIA_CLINICA",
                 paciente.publicId(),
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
@@ -404,7 +408,7 @@ public class ClinicalAttentionService {
      * Consulta paginada de la historia clínica de un paciente para profesionales asistenciales (HU-07, HU-09, ADR-007, ADR-017).
      * Valida autorización asistencial (cita futura, atención previa en 12 meses o acceso Break-Glass activo).
      */
-    public PaginatedResponse<AtencionResponse> obtenerHistoriaClinicaPaciente(
+    public PaginatedResponse<ClinicalAttentionResponse> getPatientClinicalHistory(
             String pacientePublicId,
             String usuarioAutenticadoPublicId,
             Collection<? extends GrantedAuthority> authorities,
@@ -413,34 +417,34 @@ public class ClinicalAttentionService {
             String ipOrigen
     ) {
         if (usuarioAutenticadoPublicId == null || usuarioAutenticadoPublicId.isBlank()) {
-            throw new AccesoNoAutorizadoException("Usuario no autenticado.");
+            throw new UnauthorizedAccessException("Usuario no autenticado.");
         }
         if (pacientePublicId == null || pacientePublicId.isBlank()) {
-            throw new DatosInvalidosException("Identificador de paciente no proporcionado.");
+            throw new InvalidDataException("Identificador de paciente no proporcionado.");
         }
 
         // Valida que el profesional tenga relación asistencial activa o break-glass
-        accesoClinicoService.validarAccesoHistorialClinico(usuarioAutenticadoPublicId, pacientePublicId, authorities);
+        clinicalAccessService.validateClinicalHistoryAccess(usuarioAutenticadoPublicId, pacientePublicId, authorities);
 
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
 
-        Paciente paciente = pacienteRepository.buscarPorPublicId(pacientePublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado."));
+        Patient paciente = patientRepository.findByPublicId(pacientePublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Paciente no encontrado."));
 
         int safePage = Math.max(0, page);
         int safeSize = Math.max(1, Math.min(size, 100));
 
-        List<AtencionResponse> contenido = atencionRepository.listarHistoriaPaciente(paciente.id(), safePage, safeSize);
-        long total = atencionRepository.contarHistoriaPaciente(paciente.id());
+        List<ClinicalAttentionResponse> contenido = attentionRepository.listPatientHistory(paciente.id(), safePage, safeSize);
+        long total = attentionRepository.countPatientHistory(paciente.id());
 
         // Auditar consulta de historia clínica médica (ADR-011)
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.CONSULTA_HISTORIA,
+                AuditableAction.CONSULTA_HISTORIA,
                 "HISTORIA_CLINICA",
                 paciente.publicId(),
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 

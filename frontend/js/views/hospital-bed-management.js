@@ -116,8 +116,8 @@ export async function hospitalBedManagementView(container, { params }) {
       document.getElementById('btnSubmitBedActionText').textContent = 'Confirmar Traslado';
     }
 
-    // Cargar camas disponibles de la sede del episodio
-    const todasCamas = await hospitalApi.listarCamas(episodio.sedePublicId);
+    // Cargar camas disponibles del hospital
+    const todasCamas = await hospitalApi.listarCamas();
     camasDisponibles = (todasCamas || []).filter(c => c.estado === 'DISPONIBLE');
 
     const selCama = document.getElementById('selCamaDestino');
@@ -126,7 +126,7 @@ export async function hospitalBedManagementView(container, { params }) {
         <option value="${esc(c.publicId)}">${esc(c.codigo)} — ${esc(c.areaNombre)} (${esc(c.habitacionCodigo)})</option>
       `).join('');
     } else {
-      selCama.innerHTML = `<option value="">No hay camas disponibles en esta sede</option>`;
+      selCama.innerHTML = `<option value="">No hay camas disponibles en el hospital</option>`;
     }
   } catch (err) {
     ui.showToast('Error cargando información: ' + err.message, 'error');

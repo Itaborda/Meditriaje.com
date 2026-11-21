@@ -1,24 +1,28 @@
 package com.meditriaje.repository;
 
 import com.meditriaje.model.MfaBackupCode;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.meditriaje.repository.plsql.PackageGateway;
+import com.meditriaje.repository.plsql.ProcedureSpec;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.stereotype.Repository;
 
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 
 /**
- * Repositorio JDBC para códigos de respaldo de un solo uso en MFA (ADR-014, F2.1.4).
+ * Repositorio para códigos de respaldo de un solo uso en MFA (ADR-014, F2.1.4). No contiene SQL: delega en
+ * {@code PKG_IDENTITY} a través de {@link PackageGateway}.
  */
 @Repository
 public class MfaBackupCodeRepository {
 
-    private final JdbcTemplate jdbcTemplate;
+    static final String PACKAGE = "PKG_IDENTITY";
 
-    private final RowMapper<MfaBackupCode> backupCodeRowMapper = (rs, rowNum) -> {
+    static final RowMapper<MfaBackupCode> BACKUP_CODE_MAPPER = (rs, rowNum) -> {
         Timestamp tsUsado = rs.getTimestamp("USADO_AT");
         Timestamp tsCreated = rs.getTimestamp("CREATED_AT");
         return new MfaBackupCode(
@@ -31,51 +35,68 @@ public class MfaBackupCodeRepository {
         );
     };
 
-    public MfaBackupCodeRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "JdbcTemplate no puede ser nulo");
+    static final ProcedureSpec ADD_MFA_BACKUP_CODE = ProcedureSpec.procedure(PACKAGE, "add_mfa_backup_code")
+            .in("p_user_id", Types.NUMERIC)
+            .in("p_code_hash", Types.VARCHAR)
+            .build();
+
+    static final ProcedureSpec DELETE_MFA_BACKUP_CODES = ProcedureSpec.procedure(PACKAGE, "delete_mfa_backup_codes")
+            .in("p_user_id", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec CONSUME_MFA_BACKUP_CODE = ProcedureSpec.procedure(PACKAGE, "consume_mfa_backup_code")
+            .in("p_user_id", Types.NUMERIC)
+            .in("p_code_hash", Types.VARCHAR)
+            .out("o_updated", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec COUNT_AVAILABLE_BACKUP_CODES =
+            ProcedureSpec.function(PACKAGE, "count_available_backup_codes", "result", Types.NUMERIC)
+                    .in("p_user_id", Types.NUMERIC)
+                    .build();
+
+    static final ProcedureSpec LIST_MFA_BACKUP_CODES = ProcedureSpec.procedure(PACKAGE, "list_mfa_backup_codes")
+            .in("p_user_id", Types.NUMERIC)
+            .cursor("o_rows", BACKUP_CODE_MAPPER)
+            .build();
+
+    private final PackageGateway gateway;
+
+    public MfaBackupCodeRepository(PackageGateway gateway) {
+        this.gateway = Objects.requireNonNull(gateway, "gateway no puede ser nulo");
     }
 
-    public void guardarLote(Long usuarioId, List<String> hashes) {
+    /** Registra los códigos del lote; todos comparten la transacción del servicio que llama. */
+    public void saveBatch(Long usuarioId, List<String> hashes) {
         if (hashes == null || hashes.isEmpty()) {
             return;
         }
-
-        final String sql = "INSERT INTO MFA_BACKUP_CODE (USUARIO_ID, CODE_HASH, USADO) VALUES (?, ?, 0)";
-        List<Object[]> batchArgs = hashes.stream()
-                .map(hash -> new Object[] { usuarioId, hash })
-                .toList();
-
-        jdbcTemplate.batchUpdate(sql, batchArgs);
+        for (String hash : hashes) {
+            gateway.execute(ADD_MFA_BACKUP_CODE, new MapSqlParameterSource()
+                    .addValue("p_user_id", usuarioId)
+                    .addValue("p_code_hash", hash));
+        }
     }
 
-    public void eliminarPorUsuario(Long usuarioId) {
-        final String sql = "DELETE FROM MFA_BACKUP_CODE WHERE USUARIO_ID = ?";
-        jdbcTemplate.update(sql, usuarioId);
+    public void deleteByUser(Long usuarioId) {
+        gateway.execute(DELETE_MFA_BACKUP_CODES, new MapSqlParameterSource("p_user_id", usuarioId));
     }
 
-    public boolean consumirCodigo(Long usuarioId, String codeHash) {
-        final String sql = """
-            UPDATE MFA_BACKUP_CODE
-            SET USADO = 1, USADO_AT = CURRENT_TIMESTAMP
-            WHERE USUARIO_ID = ? AND CODE_HASH = ? AND USADO = 0
-            """;
-        int filasAfectadas = jdbcTemplate.update(sql, usuarioId, codeHash);
-        return filasAfectadas > 0;
+    public boolean consumeCode(Long usuarioId, String codeHash) {
+        Map<String, Object> out = gateway.execute(CONSUME_MFA_BACKUP_CODE, new MapSqlParameterSource()
+                .addValue("p_user_id", usuarioId)
+                .addValue("p_code_hash", codeHash));
+        Number filasAfectadas = (Number) out.get("o_updated");
+        return filasAfectadas != null && filasAfectadas.intValue() > 0;
     }
 
-    public int contarDisponibles(Long usuarioId) {
-        final String sql = "SELECT COUNT(*) FROM MFA_BACKUP_CODE WHERE USUARIO_ID = ? AND USADO = 0";
-        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, usuarioId);
-        return count != null ? count : 0;
+    public int countAvailable(Long usuarioId) {
+        Number count = gateway.callFunction(
+                COUNT_AVAILABLE_BACKUP_CODES, new MapSqlParameterSource("p_user_id", usuarioId));
+        return count != null ? count.intValue() : 0;
     }
 
-    public List<MfaBackupCode> listarPorUsuario(Long usuarioId) {
-        final String sql = """
-            SELECT ID, USUARIO_ID, CODE_HASH, USADO, USADO_AT, CREATED_AT
-            FROM MFA_BACKUP_CODE
-            WHERE USUARIO_ID = ?
-            ORDER BY ID ASC
-            """;
-        return jdbcTemplate.query(sql, backupCodeRowMapper, usuarioId);
+    public List<MfaBackupCode> listByUser(Long usuarioId) {
+        return gateway.list(LIST_MFA_BACKUP_CODES, new MapSqlParameterSource("p_user_id", usuarioId), "o_rows");
     }
 }

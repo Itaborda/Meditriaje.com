@@ -1,5 +1,6 @@
 package com.meditriaje.dto.auth;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.NotBlank;
 
 /**
@@ -10,7 +11,8 @@ public record MfaAuthenticateRequest(
         @NotBlank(message = "El token de desafio MFA es obligatorio.")
         String challengeToken,
 
+        @JsonProperty("codigo")
         @NotBlank(message = "El codigo TOTP o de respaldo es obligatorio.")
-        String codigo
+        String code
 ) {
 }

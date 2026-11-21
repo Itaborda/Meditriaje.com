@@ -1,9 +1,9 @@
 package com.meditriaje.controller;
 
 import com.meditriaje.dto.common.PaginatedResponse;
-import com.meditriaje.dto.pharmacy.DispensacionResponse;
-import com.meditriaje.dto.pharmacy.RecetaDispensacionResponse;
-import com.meditriaje.dto.pharmacy.RegistrarDispensacionRequest;
+import com.meditriaje.dto.pharmacy.DispensationResponse;
+import com.meditriaje.dto.pharmacy.PrescriptionDispensationResponse;
+import com.meditriaje.dto.pharmacy.RegisterDispensationRequest;
 import com.meditriaje.service.DispensationService;
 import com.meditriaje.util.IpUtil;
 import jakarta.servlet.http.HttpServletRequest;
@@ -42,16 +42,16 @@ public class PharmacyDispensationController {
      * Registra un evento de dispensación farmacéutica de medicamentos (F2.4, ADR-016).
      */
     @PostMapping("/dispensations")
-    public ResponseEntity<DispensacionResponse> registrarDispensacion(
-            @Valid @RequestBody RegistrarDispensacionRequest request,
+    public ResponseEntity<DispensationResponse> registerDispensation(
+            @Valid @RequestBody RegisterDispensationRequest request,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String usuarioPublicId = authentication.getName();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
+        String sourceIp = IpUtil.extractIp(httpRequest);
 
-        DispensacionResponse response = dispensationService.registrarDispensacion(
-                request, usuarioPublicId, authentication.getAuthorities(), ipOrigen
+        DispensationResponse response = dispensationService.registerDispensation(
+                request, usuarioPublicId, authentication.getAuthorities(), sourceIp
         );
         URI location = URI.create("/api/v1/pharmacy/dispensations/" + response.publicId());
 
@@ -62,8 +62,8 @@ public class PharmacyDispensationController {
      * Consulta una dispensación previamente registrada por su UUID público.
      */
     @GetMapping("/dispensations/{publicId}")
-    public ResponseEntity<DispensacionResponse> consultarDispensacion(@PathVariable String publicId) {
-        DispensacionResponse response = dispensationService.consultarDispensacionPorPublicId(publicId);
+    public ResponseEntity<DispensationResponse> getDispensation(@PathVariable("publicId") String publicId) {
+        DispensationResponse response = dispensationService.getDispensationByPublicId(publicId);
         return ResponseEntity.ok(response);
     }
 
@@ -71,13 +71,13 @@ public class PharmacyDispensationController {
      * Búsqueda de recetas médicas para ventanilla de farmacia por documento del paciente o código de reclamación.
      */
     @GetMapping("/prescriptions")
-    public ResponseEntity<PaginatedResponse<RecetaDispensacionResponse>> buscarRecetas(
+    public ResponseEntity<PaginatedResponse<PrescriptionDispensationResponse>> searchPrescriptions(
             @RequestParam(name = "query", required = false, defaultValue = "") String query,
             @RequestParam(name = "page", defaultValue = "0") int page,
             @RequestParam(name = "size", defaultValue = "10") int size,
             Authentication authentication
     ) {
-        PaginatedResponse<RecetaDispensacionResponse> response = dispensationService.buscarRecetasParaFarmacia(
+        PaginatedResponse<PrescriptionDispensationResponse> response = dispensationService.searchPrescriptionsForPharmacy(
                 query, page, size, authentication.getAuthorities()
         );
         return ResponseEntity.ok(response);
@@ -87,22 +87,13 @@ public class PharmacyDispensationController {
      * Consulta detallada de una receta médica con saldos disponibles y entregas previas para dispensación.
      */
     @GetMapping("/prescriptions/{publicId}")
-    public ResponseEntity<RecetaDispensacionResponse> consultarReceta(
-            @PathVariable String publicId,
+    public ResponseEntity<PrescriptionDispensationResponse> getPrescription(
+            @PathVariable("publicId") String publicId,
             Authentication authentication
     ) {
-        RecetaDispensacionResponse response = dispensationService.consultarRecetaParaFarmacia(
+        PrescriptionDispensationResponse response = dispensationService.getPrescriptionForPharmacy(
                 publicId, authentication.getAuthorities()
         );
-        return ResponseEntity.ok(response);
-    }
-
-    /**
-     * Lista de sedes asistenciales activas para selección en ventanilla de farmacia.
-     */
-    @GetMapping("/sites")
-    public ResponseEntity<List<com.meditriaje.dto.admin.SedeResponse>> listarSedes() {
-        List<com.meditriaje.dto.admin.SedeResponse> response = dispensationService.listarSedesActivas();
         return ResponseEntity.ok(response);
     }
 }

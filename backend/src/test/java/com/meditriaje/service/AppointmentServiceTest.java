@@ -1,30 +1,30 @@
 package com.meditriaje.service;
 
-import com.meditriaje.dto.appointment.CancelarCitaRequest;
-import com.meditriaje.dto.appointment.CitaResponse;
-import com.meditriaje.dto.appointment.ReservarCitaRequest;
+import com.meditriaje.dto.appointment.CancelAppointmentRequest;
+import com.meditriaje.dto.appointment.AppointmentResponse;
+import com.meditriaje.dto.appointment.BookAppointmentRequest;
 import com.meditriaje.dto.common.PaginatedResponse;
-import com.meditriaje.exception.AccesoNoAutorizadoException;
-import com.meditriaje.exception.CitaNoDisponibleException;
-import com.meditriaje.exception.ConflictoOperacionException;
-import com.meditriaje.exception.DatosInvalidosException;
-import com.meditriaje.exception.RecursoNoEncontradoException;
-import com.meditriaje.model.AccionAuditable;
-import com.meditriaje.model.Cita;
-import com.meditriaje.model.DisponibilidadSlot;
-import com.meditriaje.model.EstadoCita;
-import com.meditriaje.model.EventoAuditoria;
-import com.meditriaje.model.Paciente;
-import com.meditriaje.model.Profesional;
-import com.meditriaje.model.ResultadoAuditoria;
-import com.meditriaje.model.Triaje;
-import com.meditriaje.model.Usuario;
-import com.meditriaje.repository.CitaRepository;
-import com.meditriaje.repository.DisponibilidadSlotRepository;
-import com.meditriaje.repository.PacienteRepository;
-import com.meditriaje.repository.ProfesionalRepository;
-import com.meditriaje.repository.TriajeRepository;
-import com.meditriaje.repository.UsuarioRepository;
+import com.meditriaje.exception.UnauthorizedAccessException;
+import com.meditriaje.exception.AppointmentUnavailableException;
+import com.meditriaje.exception.OperationConflictException;
+import com.meditriaje.exception.InvalidDataException;
+import com.meditriaje.exception.ResourceNotFoundException;
+import com.meditriaje.model.AuditableAction;
+import com.meditriaje.model.Appointment;
+import com.meditriaje.model.AvailabilitySlot;
+import com.meditriaje.model.AppointmentStatus;
+import com.meditriaje.model.AuditEvent;
+import com.meditriaje.model.Patient;
+import com.meditriaje.model.Professional;
+import com.meditriaje.model.AuditResult;
+import com.meditriaje.model.Triage;
+import com.meditriaje.model.User;
+import com.meditriaje.repository.AppointmentRepository;
+import com.meditriaje.repository.AvailabilitySlotRepository;
+import com.meditriaje.repository.PatientRepository;
+import com.meditriaje.repository.ProfessionalRepository;
+import com.meditriaje.repository.TriageRepository;
+import com.meditriaje.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -56,28 +56,28 @@ import static org.mockito.Mockito.when;
 class AppointmentServiceTest {
 
     @Mock
-    private UsuarioRepository usuarioRepository;
+    private UserRepository userRepository;
 
     @Mock
-    private PacienteRepository pacienteRepository;
+    private PatientRepository patientRepository;
 
     @Mock
-    private DisponibilidadSlotRepository disponibilidadSlotRepository;
+    private AvailabilitySlotRepository availabilitySlotRepository;
 
     @Mock
-    private ProfesionalRepository profesionalRepository;
+    private ProfessionalRepository professionalRepository;
 
     @Mock
-    private CitaRepository citaRepository;
+    private AppointmentRepository appointmentRepository;
 
     @Mock
-    private TriajeRepository triajeRepository;
+    private TriageRepository triageRepository;
 
     @Mock
-    private AuditoriaService auditoriaService;
+    private AuditService auditService;
 
     @Mock
-    private com.meditriaje.repository.AtencionRepository atencionRepository;
+    private com.meditriaje.repository.ClinicalAttentionRepository attentionRepository;
 
     private final Instant NOW = Instant.parse("2026-10-10T10:00:00Z");
     private final Clock fixedClock = Clock.fixed(NOW, ZoneOffset.UTC);
@@ -88,36 +88,36 @@ class AppointmentServiceTest {
     private static final String SLOT_PUBLIC_ID = "slot-uuid-1";
     private static final String IP_CLIENTE = "192.168.1.100";
 
-    private Usuario usuarioMock;
-    private Paciente pacienteMock;
-    private DisponibilidadSlot slotMock;
-    private Profesional profesionalMock;
+    private User usuarioMock;
+    private Patient pacienteMock;
+    private AvailabilitySlot slotMock;
+    private Professional profesionalMock;
 
     @BeforeEach
     void setUp() {
         appointmentService = new AppointmentService(
-                usuarioRepository,
-                pacienteRepository,
-                disponibilidadSlotRepository,
-                profesionalRepository,
-                citaRepository,
-                triajeRepository,
-                auditoriaService,
+                userRepository,
+                patientRepository,
+                availabilitySlotRepository,
+                professionalRepository,
+                appointmentRepository,
+                triageRepository,
+                auditService,
                 null,
-                atencionRepository,
+                attentionRepository,
                 fixedClock
         );
 
-        usuarioMock = new Usuario(
+        usuarioMock = new User(
                 1L, USUARIO_PUBLIC_ID, "paciente@test.com", "hash", "ACTIVO", 0, null, NOW, false
         );
 
-        pacienteMock = new Paciente(
+        pacienteMock = new Patient(
                 10L, 1L, "pac-uuid-1", "CC", "12345678", "Pepito", "Perez",
                 LocalDate.of(1990, 5, 20), "3001234567", NOW, null
         );
 
-        slotMock = new DisponibilidadSlot(
+        slotMock = new AvailabilitySlot(
                 50L,
                 SLOT_PUBLIC_ID,
                 100L, // profesionalId
@@ -129,7 +129,7 @@ class AppointmentServiceTest {
                 "LIBRE"
         );
 
-        profesionalMock = new Profesional(
+        profesionalMock = new Professional(
                 100L,
                 2L,
                 "prof-uuid-1",
@@ -143,275 +143,275 @@ class AppointmentServiceTest {
     }
 
     @Test
-    void reservarCita_exitoso_reservaSlotCreaCitaYAudita() {
-        ReservarCitaRequest request = new ReservarCitaRequest(SLOT_PUBLIC_ID);
+    void bookAppointment_success_bookingSlotCreatesAppointmentAndAudits() {
+        BookAppointmentRequest request = new BookAppointmentRequest(SLOT_PUBLIC_ID);
 
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
-        when(pacienteRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.of(pacienteMock));
-        when(disponibilidadSlotRepository.buscarEntidadPorPublicId(SLOT_PUBLIC_ID)).thenReturn(Optional.of(slotMock));
-        when(profesionalRepository.buscarPorId(100L)).thenReturn(Optional.of(profesionalMock));
-        when(disponibilidadSlotRepository.reservarSlot(50L)).thenReturn(1);
-        when(citaRepository.crear(any(Cita.class))).thenReturn(500L);
+        when(userRepository.findByPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
+        when(patientRepository.findByUserId(1L)).thenReturn(Optional.of(pacienteMock));
+        when(availabilitySlotRepository.findEntityByPublicId(SLOT_PUBLIC_ID)).thenReturn(Optional.of(slotMock));
+        when(professionalRepository.findById(100L)).thenReturn(Optional.of(profesionalMock));
+        when(availabilitySlotRepository.reserveSlot(50L)).thenReturn(1);
+        when(appointmentRepository.create(any(Appointment.class))).thenReturn(500L);
 
-        CitaResponse mockResponse = new CitaResponse(
+        AppointmentResponse mockResponse = new AppointmentResponse(
                 "cita-uuid-generada", SLOT_PUBLIC_ID, "pac-uuid-1", "Pepito Perez",
                 "prof-uuid-1", "Gregory House", "esp-uuid-1", "Medicina Interna",
                 "sede-uuid-1", "Sede Central", "Carrera 7 # 40-62",
-                slotMock.fechaHoraInicio(), slotMock.fechaHoraFin(),
+                slotMock.startDateTime(), slotMock.endDateTime(),
                 "PRESENCIAL", "PROGRAMADA", null, null, NOW
         );
-        when(citaRepository.buscarPorPublicId(anyString())).thenReturn(Optional.of(mockResponse));
+        when(appointmentRepository.findByPublicId(anyString())).thenReturn(Optional.of(mockResponse));
 
-        CitaResponse resultado = appointmentService.reservarCita(request, USUARIO_PUBLIC_ID, IP_CLIENTE);
+        AppointmentResponse resultado = appointmentService.bookAppointment(request, USUARIO_PUBLIC_ID, IP_CLIENTE);
 
         assertThat(resultado).isNotNull();
-        assertThat(resultado.estado()).isEqualTo("PROGRAMADA");
+        assertThat(resultado.status()).isEqualTo("PROGRAMADA");
         assertThat(resultado.slotPublicId()).isEqualTo(SLOT_PUBLIC_ID);
 
         // Verifica cambio de estado atómico del slot a OCUPADO
-        verify(disponibilidadSlotRepository).reservarSlot(50L);
+        verify(availabilitySlotRepository).reserveSlot(50L);
 
         // Verifica inserción de la cita
-        ArgumentCaptor<Cita> citaCaptor = ArgumentCaptor.forClass(Cita.class);
-        verify(citaRepository).crear(citaCaptor.capture());
-        Cita citaGuardada = citaCaptor.getValue();
+        ArgumentCaptor<Appointment> citaCaptor = ArgumentCaptor.forClass(Appointment.class);
+        verify(appointmentRepository).create(citaCaptor.capture());
+        Appointment citaGuardada = citaCaptor.getValue();
         assertThat(citaGuardada.slotId()).isEqualTo(50L);
-        assertThat(citaGuardada.pacienteId()).isEqualTo(10L);
-        assertThat(citaGuardada.estado()).isEqualTo("PROGRAMADA");
+        assertThat(citaGuardada.patientId()).isEqualTo(10L);
+        assertThat(citaGuardada.status()).isEqualTo("PROGRAMADA");
 
         // Verifica auditoría obligatoria inmutable (ADR-011)
-        ArgumentCaptor<EventoAuditoria> eventoCaptor = ArgumentCaptor.forClass(EventoAuditoria.class);
-        verify(auditoriaService).auditar(eventoCaptor.capture());
-        EventoAuditoria evento = eventoCaptor.getValue();
-        assertThat(evento.usuarioId()).isEqualTo(1L);
-        assertThat(evento.accion()).isEqualTo(AccionAuditable.RESERVA_CITA);
-        assertThat(evento.tipoRecurso()).isEqualTo("CITA");
-        assertThat(evento.resultado()).isEqualTo(ResultadoAuditoria.EXITO);
-        assertThat(evento.ipOrigen()).isEqualTo(IP_CLIENTE);
+        ArgumentCaptor<AuditEvent> eventoCaptor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).audit(eventoCaptor.capture());
+        AuditEvent evento = eventoCaptor.getValue();
+        assertThat(evento.userId()).isEqualTo(1L);
+        assertThat(evento.action()).isEqualTo(AuditableAction.RESERVA_CITA);
+        assertThat(evento.resourceType()).isEqualTo("CITA");
+        assertThat(evento.result()).isEqualTo(AuditResult.EXITO);
+        assertThat(evento.sourceIp()).isEqualTo(IP_CLIENTE);
     }
 
     @Test
-    void reservarCita_usuarioNoExiste_lanzaRecursoNoEncontradoException() {
-        ReservarCitaRequest request = new ReservarCitaRequest(SLOT_PUBLIC_ID);
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.empty());
+    void bookAppointment_userNotExists_throwsResourceNotFoundException() {
+        BookAppointmentRequest request = new BookAppointmentRequest(SLOT_PUBLIC_ID);
+        when(userRepository.findByPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> appointmentService.reservarCita(request, USUARIO_PUBLIC_ID, IP_CLIENTE))
-                .isInstanceOf(RecursoNoEncontradoException.class)
+        assertThatThrownBy(() -> appointmentService.bookAppointment(request, USUARIO_PUBLIC_ID, IP_CLIENTE))
+                .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("Usuario no encontrado");
 
-        verify(disponibilidadSlotRepository, never()).reservarSlot(anyLong());
-        verify(citaRepository, never()).crear(any());
+        verify(availabilitySlotRepository, never()).reserveSlot(anyLong());
+        verify(appointmentRepository, never()).create(any());
     }
 
     @Test
-    void reservarCita_usuarioNoEsPaciente_lanzaAccesoNoAutorizadoException() {
-        ReservarCitaRequest request = new ReservarCitaRequest(SLOT_PUBLIC_ID);
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
-        when(pacienteRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.empty());
+    void bookAppointment_userNotIsPatient_throwsUnauthorizedAccessException() {
+        BookAppointmentRequest request = new BookAppointmentRequest(SLOT_PUBLIC_ID);
+        when(userRepository.findByPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
+        when(patientRepository.findByUserId(1L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> appointmentService.reservarCita(request, USUARIO_PUBLIC_ID, IP_CLIENTE))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+        assertThatThrownBy(() -> appointmentService.bookAppointment(request, USUARIO_PUBLIC_ID, IP_CLIENTE))
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessageContaining("Solo pacientes registrados pueden agendar citas");
 
-        verify(disponibilidadSlotRepository, never()).reservarSlot(anyLong());
-        verify(citaRepository, never()).crear(any());
+        verify(availabilitySlotRepository, never()).reserveSlot(anyLong());
+        verify(appointmentRepository, never()).create(any());
     }
 
     @Test
-    void reservarCita_slotNoExiste_lanzaRecursoNoEncontradoException() {
-        ReservarCitaRequest request = new ReservarCitaRequest("slot-fantasma");
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
-        when(pacienteRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.of(pacienteMock));
-        when(disponibilidadSlotRepository.buscarEntidadPorPublicId("slot-fantasma")).thenReturn(Optional.empty());
+    void bookAppointment_slotNotFound_throwsResourceNotFoundException() {
+        BookAppointmentRequest request = new BookAppointmentRequest("slot-fantasma");
+        when(userRepository.findByPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
+        when(patientRepository.findByUserId(1L)).thenReturn(Optional.of(pacienteMock));
+        when(availabilitySlotRepository.findEntityByPublicId("slot-fantasma")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> appointmentService.reservarCita(request, USUARIO_PUBLIC_ID, IP_CLIENTE))
-                .isInstanceOf(RecursoNoEncontradoException.class)
+        assertThatThrownBy(() -> appointmentService.bookAppointment(request, USUARIO_PUBLIC_ID, IP_CLIENTE))
+                .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("Slot de disponibilidad no encontrado");
 
-        verify(disponibilidadSlotRepository, never()).reservarSlot(anyLong());
-        verify(citaRepository, never()).crear(any());
+        verify(availabilitySlotRepository, never()).reserveSlot(anyLong());
+        verify(appointmentRepository, never()).create(any());
     }
 
     @Test
-    void reservarCita_slotEnElPasado_lanzaDatosInvalidosException() {
-        ReservarCitaRequest request = new ReservarCitaRequest(SLOT_PUBLIC_ID);
-        DisponibilidadSlot slotPasado = new DisponibilidadSlot(
+    void bookAppointment_slotInPast_throwsInvalidDataException() {
+        BookAppointmentRequest request = new BookAppointmentRequest(SLOT_PUBLIC_ID);
+        AvailabilitySlot slotPasado = new AvailabilitySlot(
                 50L, SLOT_PUBLIC_ID, 100L, 200L, 300L,
                 NOW.minusSeconds(3600), NOW.minusSeconds(2400), "PRESENCIAL", "LIBRE"
         );
 
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
-        when(pacienteRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.of(pacienteMock));
-        when(disponibilidadSlotRepository.buscarEntidadPorPublicId(SLOT_PUBLIC_ID)).thenReturn(Optional.of(slotPasado));
+        when(userRepository.findByPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
+        when(patientRepository.findByUserId(1L)).thenReturn(Optional.of(pacienteMock));
+        when(availabilitySlotRepository.findEntityByPublicId(SLOT_PUBLIC_ID)).thenReturn(Optional.of(slotPasado));
 
-        assertThatThrownBy(() -> appointmentService.reservarCita(request, USUARIO_PUBLIC_ID, IP_CLIENTE))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> appointmentService.bookAppointment(request, USUARIO_PUBLIC_ID, IP_CLIENTE))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("No es posible agendar una cita en un horario pasado");
 
-        verify(disponibilidadSlotRepository, never()).reservarSlot(anyLong());
-        verify(citaRepository, never()).crear(any());
+        verify(availabilitySlotRepository, never()).reserveSlot(anyLong());
+        verify(appointmentRepository, never()).create(any());
     }
 
     @Test
-    void reservarCita_especialidadNoCoincideConProfesional_lanzaDatosInvalidosException() {
-        ReservarCitaRequest request = new ReservarCitaRequest(SLOT_PUBLIC_ID);
-        Profesional profesionalOtraEspecialidad = new Profesional(
+    void bookAppointment_specialtyNotCoincideWithProfessional_throwsInvalidDataException() {
+        BookAppointmentRequest request = new BookAppointmentRequest(SLOT_PUBLIC_ID);
+        Professional profesionalOtraEspecialidad = new Professional(
                 100L, 2L, "prof-uuid-1", 999L, // diferente especialidad a 300L
                 "RM-12345", "Gregory", "House", NOW, null
         );
 
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
-        when(pacienteRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.of(pacienteMock));
-        when(disponibilidadSlotRepository.buscarEntidadPorPublicId(SLOT_PUBLIC_ID)).thenReturn(Optional.of(slotMock));
-        when(profesionalRepository.buscarPorId(100L)).thenReturn(Optional.of(profesionalOtraEspecialidad));
+        when(userRepository.findByPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
+        when(patientRepository.findByUserId(1L)).thenReturn(Optional.of(pacienteMock));
+        when(availabilitySlotRepository.findEntityByPublicId(SLOT_PUBLIC_ID)).thenReturn(Optional.of(slotMock));
+        when(professionalRepository.findById(100L)).thenReturn(Optional.of(profesionalOtraEspecialidad));
 
-        assertThatThrownBy(() -> appointmentService.reservarCita(request, USUARIO_PUBLIC_ID, IP_CLIENTE))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> appointmentService.bookAppointment(request, USUARIO_PUBLIC_ID, IP_CLIENTE))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("El profesional no corresponde a la especialidad del slot");
 
-        verify(disponibilidadSlotRepository, never()).reservarSlot(anyLong());
-        verify(citaRepository, never()).crear(any());
+        verify(availabilitySlotRepository, never()).reserveSlot(anyLong());
+        verify(appointmentRepository, never()).create(any());
     }
 
     @Test
-    void reservarCita_slotYaOcupado_lanzaCitaNoDisponibleException() {
-        ReservarCitaRequest request = new ReservarCitaRequest(SLOT_PUBLIC_ID);
+    void bookAppointment_slotAlreadyOcupado_throwsAppointmentUnavailableException() {
+        BookAppointmentRequest request = new BookAppointmentRequest(SLOT_PUBLIC_ID);
 
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
-        when(pacienteRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.of(pacienteMock));
-        when(disponibilidadSlotRepository.buscarEntidadPorPublicId(SLOT_PUBLIC_ID)).thenReturn(Optional.of(slotMock));
-        when(profesionalRepository.buscarPorId(100L)).thenReturn(Optional.of(profesionalMock));
-        when(disponibilidadSlotRepository.reservarSlot(50L)).thenReturn(0); // 0 filas = no estaba libre
+        when(userRepository.findByPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
+        when(patientRepository.findByUserId(1L)).thenReturn(Optional.of(pacienteMock));
+        when(availabilitySlotRepository.findEntityByPublicId(SLOT_PUBLIC_ID)).thenReturn(Optional.of(slotMock));
+        when(professionalRepository.findById(100L)).thenReturn(Optional.of(profesionalMock));
+        when(availabilitySlotRepository.reserveSlot(50L)).thenReturn(0); // 0 filas = no estaba libre
 
-        assertThatThrownBy(() -> appointmentService.reservarCita(request, USUARIO_PUBLIC_ID, IP_CLIENTE))
-                .isInstanceOf(CitaNoDisponibleException.class)
+        assertThatThrownBy(() -> appointmentService.bookAppointment(request, USUARIO_PUBLIC_ID, IP_CLIENTE))
+                .isInstanceOf(AppointmentUnavailableException.class)
                 .hasMessageContaining("El slot de atencion ya ha sido reservado o no esta disponible");
 
-        verify(citaRepository, never()).crear(any());
-        verify(auditoriaService, never()).auditar(any());
+        verify(appointmentRepository, never()).create(any());
+        verify(auditService, never()).audit(any());
     }
 
     @Test
-    void reservarCita_violacionUnicidadIndiceOracle_lanzaCitaNoDisponibleException() {
-        ReservarCitaRequest request = new ReservarCitaRequest(SLOT_PUBLIC_ID);
+    void bookAppointment_violationUnicidadIndexOracle_throwsAppointmentUnavailableException() {
+        BookAppointmentRequest request = new BookAppointmentRequest(SLOT_PUBLIC_ID);
 
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
-        when(pacienteRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.of(pacienteMock));
-        when(disponibilidadSlotRepository.buscarEntidadPorPublicId(SLOT_PUBLIC_ID)).thenReturn(Optional.of(slotMock));
-        when(profesionalRepository.buscarPorId(100L)).thenReturn(Optional.of(profesionalMock));
-        when(disponibilidadSlotRepository.reservarSlot(50L)).thenReturn(1);
-        when(citaRepository.crear(any(Cita.class)))
+        when(userRepository.findByPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
+        when(patientRepository.findByUserId(1L)).thenReturn(Optional.of(pacienteMock));
+        when(availabilitySlotRepository.findEntityByPublicId(SLOT_PUBLIC_ID)).thenReturn(Optional.of(slotMock));
+        when(professionalRepository.findById(100L)).thenReturn(Optional.of(profesionalMock));
+        when(availabilitySlotRepository.reserveSlot(50L)).thenReturn(1);
+        when(appointmentRepository.create(any(Appointment.class)))
                 .thenThrow(new DataIntegrityViolationException("ORA-00001: unique constraint UQ_CITA_SLOT_ACTIVA violated"));
 
-        assertThatThrownBy(() -> appointmentService.reservarCita(request, USUARIO_PUBLIC_ID, IP_CLIENTE))
-                .isInstanceOf(CitaNoDisponibleException.class)
+        assertThatThrownBy(() -> appointmentService.bookAppointment(request, USUARIO_PUBLIC_ID, IP_CLIENTE))
+                .isInstanceOf(AppointmentUnavailableException.class)
                 .hasMessageContaining("El slot de atencion ya cuenta con una cita activa");
 
-        verify(auditoriaService, never()).auditar(any());
+        verify(auditService, never()).audit(any());
     }
 
     @Test
-    void reservarCita_conTriajePropio_exitoso_vinculaTriajeIdYGuardaCita() {
+    void bookAppointment_withTriageOwn_success_linksTriageIdAndSavesAppointment() {
         String triajePublicId = "triaje-uuid-propio";
-        ReservarCitaRequest request = new ReservarCitaRequest(SLOT_PUBLIC_ID, triajePublicId);
+        BookAppointmentRequest request = new BookAppointmentRequest(SLOT_PUBLIC_ID, triajePublicId);
 
-        Triaje triajeMock = new Triaje(
+        Triage triajeMock = new Triage(
                 888L, triajePublicId, 10L, "v1-prototipo", "III", "CITA_PRESENCIAL", false, "Dolor leve", NOW
         );
 
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
-        when(pacienteRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.of(pacienteMock));
-        when(disponibilidadSlotRepository.buscarEntidadPorPublicId(SLOT_PUBLIC_ID)).thenReturn(Optional.of(slotMock));
-        when(profesionalRepository.buscarPorId(100L)).thenReturn(Optional.of(profesionalMock));
-        when(triajeRepository.buscarEntidadPorPublicId(triajePublicId)).thenReturn(Optional.of(triajeMock));
-        when(disponibilidadSlotRepository.reservarSlot(50L)).thenReturn(1);
-        when(citaRepository.crear(any(Cita.class))).thenReturn(500L);
+        when(userRepository.findByPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
+        when(patientRepository.findByUserId(1L)).thenReturn(Optional.of(pacienteMock));
+        when(availabilitySlotRepository.findEntityByPublicId(SLOT_PUBLIC_ID)).thenReturn(Optional.of(slotMock));
+        when(professionalRepository.findById(100L)).thenReturn(Optional.of(profesionalMock));
+        when(triageRepository.findEntityByPublicId(triajePublicId)).thenReturn(Optional.of(triajeMock));
+        when(availabilitySlotRepository.reserveSlot(50L)).thenReturn(1);
+        when(appointmentRepository.create(any(Appointment.class))).thenReturn(500L);
 
-        CitaResponse mockResponse = new CitaResponse(
+        AppointmentResponse mockResponse = new AppointmentResponse(
                 "cita-uuid-generada", SLOT_PUBLIC_ID, "pac-uuid-1", "Pepito Perez",
                 "prof-uuid-1", "Gregory House", "esp-uuid-1", "Medicina Interna",
                 "sede-uuid-1", "Sede Central", "Carrera 7 # 40-62",
-                slotMock.fechaHoraInicio(), slotMock.fechaHoraFin(),
+                slotMock.startDateTime(), slotMock.endDateTime(),
                 "PRESENCIAL", "PROGRAMADA", triajePublicId, null, NOW
         );
-        when(citaRepository.buscarPorPublicId(anyString())).thenReturn(Optional.of(mockResponse));
+        when(appointmentRepository.findByPublicId(anyString())).thenReturn(Optional.of(mockResponse));
 
-        CitaResponse resultado = appointmentService.reservarCita(request, USUARIO_PUBLIC_ID, IP_CLIENTE);
+        AppointmentResponse resultado = appointmentService.bookAppointment(request, USUARIO_PUBLIC_ID, IP_CLIENTE);
 
         assertThat(resultado).isNotNull();
-        assertThat(resultado.triajePublicId()).isEqualTo(triajePublicId);
+        assertThat(resultado.triagePublicId()).isEqualTo(triajePublicId);
 
-        ArgumentCaptor<Cita> citaCaptor = ArgumentCaptor.forClass(Cita.class);
-        verify(citaRepository).crear(citaCaptor.capture());
-        Cita citaGuardada = citaCaptor.getValue();
-        assertThat(citaGuardada.triajeId()).isEqualTo(888L);
-        assertThat(citaGuardada.pacienteId()).isEqualTo(10L);
+        ArgumentCaptor<Appointment> citaCaptor = ArgumentCaptor.forClass(Appointment.class);
+        verify(appointmentRepository).create(citaCaptor.capture());
+        Appointment citaGuardada = citaCaptor.getValue();
+        assertThat(citaGuardada.triageId()).isEqualTo(888L);
+        assertThat(citaGuardada.patientId()).isEqualTo(10L);
     }
 
     @Test
-    void reservarCita_conTriajeInexistente_lanzaRecursoNoEncontradoException() {
+    void bookAppointment_withTriageInexistente_throwsResourceNotFoundException() {
         String triajePublicId = "triaje-no-existe";
-        ReservarCitaRequest request = new ReservarCitaRequest(SLOT_PUBLIC_ID, triajePublicId);
+        BookAppointmentRequest request = new BookAppointmentRequest(SLOT_PUBLIC_ID, triajePublicId);
 
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
-        when(pacienteRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.of(pacienteMock));
-        when(disponibilidadSlotRepository.buscarEntidadPorPublicId(SLOT_PUBLIC_ID)).thenReturn(Optional.of(slotMock));
-        when(profesionalRepository.buscarPorId(100L)).thenReturn(Optional.of(profesionalMock));
-        when(triajeRepository.buscarEntidadPorPublicId(triajePublicId)).thenReturn(Optional.empty());
+        when(userRepository.findByPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
+        when(patientRepository.findByUserId(1L)).thenReturn(Optional.of(pacienteMock));
+        when(availabilitySlotRepository.findEntityByPublicId(SLOT_PUBLIC_ID)).thenReturn(Optional.of(slotMock));
+        when(professionalRepository.findById(100L)).thenReturn(Optional.of(profesionalMock));
+        when(triageRepository.findEntityByPublicId(triajePublicId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> appointmentService.reservarCita(request, USUARIO_PUBLIC_ID, IP_CLIENTE))
-                .isInstanceOf(RecursoNoEncontradoException.class)
+        assertThatThrownBy(() -> appointmentService.bookAppointment(request, USUARIO_PUBLIC_ID, IP_CLIENTE))
+                .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("Triaje no encontrado");
 
-        verify(disponibilidadSlotRepository, never()).reservarSlot(anyLong());
-        verify(citaRepository, never()).crear(any());
+        verify(availabilitySlotRepository, never()).reserveSlot(anyLong());
+        verify(appointmentRepository, never()).create(any());
     }
 
     @Test
-    void reservarCita_conTriajeDeOtroPaciente_lanzaDatosInvalidosException() {
+    void bookAppointment_withTriageOfOtherPatient_throwsInvalidDataException() {
         String triajePublicId = "triaje-ajeno";
-        ReservarCitaRequest request = new ReservarCitaRequest(SLOT_PUBLIC_ID, triajePublicId);
+        BookAppointmentRequest request = new BookAppointmentRequest(SLOT_PUBLIC_ID, triajePublicId);
 
         // triaje con pacienteId 999L != 10L (pacienteMock)
-        Triaje triajeAjeno = new Triaje(
+        Triage triajeAjeno = new Triage(
                 888L, triajePublicId, 999L, "v1-prototipo", "III", "CITA_PRESENCIAL", false, null, NOW
         );
 
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
-        when(pacienteRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.of(pacienteMock));
-        when(disponibilidadSlotRepository.buscarEntidadPorPublicId(SLOT_PUBLIC_ID)).thenReturn(Optional.of(slotMock));
-        when(profesionalRepository.buscarPorId(100L)).thenReturn(Optional.of(profesionalMock));
-        when(triajeRepository.buscarEntidadPorPublicId(triajePublicId)).thenReturn(Optional.of(triajeAjeno));
+        when(userRepository.findByPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
+        when(patientRepository.findByUserId(1L)).thenReturn(Optional.of(pacienteMock));
+        when(availabilitySlotRepository.findEntityByPublicId(SLOT_PUBLIC_ID)).thenReturn(Optional.of(slotMock));
+        when(professionalRepository.findById(100L)).thenReturn(Optional.of(profesionalMock));
+        when(triageRepository.findEntityByPublicId(triajePublicId)).thenReturn(Optional.of(triajeAjeno));
 
-        assertThatThrownBy(() -> appointmentService.reservarCita(request, USUARIO_PUBLIC_ID, IP_CLIENTE))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> appointmentService.bookAppointment(request, USUARIO_PUBLIC_ID, IP_CLIENTE))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("El triaje no corresponde al paciente de la cita");
 
-        verify(disponibilidadSlotRepository, never()).reservarSlot(anyLong());
-        verify(citaRepository, never()).crear(any());
+        verify(availabilitySlotRepository, never()).reserveSlot(anyLong());
+        verify(appointmentRepository, never()).create(any());
     }
 
     @Test
-    void reservarCita_conTriajeDeEmergencia_lanzaDatosInvalidosException() {
+    void bookAppointment_withTriageOfEmergency_throwsInvalidDataException() {
         String triajePublicId = "triaje-emergencia";
-        ReservarCitaRequest request = new ReservarCitaRequest(SLOT_PUBLIC_ID, triajePublicId);
+        BookAppointmentRequest request = new BookAppointmentRequest(SLOT_PUBLIC_ID, triajePublicId);
 
-        Triaje triajeEmergencia = new Triaje(
+        Triage triajeEmergencia = new Triage(
                 888L, triajePublicId, 10L, "v1-prototipo", "I", "URGENCIAS", true, null, NOW
         );
 
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
-        when(pacienteRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.of(pacienteMock));
-        when(disponibilidadSlotRepository.buscarEntidadPorPublicId(SLOT_PUBLIC_ID)).thenReturn(Optional.of(slotMock));
-        when(profesionalRepository.buscarPorId(100L)).thenReturn(Optional.of(profesionalMock));
-        when(triajeRepository.buscarEntidadPorPublicId(triajePublicId)).thenReturn(Optional.of(triajeEmergencia));
+        when(userRepository.findByPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
+        when(patientRepository.findByUserId(1L)).thenReturn(Optional.of(pacienteMock));
+        when(availabilitySlotRepository.findEntityByPublicId(SLOT_PUBLIC_ID)).thenReturn(Optional.of(slotMock));
+        when(professionalRepository.findById(100L)).thenReturn(Optional.of(profesionalMock));
+        when(triageRepository.findEntityByPublicId(triajePublicId)).thenReturn(Optional.of(triajeEmergencia));
 
-        assertThatThrownBy(() -> appointmentService.reservarCita(request, USUARIO_PUBLIC_ID, IP_CLIENTE))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> appointmentService.bookAppointment(request, USUARIO_PUBLIC_ID, IP_CLIENTE))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("No se permite agendar cita para un triaje clasificado como emergencia");
 
-        verify(disponibilidadSlotRepository, never()).reservarSlot(anyLong());
-        verify(citaRepository, never()).crear(any());
+        verify(availabilitySlotRepository, never()).reserveSlot(anyLong());
+        verify(appointmentRepository, never()).create(any());
     }
 
     // =========================================================================
@@ -419,58 +419,58 @@ class AppointmentServiceTest {
     // =========================================================================
 
     @Test
-    void cancelarCita_conAtencionVinculada_lanzaConflictoOperacionException409() {
-        Cita citaProgramada = new Cita(
+    void cancelAppointment_withLinkedAttention_throwsOperationConflictException409() {
+        Appointment citaProgramada = new Appointment(
                 500L, "cita-uuid-1", 50L, 10L, null, null, "PROGRAMADA", null, NOW, NOW
         );
 
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
-        when(citaRepository.buscarEntidadPorPublicId("cita-uuid-1")).thenReturn(Optional.of(citaProgramada));
-        when(atencionRepository.existePorCitaId(500L)).thenReturn(true);
+        when(userRepository.findByPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
+        when(appointmentRepository.findEntityByPublicId("cita-uuid-1")).thenReturn(Optional.of(citaProgramada));
+        when(attentionRepository.existsByAppointmentId(500L)).thenReturn(true);
 
-        assertThatThrownBy(() -> appointmentService.cancelarCita(
+        assertThatThrownBy(() -> appointmentService.cancelAppointment(
                 "cita-uuid-1",
-                new CancelarCitaRequest("Motivo"),
+                new CancelAppointmentRequest("Motivo"),
                 USUARIO_PUBLIC_ID,
                 List.of(new SimpleGrantedAuthority("ROLE_PACIENTE")),
                 IP_CLIENTE
         ))
-                .isInstanceOf(ConflictoOperacionException.class)
+                .isInstanceOf(OperationConflictException.class)
                 .hasMessage("No es posible cancelar una cita que ya cuenta con una atencion clinica vinculada.");
 
-        verify(disponibilidadSlotRepository, never()).liberarSlot(anyLong());
-        verify(citaRepository, never()).actualizarEstado(anyLong(), anyString(), any());
-        verify(auditoriaService, never()).auditar(any());
+        verify(availabilitySlotRepository, never()).releaseSlot(anyLong());
+        verify(appointmentRepository, never()).updateStatus(anyLong(), anyString(), any());
+        verify(auditService, never()).audit(any());
     }
 
     @Test
-    void cancelarCita_pacienteConMasDeDosHoras_exitoso_actualizaEstadoLiberaSlotYAudita() {
+    void cancelAppointment_patientWithMasOfTwoHours_success_updatesStatusReleasesSlotAndAudits() {
         // Slot a 3 horas de distancia (más de 2 horas)
-        DisponibilidadSlot slotFuturo = new DisponibilidadSlot(
+        AvailabilitySlot slotFuturo = new AvailabilitySlot(
                 50L, SLOT_PUBLIC_ID, 100L, 200L, 300L,
                 NOW.plusSeconds(10800), NOW.plusSeconds(12000), "PRESENCIAL", "OCUPADO"
         );
 
-        Cita citaProgramada = new Cita(
+        Appointment citaProgramada = new Appointment(
                 500L, "cita-uuid-1", 50L, 10L, null, null, "PROGRAMADA", null, NOW, NOW
         );
 
-        CitaResponse mockResponse = new CitaResponse(
+        AppointmentResponse mockResponse = new AppointmentResponse(
                 "cita-uuid-1", SLOT_PUBLIC_ID, "pac-uuid-1", "Pepito Perez",
                 "prof-uuid-1", "Gregory House", "esp-uuid-1", "Medicina Interna",
                 "sede-uuid-1", "Sede Central", "Carrera 7 # 40-62",
-                slotFuturo.fechaHoraInicio(), slotFuturo.fechaHoraFin(),
+                slotFuturo.startDateTime(), slotFuturo.endDateTime(),
                 "PRESENCIAL", "CANCELADA", null, null, NOW
         );
 
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
-        when(citaRepository.buscarEntidadPorPublicId("cita-uuid-1")).thenReturn(Optional.of(citaProgramada));
-        when(disponibilidadSlotRepository.buscarPorId(50L)).thenReturn(Optional.of(slotFuturo));
-        when(pacienteRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.of(pacienteMock));
-        when(citaRepository.buscarPorPublicId("cita-uuid-1")).thenReturn(Optional.of(mockResponse));
+        when(userRepository.findByPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
+        when(appointmentRepository.findEntityByPublicId("cita-uuid-1")).thenReturn(Optional.of(citaProgramada));
+        when(availabilitySlotRepository.findById(50L)).thenReturn(Optional.of(slotFuturo));
+        when(patientRepository.findByUserId(1L)).thenReturn(Optional.of(pacienteMock));
+        when(appointmentRepository.findByPublicId("cita-uuid-1")).thenReturn(Optional.of(mockResponse));
 
-        CancelarCitaRequest req = new CancelarCitaRequest("Imprevisto laboral");
-        CitaResponse resultado = appointmentService.cancelarCita(
+        CancelAppointmentRequest req = new CancelAppointmentRequest("Imprevisto laboral");
+        AppointmentResponse resultado = appointmentService.cancelAppointment(
                 "cita-uuid-1",
                 req,
                 USUARIO_PUBLIC_ID,
@@ -479,383 +479,383 @@ class AppointmentServiceTest {
         );
 
         assertThat(resultado).isNotNull();
-        assertThat(resultado.estado()).isEqualTo("CANCELADA");
+        assertThat(resultado.status()).isEqualTo("CANCELADA");
 
         // 1. Verifica actualización en BD
-        verify(citaRepository).actualizarEstado(500L, "CANCELADA", "Imprevisto laboral");
+        verify(appointmentRepository).updateStatus(500L, "CANCELADA", "Imprevisto laboral");
 
         // 2. Verifica liberación de slot a LIBRE
-        verify(disponibilidadSlotRepository).liberarSlot(50L);
+        verify(availabilitySlotRepository).releaseSlot(50L);
 
         // 3. Verifica auditoría inmutable
-        ArgumentCaptor<EventoAuditoria> eventoCaptor = ArgumentCaptor.forClass(EventoAuditoria.class);
-        verify(auditoriaService).auditar(eventoCaptor.capture());
-        EventoAuditoria evento = eventoCaptor.getValue();
-        assertThat(evento.usuarioId()).isEqualTo(1L);
-        assertThat(evento.accion()).isEqualTo(AccionAuditable.CANCELACION_CITA);
-        assertThat(evento.tipoRecurso()).isEqualTo("CITA");
-        assertThat(evento.recursoPublicId()).isEqualTo("cita-uuid-1");
-        assertThat(evento.resultado()).isEqualTo(ResultadoAuditoria.EXITO);
-        assertThat(evento.ipOrigen()).isEqualTo(IP_CLIENTE);
+        ArgumentCaptor<AuditEvent> eventoCaptor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).audit(eventoCaptor.capture());
+        AuditEvent evento = eventoCaptor.getValue();
+        assertThat(evento.userId()).isEqualTo(1L);
+        assertThat(evento.action()).isEqualTo(AuditableAction.CANCELACION_CITA);
+        assertThat(evento.resourceType()).isEqualTo("CITA");
+        assertThat(evento.resourcePublicId()).isEqualTo("cita-uuid-1");
+        assertThat(evento.result()).isEqualTo(AuditResult.EXITO);
+        assertThat(evento.sourceIp()).isEqualTo(IP_CLIENTE);
     }
 
     @Test
-    void cancelarCita_pacienteConMenosDeDosHoras_lanzaDatosInvalidosException() {
+    void cancelAppointment_patientWithLessOfTwoHours_throwsInvalidDataException() {
         // Slot inicia en 1 hora (menos de 2 horas)
-        DisponibilidadSlot slotCercano = new DisponibilidadSlot(
+        AvailabilitySlot slotCercano = new AvailabilitySlot(
                 50L, SLOT_PUBLIC_ID, 100L, 200L, 300L,
                 NOW.plusSeconds(3600), NOW.plusSeconds(4800), "PRESENCIAL", "OCUPADO"
         );
 
-        Cita citaProgramada = new Cita(
+        Appointment citaProgramada = new Appointment(
                 500L, "cita-uuid-1", 50L, 10L, null, null, "PROGRAMADA", null, NOW, NOW
         );
 
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
-        when(citaRepository.buscarEntidadPorPublicId("cita-uuid-1")).thenReturn(Optional.of(citaProgramada));
-        when(disponibilidadSlotRepository.buscarPorId(50L)).thenReturn(Optional.of(slotCercano));
-        when(pacienteRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.of(pacienteMock));
+        when(userRepository.findByPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
+        when(appointmentRepository.findEntityByPublicId("cita-uuid-1")).thenReturn(Optional.of(citaProgramada));
+        when(availabilitySlotRepository.findById(50L)).thenReturn(Optional.of(slotCercano));
+        when(patientRepository.findByUserId(1L)).thenReturn(Optional.of(pacienteMock));
 
-        assertThatThrownBy(() -> appointmentService.cancelarCita(
+        assertThatThrownBy(() -> appointmentService.cancelAppointment(
                 "cita-uuid-1",
-                new CancelarCitaRequest("Motivo"),
+                new CancelAppointmentRequest("Motivo"),
                 USUARIO_PUBLIC_ID,
                 List.of(new SimpleGrantedAuthority("ROLE_PACIENTE")),
                 IP_CLIENTE
         ))
-                .isInstanceOf(DatosInvalidosException.class)
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessage("La cancelacion por parte del paciente solo esta permitida hasta 2 horas antes de la cita.");
 
-        verify(citaRepository, never()).actualizarEstado(anyLong(), anyString(), any());
-        verify(disponibilidadSlotRepository, never()).liberarSlot(anyLong());
-        verify(auditoriaService, never()).auditar(any());
+        verify(appointmentRepository, never()).updateStatus(anyLong(), anyString(), any());
+        verify(availabilitySlotRepository, never()).releaseSlot(anyLong());
+        verify(auditService, never()).audit(any());
     }
 
     @Test
-    void cancelarCita_pacienteCitaEnElPasado_lanzaDatosInvalidosException() {
-        DisponibilidadSlot slotPasado = new DisponibilidadSlot(
+    void cancelAppointment_patientAppointmentInThePast_throwsInvalidDataException() {
+        AvailabilitySlot slotPasado = new AvailabilitySlot(
                 50L, SLOT_PUBLIC_ID, 100L, 200L, 300L,
                 NOW.minusSeconds(1800), NOW.minusSeconds(600), "PRESENCIAL", "OCUPADO"
         );
 
-        Cita citaProgramada = new Cita(
+        Appointment citaProgramada = new Appointment(
                 500L, "cita-uuid-1", 50L, 10L, null, null, "PROGRAMADA", null, NOW, NOW
         );
 
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
-        when(citaRepository.buscarEntidadPorPublicId("cita-uuid-1")).thenReturn(Optional.of(citaProgramada));
-        when(disponibilidadSlotRepository.buscarPorId(50L)).thenReturn(Optional.of(slotPasado));
-        when(pacienteRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.of(pacienteMock));
+        when(userRepository.findByPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
+        when(appointmentRepository.findEntityByPublicId("cita-uuid-1")).thenReturn(Optional.of(citaProgramada));
+        when(availabilitySlotRepository.findById(50L)).thenReturn(Optional.of(slotPasado));
+        when(patientRepository.findByUserId(1L)).thenReturn(Optional.of(pacienteMock));
 
-        assertThatThrownBy(() -> appointmentService.cancelarCita(
+        assertThatThrownBy(() -> appointmentService.cancelAppointment(
                 "cita-uuid-1",
-                new CancelarCitaRequest("Motivo"),
+                new CancelAppointmentRequest("Motivo"),
                 USUARIO_PUBLIC_ID,
                 List.of(new SimpleGrantedAuthority("ROLE_PACIENTE")),
                 IP_CLIENTE
         ))
-                .isInstanceOf(DatosInvalidosException.class)
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessage("La cancelacion por parte del paciente solo esta permitida hasta 2 horas antes de la cita.");
 
-        verify(citaRepository, never()).actualizarEstado(anyLong(), anyString(), any());
-        verify(disponibilidadSlotRepository, never()).liberarSlot(anyLong());
-        verify(auditoriaService, never()).auditar(any());
+        verify(appointmentRepository, never()).updateStatus(anyLong(), anyString(), any());
+        verify(availabilitySlotRepository, never()).releaseSlot(anyLong());
+        verify(auditService, never()).audit(any());
     }
 
     @Test
-    void cancelarCita_pacienteIntentaCancelarCitaAjena_lanzaAccesoNoAutorizadoException() {
-        DisponibilidadSlot slotFuturo = new DisponibilidadSlot(
+    void cancelAppointment_patientAttemptsCancelAppointmentOther_throwsUnauthorizedAccessException() {
+        AvailabilitySlot slotFuturo = new AvailabilitySlot(
                 50L, SLOT_PUBLIC_ID, 100L, 200L, 300L,
                 NOW.plusSeconds(10800), NOW.plusSeconds(12000), "PRESENCIAL", "OCUPADO"
         );
 
         // Cita con pacienteId = 999L (ajena al paciente autenticado con id = 10L)
-        Cita citaAjena = new Cita(
+        Appointment citaAjena = new Appointment(
                 500L, "cita-uuid-1", 50L, 999L, null, null, "PROGRAMADA", null, NOW, NOW
         );
 
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
-        when(citaRepository.buscarEntidadPorPublicId("cita-uuid-1")).thenReturn(Optional.of(citaAjena));
-        when(disponibilidadSlotRepository.buscarPorId(50L)).thenReturn(Optional.of(slotFuturo));
-        when(pacienteRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.of(pacienteMock));
+        when(userRepository.findByPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
+        when(appointmentRepository.findEntityByPublicId("cita-uuid-1")).thenReturn(Optional.of(citaAjena));
+        when(availabilitySlotRepository.findById(50L)).thenReturn(Optional.of(slotFuturo));
+        when(patientRepository.findByUserId(1L)).thenReturn(Optional.of(pacienteMock));
 
-        assertThatThrownBy(() -> appointmentService.cancelarCita(
+        assertThatThrownBy(() -> appointmentService.cancelAppointment(
                 "cita-uuid-1",
-                new CancelarCitaRequest("Motivo"),
+                new CancelAppointmentRequest("Motivo"),
                 USUARIO_PUBLIC_ID,
                 List.of(new SimpleGrantedAuthority("ROLE_PACIENTE")),
                 IP_CLIENTE
         ))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessage("No tiene autorizacion para cancelar una cita ajena.");
 
-        verify(citaRepository, never()).actualizarEstado(anyLong(), anyString(), any());
-        verify(disponibilidadSlotRepository, never()).liberarSlot(anyLong());
-        verify(auditoriaService, never()).auditar(any());
+        verify(appointmentRepository, never()).updateStatus(anyLong(), anyString(), any());
+        verify(availabilitySlotRepository, never()).releaseSlot(anyLong());
+        verify(auditService, never()).audit(any());
     }
 
     @Test
-    void cancelarCita_transicionInvalidaDesdeAtendida_lanzaDatosInvalidosException() {
-        Cita citaAtendida = new Cita(
+    void cancelAppointment_invalidTransitionFromAttended_throwsInvalidDataException() {
+        Appointment citaAtendida = new Appointment(
                 500L, "cita-uuid-1", 50L, 10L, null, null, "ATENDIDA", null, NOW, NOW
         );
 
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
-        when(citaRepository.buscarEntidadPorPublicId("cita-uuid-1")).thenReturn(Optional.of(citaAtendida));
+        when(userRepository.findByPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
+        when(appointmentRepository.findEntityByPublicId("cita-uuid-1")).thenReturn(Optional.of(citaAtendida));
 
-        assertThatThrownBy(() -> appointmentService.cancelarCita(
+        assertThatThrownBy(() -> appointmentService.cancelAppointment(
                 "cita-uuid-1",
                 null,
                 USUARIO_PUBLIC_ID,
                 List.of(new SimpleGrantedAuthority("ROLE_PACIENTE")),
                 IP_CLIENTE
         ))
-                .isInstanceOf(DatosInvalidosException.class)
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessage("Transicion de estado no permitida de ATENDIDA a CANCELADA.");
 
-        verify(disponibilidadSlotRepository, never()).buscarPorId(anyLong());
-        verify(citaRepository, never()).actualizarEstado(anyLong(), anyString(), any());
-        verify(auditoriaService, never()).auditar(any());
+        verify(availabilitySlotRepository, never()).findById(anyLong());
+        verify(appointmentRepository, never()).updateStatus(anyLong(), anyString(), any());
+        verify(auditService, never()).audit(any());
     }
 
     @Test
-    void cancelarCita_transicionInvalidaDesdeCancelada_lanzaDatosInvalidosException() {
-        Cita citaCancelada = new Cita(
+    void cancelAppointment_invalidTransitionFromCancelled_throwsInvalidDataException() {
+        Appointment citaCancelada = new Appointment(
                 500L, "cita-uuid-1", 50L, 10L, null, null, "CANCELADA", "Cancelada previamente", NOW, NOW
         );
 
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
-        when(citaRepository.buscarEntidadPorPublicId("cita-uuid-1")).thenReturn(Optional.of(citaCancelada));
+        when(userRepository.findByPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
+        when(appointmentRepository.findEntityByPublicId("cita-uuid-1")).thenReturn(Optional.of(citaCancelada));
 
-        assertThatThrownBy(() -> appointmentService.cancelarCita(
+        assertThatThrownBy(() -> appointmentService.cancelAppointment(
                 "cita-uuid-1",
                 null,
                 USUARIO_PUBLIC_ID,
                 List.of(new SimpleGrantedAuthority("ROLE_ADMINISTRADOR")),
                 IP_CLIENTE
         ))
-                .isInstanceOf(DatosInvalidosException.class)
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessage("Transicion de estado no permitida de CANCELADA a CANCELADA.");
 
-        verify(disponibilidadSlotRepository, never()).buscarPorId(anyLong());
-        verify(citaRepository, never()).actualizarEstado(anyLong(), anyString(), any());
+        verify(availabilitySlotRepository, never()).findById(anyLong());
+        verify(appointmentRepository, never()).updateStatus(anyLong(), anyString(), any());
     }
 
     @Test
-    void cancelarCita_profesionalDeSuPropioSlotSinRestriccionDosHoras_exitoso() {
+    void cancelAppointment_professionalOfItsOwnSlotWithoutRestriccionTwoHours_success() {
         // Slot inicia en solo 30 minutos (menos de 2 horas)
-        DisponibilidadSlot slotInmediato = new DisponibilidadSlot(
+        AvailabilitySlot slotInmediato = new AvailabilitySlot(
                 50L, SLOT_PUBLIC_ID, 100L, 200L, 300L,
                 NOW.plusSeconds(1800), NOW.plusSeconds(3000), "PRESENCIAL", "OCUPADO"
         );
 
-        Cita citaConfirmada = new Cita(
+        Appointment citaConfirmada = new Appointment(
                 500L, "cita-uuid-1", 50L, 10L, null, null, "CONFIRMADA", null, NOW, NOW
         );
 
-        Usuario usuarioProfesional = new Usuario(
+        User usuarioProfesional = new User(
                 2L, "prof-usr-uuid", "drhouse@test.com", "hash", "ACTIVO", 0, null, NOW, false
         );
 
-        CitaResponse mockResponse = new CitaResponse(
+        AppointmentResponse mockResponse = new AppointmentResponse(
                 "cita-uuid-1", SLOT_PUBLIC_ID, "pac-uuid-1", "Pepito Perez",
                 "prof-uuid-1", "Gregory House", "esp-uuid-1", "Medicina Interna",
                 "sede-uuid-1", "Sede Central", "Carrera 7 # 40-62",
-                slotInmediato.fechaHoraInicio(), slotInmediato.fechaHoraFin(),
+                slotInmediato.startDateTime(), slotInmediato.endDateTime(),
                 "PRESENCIAL", "CANCELADA", null, null, NOW
         );
 
-        when(usuarioRepository.buscarPorPublicId("prof-usr-uuid")).thenReturn(Optional.of(usuarioProfesional));
-        when(citaRepository.buscarEntidadPorPublicId("cita-uuid-1")).thenReturn(Optional.of(citaConfirmada));
-        when(disponibilidadSlotRepository.buscarPorId(50L)).thenReturn(Optional.of(slotInmediato));
-        when(profesionalRepository.buscarPorUsuarioId(2L)).thenReturn(Optional.of(profesionalMock));
-        when(citaRepository.buscarPorPublicId("cita-uuid-1")).thenReturn(Optional.of(mockResponse));
+        when(userRepository.findByPublicId("prof-usr-uuid")).thenReturn(Optional.of(usuarioProfesional));
+        when(appointmentRepository.findEntityByPublicId("cita-uuid-1")).thenReturn(Optional.of(citaConfirmada));
+        when(availabilitySlotRepository.findById(50L)).thenReturn(Optional.of(slotInmediato));
+        when(professionalRepository.findByUserId(2L)).thenReturn(Optional.of(profesionalMock));
+        when(appointmentRepository.findByPublicId("cita-uuid-1")).thenReturn(Optional.of(mockResponse));
 
-        CitaResponse res = appointmentService.cancelarCita(
+        AppointmentResponse res = appointmentService.cancelAppointment(
                 "cita-uuid-1",
-                new CancelarCitaRequest("Emergencia medica del profesional"),
+                new CancelAppointmentRequest("Emergencia medica del profesional"),
                 "prof-usr-uuid",
                 List.of(new SimpleGrantedAuthority("ROLE_PROFESIONAL")),
                 IP_CLIENTE
         );
 
         assertThat(res).isNotNull();
-        assertThat(res.estado()).isEqualTo("CANCELADA");
+        assertThat(res.status()).isEqualTo("CANCELADA");
 
-        verify(citaRepository).actualizarEstado(500L, "CANCELADA", "Emergencia medica del profesional");
-        verify(disponibilidadSlotRepository).liberarSlot(50L);
-        verify(auditoriaService).auditar(any(EventoAuditoria.class));
+        verify(appointmentRepository).updateStatus(500L, "CANCELADA", "Emergencia medica del profesional");
+        verify(availabilitySlotRepository).releaseSlot(50L);
+        verify(auditService).audit(any(AuditEvent.class));
     }
 
     @Test
-    void cancelarCita_profesionalDeSlotAjeno_lanzaAccesoNoAutorizadoException() {
+    void cancelAppointment_professionalOfSlotOther_throwsUnauthorizedAccessException() {
         // Slot asignado al profesional 999L
-        DisponibilidadSlot slotDeOtroProfesional = new DisponibilidadSlot(
+        AvailabilitySlot slotDeOtroProfesional = new AvailabilitySlot(
                 50L, SLOT_PUBLIC_ID, 999L, 200L, 300L,
                 NOW.plusSeconds(3600), NOW.plusSeconds(4800), "PRESENCIAL", "OCUPADO"
         );
 
-        Cita citaProgramada = new Cita(
+        Appointment citaProgramada = new Appointment(
                 500L, "cita-uuid-1", 50L, 10L, null, null, "PROGRAMADA", null, NOW, NOW
         );
 
-        Usuario usuarioProfesional = new Usuario(
+        User usuarioProfesional = new User(
                 2L, "prof-usr-uuid", "drhouse@test.com", "hash", "ACTIVO", 0, null, NOW, false
         );
 
-        when(usuarioRepository.buscarPorPublicId("prof-usr-uuid")).thenReturn(Optional.of(usuarioProfesional));
-        when(citaRepository.buscarEntidadPorPublicId("cita-uuid-1")).thenReturn(Optional.of(citaProgramada));
-        when(disponibilidadSlotRepository.buscarPorId(50L)).thenReturn(Optional.of(slotDeOtroProfesional));
-        when(profesionalRepository.buscarPorUsuarioId(2L)).thenReturn(Optional.of(profesionalMock));
+        when(userRepository.findByPublicId("prof-usr-uuid")).thenReturn(Optional.of(usuarioProfesional));
+        when(appointmentRepository.findEntityByPublicId("cita-uuid-1")).thenReturn(Optional.of(citaProgramada));
+        when(availabilitySlotRepository.findById(50L)).thenReturn(Optional.of(slotDeOtroProfesional));
+        when(professionalRepository.findByUserId(2L)).thenReturn(Optional.of(profesionalMock));
 
-        assertThatThrownBy(() -> appointmentService.cancelarCita(
+        assertThatThrownBy(() -> appointmentService.cancelAppointment(
                 "cita-uuid-1",
-                new CancelarCitaRequest("Motivo"),
+                new CancelAppointmentRequest("Motivo"),
                 "prof-usr-uuid",
                 List.of(new SimpleGrantedAuthority("ROLE_PROFESIONAL")),
                 IP_CLIENTE
         ))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessage("El profesional no tiene autorizacion para cancelar citas de otro colega.");
 
-        verify(citaRepository, never()).actualizarEstado(anyLong(), anyString(), any());
-        verify(disponibilidadSlotRepository, never()).liberarSlot(anyLong());
+        verify(appointmentRepository, never()).updateStatus(anyLong(), anyString(), any());
+        verify(availabilitySlotRepository, never()).releaseSlot(anyLong());
     }
 
     @Test
-    void cancelarCita_administradorSinRestriccionDosHoras_exitoso() {
+    void cancelAppointment_administratorWithoutRestriccionTwoHours_success() {
         // Slot inicia en 10 minutos
-        DisponibilidadSlot slotInmediato = new DisponibilidadSlot(
+        AvailabilitySlot slotInmediato = new AvailabilitySlot(
                 50L, SLOT_PUBLIC_ID, 100L, 200L, 300L,
                 NOW.plusSeconds(600), NOW.plusSeconds(1800), "PRESENCIAL", "OCUPADO"
         );
 
-        Cita citaProgramada = new Cita(
+        Appointment citaProgramada = new Appointment(
                 500L, "cita-uuid-1", 50L, 10L, null, null, "PROGRAMADA", null, NOW, NOW
         );
 
-        Usuario usuarioAdmin = new Usuario(
+        User usuarioAdmin = new User(
                 3L, "admin-usr-uuid", "admin@test.com", "hash", "ACTIVO", 0, null, NOW, false
         );
 
-        CitaResponse mockResponse = new CitaResponse(
+        AppointmentResponse mockResponse = new AppointmentResponse(
                 "cita-uuid-1", SLOT_PUBLIC_ID, "pac-uuid-1", "Pepito Perez",
                 "prof-uuid-1", "Gregory House", "esp-uuid-1", "Medicina Interna",
                 "sede-uuid-1", "Sede Central", "Carrera 7 # 40-62",
-                slotInmediato.fechaHoraInicio(), slotInmediato.fechaHoraFin(),
+                slotInmediato.startDateTime(), slotInmediato.endDateTime(),
                 "PRESENCIAL", "CANCELADA", null, null, NOW
         );
 
-        when(usuarioRepository.buscarPorPublicId("admin-usr-uuid")).thenReturn(Optional.of(usuarioAdmin));
-        when(citaRepository.buscarEntidadPorPublicId("cita-uuid-1")).thenReturn(Optional.of(citaProgramada));
-        when(disponibilidadSlotRepository.buscarPorId(50L)).thenReturn(Optional.of(slotInmediato));
-        when(citaRepository.buscarPorPublicId("cita-uuid-1")).thenReturn(Optional.of(mockResponse));
+        when(userRepository.findByPublicId("admin-usr-uuid")).thenReturn(Optional.of(usuarioAdmin));
+        when(appointmentRepository.findEntityByPublicId("cita-uuid-1")).thenReturn(Optional.of(citaProgramada));
+        when(availabilitySlotRepository.findById(50L)).thenReturn(Optional.of(slotInmediato));
+        when(appointmentRepository.findByPublicId("cita-uuid-1")).thenReturn(Optional.of(mockResponse));
 
-        CitaResponse res = appointmentService.cancelarCita(
+        AppointmentResponse res = appointmentService.cancelAppointment(
                 "cita-uuid-1",
-                new CancelarCitaRequest("Cancelacion administrativa por cierre de sede"),
+                new CancelAppointmentRequest("Cancelacion administrativa por cierre de sede"),
                 "admin-usr-uuid",
                 List.of(new SimpleGrantedAuthority("ROLE_ADMINISTRADOR")),
                 IP_CLIENTE
         );
 
         assertThat(res).isNotNull();
-        assertThat(res.estado()).isEqualTo("CANCELADA");
+        assertThat(res.status()).isEqualTo("CANCELADA");
 
-        verify(citaRepository).actualizarEstado(500L, "CANCELADA", "Cancelacion administrativa por cierre de sede");
-        verify(disponibilidadSlotRepository).liberarSlot(50L);
-        verify(auditoriaService).auditar(any(EventoAuditoria.class));
+        verify(appointmentRepository).updateStatus(500L, "CANCELADA", "Cancelacion administrativa por cierre de sede");
+        verify(availabilitySlotRepository).releaseSlot(50L);
+        verify(auditService).audit(any(AuditEvent.class));
     }
 
     @Test
-    void cancelarCita_citaNoExiste_lanzaRecursoNoEncontradoException() {
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
-        when(citaRepository.buscarEntidadPorPublicId("cita-inexistente")).thenReturn(Optional.empty());
+    void cancelAppointment_appointmentNotFound_throwsResourceNotFoundException() {
+        when(userRepository.findByPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
+        when(appointmentRepository.findEntityByPublicId("cita-inexistente")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> appointmentService.cancelarCita(
+        assertThatThrownBy(() -> appointmentService.cancelAppointment(
                 "cita-inexistente",
                 null,
                 USUARIO_PUBLIC_ID,
                 List.of(new SimpleGrantedAuthority("ROLE_PACIENTE")),
                 IP_CLIENTE
         ))
-                .isInstanceOf(RecursoNoEncontradoException.class)
+                .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("Cita no encontrada");
 
-        verify(disponibilidadSlotRepository, never()).buscarPorId(anyLong());
-        verify(citaRepository, never()).actualizarEstado(anyLong(), anyString(), any());
+        verify(availabilitySlotRepository, never()).findById(anyLong());
+        verify(appointmentRepository, never()).updateStatus(anyLong(), anyString(), any());
     }
 
     @Test
-    void cancelarCita_usuarioNoExiste_lanzaRecursoNoEncontradoException() {
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.empty());
+    void cancelAppointment_userNotExists_throwsResourceNotFoundException() {
+        when(userRepository.findByPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> appointmentService.cancelarCita(
+        assertThatThrownBy(() -> appointmentService.cancelAppointment(
                 "cita-uuid-1",
                 null,
                 USUARIO_PUBLIC_ID,
                 List.of(new SimpleGrantedAuthority("ROLE_PACIENTE")),
                 IP_CLIENTE
         ))
-                .isInstanceOf(RecursoNoEncontradoException.class)
+                .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("Usuario no encontrado");
 
-        verify(citaRepository, never()).buscarEntidadPorPublicId(anyString());
+        verify(appointmentRepository, never()).findEntityByPublicId(anyString());
     }
 
     @Test
-    void cancelarCita_pacienteSinRegistroPaciente_lanzaAccesoNoAutorizadoException() {
-        DisponibilidadSlot slotFuturo = new DisponibilidadSlot(
+    void cancelAppointment_patientWithoutRecordPatient_throwsUnauthorizedAccessException() {
+        AvailabilitySlot slotFuturo = new AvailabilitySlot(
                 50L, SLOT_PUBLIC_ID, 100L, 200L, 300L,
                 NOW.plusSeconds(10800), NOW.plusSeconds(12000), "PRESENCIAL", "OCUPADO"
         );
 
-        Cita citaProgramada = new Cita(
+        Appointment citaProgramada = new Appointment(
                 500L, "cita-uuid-1", 50L, 10L, null, null, "PROGRAMADA", null, NOW, NOW
         );
 
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
-        when(citaRepository.buscarEntidadPorPublicId("cita-uuid-1")).thenReturn(Optional.of(citaProgramada));
-        when(disponibilidadSlotRepository.buscarPorId(50L)).thenReturn(Optional.of(slotFuturo));
-        when(pacienteRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.empty());
+        when(userRepository.findByPublicId(USUARIO_PUBLIC_ID)).thenReturn(Optional.of(usuarioMock));
+        when(appointmentRepository.findEntityByPublicId("cita-uuid-1")).thenReturn(Optional.of(citaProgramada));
+        when(availabilitySlotRepository.findById(50L)).thenReturn(Optional.of(slotFuturo));
+        when(patientRepository.findByUserId(1L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> appointmentService.cancelarCita(
+        assertThatThrownBy(() -> appointmentService.cancelAppointment(
                 "cita-uuid-1",
                 null,
                 USUARIO_PUBLIC_ID,
                 List.of(new SimpleGrantedAuthority("ROLE_PACIENTE")),
                 IP_CLIENTE
         ))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessage("Solo pacientes registrados pueden cancelar citas.");
     }
 
     @Test
-    void cancelarCita_profesionalSinRegistroProfesional_lanzaAccesoNoAutorizadoException() {
-        DisponibilidadSlot slotFuturo = new DisponibilidadSlot(
+    void cancelAppointment_professionalWithoutRecordProfessional_throwsUnauthorizedAccessException() {
+        AvailabilitySlot slotFuturo = new AvailabilitySlot(
                 50L, SLOT_PUBLIC_ID, 100L, 200L, 300L,
                 NOW.plusSeconds(10800), NOW.plusSeconds(12000), "PRESENCIAL", "OCUPADO"
         );
 
-        Cita citaProgramada = new Cita(
+        Appointment citaProgramada = new Appointment(
                 500L, "cita-uuid-1", 50L, 10L, null, null, "PROGRAMADA", null, NOW, NOW
         );
 
-        Usuario usrProf = new Usuario(2L, "prof-usr-uuid", "prof@test.com", "hash", "ACTIVO", 0, null, NOW, false);
+        User usrProf = new User(2L, "prof-usr-uuid", "prof@test.com", "hash", "ACTIVO", 0, null, NOW, false);
 
-        when(usuarioRepository.buscarPorPublicId("prof-usr-uuid")).thenReturn(Optional.of(usrProf));
-        when(citaRepository.buscarEntidadPorPublicId("cita-uuid-1")).thenReturn(Optional.of(citaProgramada));
-        when(disponibilidadSlotRepository.buscarPorId(50L)).thenReturn(Optional.of(slotFuturo));
-        when(profesionalRepository.buscarPorUsuarioId(2L)).thenReturn(Optional.empty());
+        when(userRepository.findByPublicId("prof-usr-uuid")).thenReturn(Optional.of(usrProf));
+        when(appointmentRepository.findEntityByPublicId("cita-uuid-1")).thenReturn(Optional.of(citaProgramada));
+        when(availabilitySlotRepository.findById(50L)).thenReturn(Optional.of(slotFuturo));
+        when(professionalRepository.findByUserId(2L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> appointmentService.cancelarCita(
+        assertThatThrownBy(() -> appointmentService.cancelAppointment(
                 "cita-uuid-1",
                 null,
                 "prof-usr-uuid",
                 List.of(new SimpleGrantedAuthority("ROLE_PROFESIONAL")),
                 IP_CLIENTE
         ))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessage("El profesional no tiene autorizacion para cancelar citas de otro colega.");
     }
 
@@ -864,50 +864,50 @@ class AppointmentServiceTest {
     // =========================================================================
 
     @Test
-    void obtenerMiAgenda_conProfesionalValido_retornaPaginaCitas() {
-        Usuario usrProf = new Usuario(2L, "prof-usr-uuid", "dr.mendoza@test.com", "hash", "ACTIVO", 0, null, NOW, false);
-        Profesional prof = new Profesional(5L, 2L, "prof-uuid-5", 1L, "RM-123", "Carlos", "Mendoza", NOW, null);
-        CitaResponse citaResp = new CitaResponse(
+    void getMyAgenda_withProfessionalValid_returnsPageAppointments() {
+        User usrProf = new User(2L, "prof-usr-uuid", "dr.mendoza@test.com", "hash", "ACTIVO", 0, null, NOW, false);
+        Professional prof = new Professional(5L, 2L, "prof-uuid-5", 1L, "RM-123", "Carlos", "Mendoza", NOW, null);
+        AppointmentResponse citaResp = new AppointmentResponse(
                 "cita-1", "slot-1", "pac-1", "Ana Gomez",
                 "prof-uuid-5", "Carlos Mendoza", "esp-1", "Medicina General",
                 "sede-1", "Sede Centro", "Calle 10", NOW.plusSeconds(3600), NOW.plusSeconds(4800),
                 "PRESENCIAL", "PROGRAMADA", null, null, NOW
         );
 
-        when(usuarioRepository.buscarPorPublicId("prof-usr-uuid")).thenReturn(Optional.of(usrProf));
-        when(profesionalRepository.buscarPorUsuarioId(2L)).thenReturn(Optional.of(prof));
-        when(citaRepository.listarAgendaProfesional(5L, null, null, null, 0, 10))
+        when(userRepository.findByPublicId("prof-usr-uuid")).thenReturn(Optional.of(usrProf));
+        when(professionalRepository.findByUserId(2L)).thenReturn(Optional.of(prof));
+        when(appointmentRepository.listProfessionalAgenda(5L, null, null, null, 0, 10))
                 .thenReturn(List.of(citaResp));
-        when(citaRepository.contarAgendaProfesional(5L, null, null, null)).thenReturn(1);
+        when(appointmentRepository.countProfessionalAgenda(5L, null, null, null)).thenReturn(1);
 
-        PaginatedResponse<CitaResponse> resultado = appointmentService.obtenerMiAgenda(
+        PaginatedResponse<AppointmentResponse> resultado = appointmentService.getMyAgenda(
                 "prof-usr-uuid", null, null, 0, 10
         );
 
         assertThat(resultado.content()).hasSize(1);
         assertThat(resultado.totalElements()).isEqualTo(1L);
         assertThat(resultado.content().get(0).publicId()).isEqualTo("cita-1");
-        assertThat(resultado.content().get(0).profesionalNombre()).isEqualTo("Carlos Mendoza");
+        assertThat(resultado.content().get(0).professionalName()).isEqualTo("Carlos Mendoza");
     }
 
     @Test
-    void obtenerMiAgenda_conFiltroFechaYEstado_convierteInstantesBogotaYFiltra() {
-        Usuario usrProf = new Usuario(2L, "prof-usr-uuid", "dr.mendoza@test.com", "hash", "ACTIVO", 0, null, NOW, false);
-        Profesional prof = new Profesional(5L, 2L, "prof-uuid-5", 1L, "RM-123", "Carlos", "Mendoza", NOW, null);
+    void getMyAgenda_withFilterDateAndStatus_convertsInstantsBogotaAndFilters() {
+        User usrProf = new User(2L, "prof-usr-uuid", "dr.mendoza@test.com", "hash", "ACTIVO", 0, null, NOW, false);
+        Professional prof = new Professional(5L, 2L, "prof-uuid-5", 1L, "RM-123", "Carlos", "Mendoza", NOW, null);
         LocalDate fecha = LocalDate.of(2026, 10, 15);
 
-        when(usuarioRepository.buscarPorPublicId("prof-usr-uuid")).thenReturn(Optional.of(usrProf));
-        when(profesionalRepository.buscarPorUsuarioId(2L)).thenReturn(Optional.of(prof));
+        when(userRepository.findByPublicId("prof-usr-uuid")).thenReturn(Optional.of(usrProf));
+        when(professionalRepository.findByUserId(2L)).thenReturn(Optional.of(prof));
 
         ArgumentCaptor<Instant> desdeCaptor = ArgumentCaptor.forClass(Instant.class);
         ArgumentCaptor<Instant> hastaCaptor = ArgumentCaptor.forClass(Instant.class);
 
-        when(citaRepository.listarAgendaProfesional(eq(5L), desdeCaptor.capture(), hastaCaptor.capture(), eq("PROGRAMADA"), eq(0), eq(10)))
+        when(appointmentRepository.listProfessionalAgenda(eq(5L), desdeCaptor.capture(), hastaCaptor.capture(), eq("PROGRAMADA"), eq(0), eq(10)))
                 .thenReturn(List.of());
-        when(citaRepository.contarAgendaProfesional(eq(5L), any(Instant.class), any(Instant.class), eq("PROGRAMADA")))
+        when(appointmentRepository.countProfessionalAgenda(eq(5L), any(Instant.class), any(Instant.class), eq("PROGRAMADA")))
                 .thenReturn(0);
 
-        PaginatedResponse<CitaResponse> resultado = appointmentService.obtenerMiAgenda(
+        PaginatedResponse<AppointmentResponse> resultado = appointmentService.getMyAgenda(
                 "prof-usr-uuid", fecha, "programada", 0, 10
         );
 
@@ -921,62 +921,62 @@ class AppointmentServiceTest {
     }
 
     @Test
-    void obtenerMiAgenda_cuandoUsuarioNoExiste_lanzaRecursoNoEncontrado() {
-        when(usuarioRepository.buscarPorPublicId("usuario-fantasma")).thenReturn(Optional.empty());
+    void getMyAgenda_whenUserNotExists_throwsResourceNotFound() {
+        when(userRepository.findByPublicId("usuario-fantasma")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> appointmentService.obtenerMiAgenda("usuario-fantasma", null, null, 0, 10))
-                .isInstanceOf(RecursoNoEncontradoException.class)
+        assertThatThrownBy(() -> appointmentService.getMyAgenda("usuario-fantasma", null, null, 0, 10))
+                .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("Usuario no encontrado.");
     }
 
     @Test
-    void obtenerMiAgenda_cuandoUsuarioNoEsProfesional_lanzaAccesoNoAutorizado() {
-        Usuario usr = new Usuario(10L, "usr-paciente", "paciente@test.com", "hash", "ACTIVO", 0, null, NOW, false);
-        when(usuarioRepository.buscarPorPublicId("usr-paciente")).thenReturn(Optional.of(usr));
-        when(profesionalRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.empty());
+    void getMyAgenda_whenUserNotIsProfessional_throwsUnauthorizedAccess() {
+        User usr = new User(10L, "usr-paciente", "paciente@test.com", "hash", "ACTIVO", 0, null, NOW, false);
+        when(userRepository.findByPublicId("usr-paciente")).thenReturn(Optional.of(usr));
+        when(professionalRepository.findByUserId(10L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> appointmentService.obtenerMiAgenda("usr-paciente", null, null, 0, 10))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+        assertThatThrownBy(() -> appointmentService.getMyAgenda("usr-paciente", null, null, 0, 10))
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessage("Solo profesionales registrados pueden consultar su agenda.");
     }
 
     @Test
-    void obtenerMiAgenda_cuandoPaginacionInvalida_lanzaDatosInvalidos() {
-        assertThatThrownBy(() -> appointmentService.obtenerMiAgenda("prof-usr", null, null, -1, 10))
-                .isInstanceOf(DatosInvalidosException.class)
+    void getMyAgenda_whenPaginationInvalid_throwsInvalidData() {
+        assertThatThrownBy(() -> appointmentService.getMyAgenda("prof-usr", null, null, -1, 10))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessage("El número de página no puede ser menor a 0.");
 
-        assertThatThrownBy(() -> appointmentService.obtenerMiAgenda("prof-usr", null, null, 0, 0))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> appointmentService.getMyAgenda("prof-usr", null, null, 0, 0))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessage("El tamaño de página debe estar entre 1 y 100.");
 
-        assertThatThrownBy(() -> appointmentService.obtenerMiAgenda("prof-usr", null, null, 0, 101))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> appointmentService.getMyAgenda("prof-usr", null, null, 0, 101))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessage("El tamaño de página debe estar entre 1 y 100.");
     }
 
     @Test
-    void obtenerMiAgenda_cuandoEstadoInvalido_lanzaDatosInvalidos() {
-        assertThatThrownBy(() -> appointmentService.obtenerMiAgenda("prof-usr", null, "ESTADO_INEXISTENTE", 0, 10))
-                .isInstanceOf(DatosInvalidosException.class)
+    void getMyAgenda_whenStatusInvalid_throwsInvalidData() {
+        assertThatThrownBy(() -> appointmentService.getMyAgenda("prof-usr", null, "ESTADO_INEXISTENTE", 0, 10))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessage("Estado de cita no válido: ESTADO_INEXISTENTE");
     }
 
     @Test
-    void obtenerMiAgenda_aislamiento_medicoSoloVeSusCitas() {
-        Usuario usrProfA = new Usuario(2L, "prof-usr-A", "dr.a@test.com", "hash", "ACTIVO", 0, null, NOW, false);
-        Profesional profA = new Profesional(5L, 2L, "prof-A", 1L, "RM-101", "Dr", "A", NOW, null);
+    void getMyAgenda_aislamiento_physicianOnlyVeItsAppointments() {
+        User usrProfA = new User(2L, "prof-usr-A", "dr.a@test.com", "hash", "ACTIVO", 0, null, NOW, false);
+        Professional profA = new Professional(5L, 2L, "prof-A", 1L, "RM-101", "Dr", "A", NOW, null);
 
-        when(usuarioRepository.buscarPorPublicId("prof-usr-A")).thenReturn(Optional.of(usrProfA));
-        when(profesionalRepository.buscarPorUsuarioId(2L)).thenReturn(Optional.of(profA));
-        when(citaRepository.listarAgendaProfesional(5L, null, null, null, 0, 10)).thenReturn(List.of());
-        when(citaRepository.contarAgendaProfesional(5L, null, null, null)).thenReturn(0);
+        when(userRepository.findByPublicId("prof-usr-A")).thenReturn(Optional.of(usrProfA));
+        when(professionalRepository.findByUserId(2L)).thenReturn(Optional.of(profA));
+        when(appointmentRepository.listProfessionalAgenda(5L, null, null, null, 0, 10)).thenReturn(List.of());
+        when(appointmentRepository.countProfessionalAgenda(5L, null, null, null)).thenReturn(0);
 
-        appointmentService.obtenerMiAgenda("prof-usr-A", null, null, 0, 10);
+        appointmentService.getMyAgenda("prof-usr-A", null, null, 0, 10);
 
         // Se verifica que la consulta se hace estrictamente con el id del profesional autenticado (5L)
-        verify(citaRepository).listarAgendaProfesional(eq(5L), eq(null), eq(null), eq(null), eq(0), eq(10));
-        verify(citaRepository).contarAgendaProfesional(eq(5L), eq(null), eq(null), eq(null));
+        verify(appointmentRepository).listProfessionalAgenda(eq(5L), eq(null), eq(null), eq(null), eq(0), eq(10));
+        verify(appointmentRepository).countProfessionalAgenda(eq(5L), eq(null), eq(null), eq(null));
     }
 
     // =========================================================================
@@ -984,65 +984,65 @@ class AppointmentServiceTest {
     // =========================================================================
 
     @Test
-    void obtenerMisCitas_conPacienteValido_retornaPaginaCitas() {
-        Usuario usrPac = new Usuario(1L, "pac-usr-uuid", "carlos@test.com", "hash", "ACTIVO", 0, null, NOW, false);
-        Paciente pac = new Paciente(10L, 1L, "pac-public-uuid", "CC", "1098765432", "Carlos", "Perez",
+    void getMyAppointments_withPatientValid_returnsPageAppointments() {
+        User usrPac = new User(1L, "pac-usr-uuid", "carlos@test.com", "hash", "ACTIVO", 0, null, NOW, false);
+        Patient pac = new Patient(10L, 1L, "pac-public-uuid", "CC", "1098765432", "Carlos", "Perez",
                 LocalDate.of(1990, 5, 20), "3001234567", NOW, null);
 
-        CitaResponse citaResp = new CitaResponse(
+        AppointmentResponse citaResp = new AppointmentResponse(
                 "cita-1", "slot-1", "pac-public-uuid", "Carlos Perez",
                 "prof-uuid-5", "Carlos Mendoza", "esp-1", "Medicina General",
                 "sede-1", "Sede Centro", "Calle 10", NOW.plusSeconds(3600), NOW.plusSeconds(4800),
                 "PRESENCIAL", "PROGRAMADA", null, null, NOW
         );
 
-        when(usuarioRepository.buscarPorPublicId("pac-usr-uuid")).thenReturn(Optional.of(usrPac));
-        when(pacienteRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.of(pac));
-        when(citaRepository.listarPorPacienteId(10L, 0, 10)).thenReturn(List.of(citaResp));
-        when(citaRepository.contarPorPacienteId(10L)).thenReturn(1);
+        when(userRepository.findByPublicId("pac-usr-uuid")).thenReturn(Optional.of(usrPac));
+        when(patientRepository.findByUserId(1L)).thenReturn(Optional.of(pac));
+        when(appointmentRepository.listByPatientId(10L, 0, 10)).thenReturn(List.of(citaResp));
+        when(appointmentRepository.countByPatientId(10L)).thenReturn(1);
 
-        PaginatedResponse<CitaResponse> resultado = appointmentService.obtenerMisCitas("pac-usr-uuid", 0, 10);
+        PaginatedResponse<AppointmentResponse> resultado = appointmentService.getMyAppointments("pac-usr-uuid", 0, 10);
 
         assertThat(resultado).isNotNull();
         assertThat(resultado.content()).hasSize(1);
         assertThat(resultado.content().get(0).publicId()).isEqualTo("cita-1");
         assertThat(resultado.totalElements()).isEqualTo(1L);
-        verify(citaRepository).listarPorPacienteId(10L, 0, 10);
-        verify(citaRepository).contarPorPacienteId(10L);
+        verify(appointmentRepository).listByPatientId(10L, 0, 10);
+        verify(appointmentRepository).countByPatientId(10L);
     }
 
     @Test
-    void obtenerMisCitas_conUsuarioNoExistente_lanzaRecursoNoEncontrado() {
-        when(usuarioRepository.buscarPorPublicId("no-existe")).thenReturn(Optional.empty());
+    void getMyAppointments_withUserNotExistente_throwsResourceNotFound() {
+        when(userRepository.findByPublicId("no-existe")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> appointmentService.obtenerMisCitas("no-existe", 0, 10))
-                .isInstanceOf(RecursoNoEncontradoException.class)
+        assertThatThrownBy(() -> appointmentService.getMyAppointments("no-existe", 0, 10))
+                .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("Usuario no encontrado.");
     }
 
     @Test
-    void obtenerMisCitas_conUsuarioNoPaciente_lanzaAccesoNoAutorizado() {
-        Usuario usr = new Usuario(99L, "usr-uuid", "admin@test.com", "hash", "ACTIVO", 0, null, NOW, false);
-        when(usuarioRepository.buscarPorPublicId("usr-uuid")).thenReturn(Optional.of(usr));
-        when(pacienteRepository.buscarPorUsuarioId(99L)).thenReturn(Optional.empty());
+    void getMyAppointments_withUserNotPatient_throwsUnauthorizedAccess() {
+        User usr = new User(99L, "usr-uuid", "admin@test.com", "hash", "ACTIVO", 0, null, NOW, false);
+        when(userRepository.findByPublicId("usr-uuid")).thenReturn(Optional.of(usr));
+        when(patientRepository.findByUserId(99L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> appointmentService.obtenerMisCitas("usr-uuid", 0, 10))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+        assertThatThrownBy(() -> appointmentService.getMyAppointments("usr-uuid", 0, 10))
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessage("Solo pacientes registrados pueden consultar sus citas.");
     }
 
     @Test
-    void obtenerMisCitas_conPaginacionInvalida_lanzaDatosInvalidos() {
-        assertThatThrownBy(() -> appointmentService.obtenerMisCitas("pac-usr", -1, 10))
-                .isInstanceOf(DatosInvalidosException.class)
+    void getMyAppointments_withPaginationInvalid_throwsInvalidData() {
+        assertThatThrownBy(() -> appointmentService.getMyAppointments("pac-usr", -1, 10))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessage("El número de página no puede ser menor a 0.");
 
-        assertThatThrownBy(() -> appointmentService.obtenerMisCitas("pac-usr", 0, 0))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> appointmentService.getMyAppointments("pac-usr", 0, 0))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessage("El tamaño de página debe estar entre 1 y 100.");
 
-        assertThatThrownBy(() -> appointmentService.obtenerMisCitas("pac-usr", 0, 101))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> appointmentService.getMyAppointments("pac-usr", 0, 101))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessage("El tamaño de página debe estar entre 1 y 100.");
     }
 
@@ -1051,27 +1051,27 @@ class AppointmentServiceTest {
     // =========================================================================
 
     @Test
-    void marcarNoAsistio_exitoso_porProfesionalAsignado_conHoraExactaInicio() {
+    void markNotShow_success_byAssignedProfessional_withTimeExactStart() {
         String citaPubId = "cita-no-show-1";
-        Cita cita = new Cita(10L, citaPubId, 50L, 10L, null, null, "PROGRAMADA", null, NOW.minusSeconds(7200), null);
-        DisponibilidadSlot slotIniciado = new DisponibilidadSlot(
+        Appointment cita = new Appointment(10L, citaPubId, 50L, 10L, null, null, "PROGRAMADA", null, NOW.minusSeconds(7200), null);
+        AvailabilitySlot slotIniciado = new AvailabilitySlot(
                 50L, "slot-1", 100L, 200L, 300L, NOW, NOW.plusSeconds(1800), "PRESENCIAL", "OCUPADO"
         );
-        Usuario profUsuario = new Usuario(2L, "prof-usr-1", "medico@test.com", "hash", "ACTIVO", 0, null, NOW, false);
-        CitaResponse expectedResponse = new CitaResponse(
+        User profUsuario = new User(2L, "prof-usr-1", "medico@test.com", "hash", "ACTIVO", 0, null, NOW, false);
+        AppointmentResponse expectedResponse = new AppointmentResponse(
                 citaPubId, "slot-1", "pac-1", "Pepito Perez", "prof-1", "Dr. House",
                 "esp-1", "Medicina", "sede-1", "Sede Central", "Dir 1",
                 NOW, NOW.plusSeconds(1800), "PRESENCIAL", "NO_ASISTIO", null, null, NOW
         );
 
-        when(usuarioRepository.buscarPorPublicId("prof-usr-1")).thenReturn(Optional.of(profUsuario));
-        when(citaRepository.buscarEntidadPorPublicId(citaPubId)).thenReturn(Optional.of(cita));
-        when(disponibilidadSlotRepository.buscarPorId(50L)).thenReturn(Optional.of(slotIniciado));
-        when(profesionalRepository.buscarPorUsuarioId(2L)).thenReturn(Optional.of(profesionalMock));
-        when(atencionRepository.existePorCitaId(10L)).thenReturn(false);
-        when(citaRepository.buscarPorPublicId(citaPubId)).thenReturn(Optional.of(expectedResponse));
+        when(userRepository.findByPublicId("prof-usr-1")).thenReturn(Optional.of(profUsuario));
+        when(appointmentRepository.findEntityByPublicId(citaPubId)).thenReturn(Optional.of(cita));
+        when(availabilitySlotRepository.findById(50L)).thenReturn(Optional.of(slotIniciado));
+        when(professionalRepository.findByUserId(2L)).thenReturn(Optional.of(profesionalMock));
+        when(attentionRepository.existsByAppointmentId(10L)).thenReturn(false);
+        when(appointmentRepository.findByPublicId(citaPubId)).thenReturn(Optional.of(expectedResponse));
 
-        CitaResponse result = appointmentService.marcarNoAsistio(
+        AppointmentResponse result = appointmentService.markNoShow(
                 citaPubId,
                 "prof-usr-1",
                 List.of(new SimpleGrantedAuthority("ROLE_PROFESIONAL")),
@@ -1079,39 +1079,39 @@ class AppointmentServiceTest {
         );
 
         assertThat(result).isNotNull();
-        assertThat(result.estado()).isEqualTo("NO_ASISTIO");
-        verify(citaRepository).actualizarEstado(10L, "NO_ASISTIO", null);
-        verify(disponibilidadSlotRepository, never()).liberarSlot(anyLong());
+        assertThat(result.status()).isEqualTo("NO_ASISTIO");
+        verify(appointmentRepository).updateStatus(10L, "NO_ASISTIO", null);
+        verify(availabilitySlotRepository, never()).releaseSlot(anyLong());
 
-        ArgumentCaptor<EventoAuditoria> auditCaptor = ArgumentCaptor.forClass(EventoAuditoria.class);
-        verify(auditoriaService).auditar(auditCaptor.capture());
-        EventoAuditoria evento = auditCaptor.getValue();
-        assertThat(evento.accion()).isEqualTo(AccionAuditable.CITA_NO_ASISTIO);
-        assertThat(evento.recursoPublicId()).isEqualTo(citaPubId);
+        ArgumentCaptor<AuditEvent> auditCaptor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).audit(auditCaptor.capture());
+        AuditEvent evento = auditCaptor.getValue();
+        assertThat(evento.action()).isEqualTo(AuditableAction.CITA_NO_ASISTIO);
+        assertThat(evento.resourcePublicId()).isEqualTo(citaPubId);
     }
 
     @Test
-    void marcarNoAsistio_exitoso_porProfesionalAsignado_trasInicio() {
+    void markNotShow_success_byAssignedProfessional_afterStart() {
         String citaPubId = "cita-no-show-2";
-        Cita cita = new Cita(10L, citaPubId, 50L, 10L, null, null, "PROGRAMADA", null, NOW.minusSeconds(7200), null);
-        DisponibilidadSlot slotPasado = new DisponibilidadSlot(
+        Appointment cita = new Appointment(10L, citaPubId, 50L, 10L, null, null, "PROGRAMADA", null, NOW.minusSeconds(7200), null);
+        AvailabilitySlot slotPasado = new AvailabilitySlot(
                 50L, "slot-1", 100L, 200L, 300L, NOW.minusSeconds(900), NOW.plusSeconds(900), "PRESENCIAL", "OCUPADO"
         );
-        Usuario profUsuario = new Usuario(2L, "prof-usr-1", "medico@test.com", "hash", "ACTIVO", 0, null, NOW, false);
-        CitaResponse expectedResponse = new CitaResponse(
+        User profUsuario = new User(2L, "prof-usr-1", "medico@test.com", "hash", "ACTIVO", 0, null, NOW, false);
+        AppointmentResponse expectedResponse = new AppointmentResponse(
                 citaPubId, "slot-1", "pac-1", "Pepito Perez", "prof-1", "Dr. House",
                 "esp-1", "Medicina", "sede-1", "Sede Central", "Dir 1",
                 NOW.minusSeconds(900), NOW.plusSeconds(900), "PRESENCIAL", "NO_ASISTIO", null, null, NOW
         );
 
-        when(usuarioRepository.buscarPorPublicId("prof-usr-1")).thenReturn(Optional.of(profUsuario));
-        when(citaRepository.buscarEntidadPorPublicId(citaPubId)).thenReturn(Optional.of(cita));
-        when(disponibilidadSlotRepository.buscarPorId(50L)).thenReturn(Optional.of(slotPasado));
-        when(profesionalRepository.buscarPorUsuarioId(2L)).thenReturn(Optional.of(profesionalMock));
-        when(atencionRepository.existePorCitaId(10L)).thenReturn(false);
-        when(citaRepository.buscarPorPublicId(citaPubId)).thenReturn(Optional.of(expectedResponse));
+        when(userRepository.findByPublicId("prof-usr-1")).thenReturn(Optional.of(profUsuario));
+        when(appointmentRepository.findEntityByPublicId(citaPubId)).thenReturn(Optional.of(cita));
+        when(availabilitySlotRepository.findById(50L)).thenReturn(Optional.of(slotPasado));
+        when(professionalRepository.findByUserId(2L)).thenReturn(Optional.of(profesionalMock));
+        when(attentionRepository.existsByAppointmentId(10L)).thenReturn(false);
+        when(appointmentRepository.findByPublicId(citaPubId)).thenReturn(Optional.of(expectedResponse));
 
-        CitaResponse result = appointmentService.marcarNoAsistio(
+        AppointmentResponse result = appointmentService.markNoShow(
                 citaPubId,
                 "prof-usr-1",
                 List.of(new SimpleGrantedAuthority("ROLE_PROFESIONAL")),
@@ -1119,32 +1119,32 @@ class AppointmentServiceTest {
         );
 
         assertThat(result).isNotNull();
-        assertThat(result.estado()).isEqualTo("NO_ASISTIO");
-        verify(citaRepository).actualizarEstado(10L, "NO_ASISTIO", null);
-        verify(disponibilidadSlotRepository, never()).liberarSlot(anyLong());
+        assertThat(result.status()).isEqualTo("NO_ASISTIO");
+        verify(appointmentRepository).updateStatus(10L, "NO_ASISTIO", null);
+        verify(availabilitySlotRepository, never()).releaseSlot(anyLong());
     }
 
     @Test
-    void marcarNoAsistio_exitoso_porAdministrador() {
+    void markNotShow_success_byAdministrator() {
         String citaPubId = "cita-admin-no-show";
-        Cita cita = new Cita(10L, citaPubId, 50L, 10L, null, null, "PROGRAMADA", null, NOW.minusSeconds(7200), null);
-        DisponibilidadSlot slotIniciado = new DisponibilidadSlot(
+        Appointment cita = new Appointment(10L, citaPubId, 50L, 10L, null, null, "PROGRAMADA", null, NOW.minusSeconds(7200), null);
+        AvailabilitySlot slotIniciado = new AvailabilitySlot(
                 50L, "slot-1", 100L, 200L, 300L, NOW.minusSeconds(300), NOW.plusSeconds(1500), "PRESENCIAL", "OCUPADO"
         );
-        Usuario adminUsuario = new Usuario(99L, "admin-usr-1", "admin@hospital.com", "hash", "ACTIVO", 0, null, NOW, false);
-        CitaResponse expectedResponse = new CitaResponse(
+        User adminUsuario = new User(99L, "admin-usr-1", "admin@hospital.com", "hash", "ACTIVO", 0, null, NOW, false);
+        AppointmentResponse expectedResponse = new AppointmentResponse(
                 citaPubId, "slot-1", "pac-1", "Pepito Perez", "prof-1", "Dr. House",
                 "esp-1", "Medicina", "sede-1", "Sede Central", "Dir 1",
                 NOW.minusSeconds(300), NOW.plusSeconds(1500), "PRESENCIAL", "NO_ASISTIO", null, null, NOW
         );
 
-        when(usuarioRepository.buscarPorPublicId("admin-usr-1")).thenReturn(Optional.of(adminUsuario));
-        when(citaRepository.buscarEntidadPorPublicId(citaPubId)).thenReturn(Optional.of(cita));
-        when(disponibilidadSlotRepository.buscarPorId(50L)).thenReturn(Optional.of(slotIniciado));
-        when(atencionRepository.existePorCitaId(10L)).thenReturn(false);
-        when(citaRepository.buscarPorPublicId(citaPubId)).thenReturn(Optional.of(expectedResponse));
+        when(userRepository.findByPublicId("admin-usr-1")).thenReturn(Optional.of(adminUsuario));
+        when(appointmentRepository.findEntityByPublicId(citaPubId)).thenReturn(Optional.of(cita));
+        when(availabilitySlotRepository.findById(50L)).thenReturn(Optional.of(slotIniciado));
+        when(attentionRepository.existsByAppointmentId(10L)).thenReturn(false);
+        when(appointmentRepository.findByPublicId(citaPubId)).thenReturn(Optional.of(expectedResponse));
 
-        CitaResponse result = appointmentService.marcarNoAsistio(
+        AppointmentResponse result = appointmentService.markNoShow(
                 citaPubId,
                 "admin-usr-1",
                 List.of(new SimpleGrantedAuthority("ROLE_ADMINISTRADOR")),
@@ -1152,137 +1152,137 @@ class AppointmentServiceTest {
         );
 
         assertThat(result).isNotNull();
-        assertThat(result.estado()).isEqualTo("NO_ASISTIO");
-        verify(profesionalRepository, never()).buscarPorUsuarioId(anyLong());
+        assertThat(result.status()).isEqualTo("NO_ASISTIO");
+        verify(professionalRepository, never()).findByUserId(anyLong());
     }
 
     @Test
-    void marcarNoAsistio_falla_antesDeHoraInicio_lanzaDatosInvalidos() {
+    void markNotShow_fails_beforeTimeStart_throwsInvalidData() {
         String citaPubId = "cita-futura";
-        Cita cita = new Cita(10L, citaPubId, 50L, 10L, null, null, "PROGRAMADA", null, NOW.minusSeconds(3600), null);
-        DisponibilidadSlot slotFuturo = new DisponibilidadSlot(
+        Appointment cita = new Appointment(10L, citaPubId, 50L, 10L, null, null, "PROGRAMADA", null, NOW.minusSeconds(3600), null);
+        AvailabilitySlot slotFuturo = new AvailabilitySlot(
                 50L, "slot-1", 100L, 200L, 300L, NOW.plusSeconds(600), NOW.plusSeconds(2400), "PRESENCIAL", "OCUPADO"
         );
-        Usuario profUsuario = new Usuario(2L, "prof-usr-1", "medico@test.com", "hash", "ACTIVO", 0, null, NOW, false);
+        User profUsuario = new User(2L, "prof-usr-1", "medico@test.com", "hash", "ACTIVO", 0, null, NOW, false);
 
-        when(usuarioRepository.buscarPorPublicId("prof-usr-1")).thenReturn(Optional.of(profUsuario));
-        when(citaRepository.buscarEntidadPorPublicId(citaPubId)).thenReturn(Optional.of(cita));
-        when(disponibilidadSlotRepository.buscarPorId(50L)).thenReturn(Optional.of(slotFuturo));
-        when(profesionalRepository.buscarPorUsuarioId(2L)).thenReturn(Optional.of(profesionalMock));
-        when(atencionRepository.existePorCitaId(10L)).thenReturn(false);
+        when(userRepository.findByPublicId("prof-usr-1")).thenReturn(Optional.of(profUsuario));
+        when(appointmentRepository.findEntityByPublicId(citaPubId)).thenReturn(Optional.of(cita));
+        when(availabilitySlotRepository.findById(50L)).thenReturn(Optional.of(slotFuturo));
+        when(professionalRepository.findByUserId(2L)).thenReturn(Optional.of(profesionalMock));
+        when(attentionRepository.existsByAppointmentId(10L)).thenReturn(false);
 
-        assertThatThrownBy(() -> appointmentService.marcarNoAsistio(
+        assertThatThrownBy(() -> appointmentService.markNoShow(
                 citaPubId,
                 "prof-usr-1",
                 List.of(new SimpleGrantedAuthority("ROLE_PROFESIONAL")),
                 IP_CLIENTE
-        )).isInstanceOf(DatosInvalidosException.class)
+        )).isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("No es posible marcar inasistencia antes de la hora de inicio");
     }
 
     @Test
-    void marcarNoAsistio_falla_conAtencionVinculada_lanzaConflictoOperacion() {
+    void markNotShow_fails_withLinkedAttention_throwsOperationConflict() {
         String citaPubId = "cita-con-atencion";
-        Cita cita = new Cita(10L, citaPubId, 50L, 10L, null, null, "PROGRAMADA", null, NOW.minusSeconds(7200), null);
-        DisponibilidadSlot slotIniciado = new DisponibilidadSlot(
+        Appointment cita = new Appointment(10L, citaPubId, 50L, 10L, null, null, "PROGRAMADA", null, NOW.minusSeconds(7200), null);
+        AvailabilitySlot slotIniciado = new AvailabilitySlot(
                 50L, "slot-1", 100L, 200L, 300L, NOW.minusSeconds(600), NOW.plusSeconds(1200), "PRESENCIAL", "OCUPADO"
         );
-        Usuario profUsuario = new Usuario(2L, "prof-usr-1", "medico@test.com", "hash", "ACTIVO", 0, null, NOW, false);
+        User profUsuario = new User(2L, "prof-usr-1", "medico@test.com", "hash", "ACTIVO", 0, null, NOW, false);
 
-        when(usuarioRepository.buscarPorPublicId("prof-usr-1")).thenReturn(Optional.of(profUsuario));
-        when(citaRepository.buscarEntidadPorPublicId(citaPubId)).thenReturn(Optional.of(cita));
-        when(disponibilidadSlotRepository.buscarPorId(50L)).thenReturn(Optional.of(slotIniciado));
-        when(profesionalRepository.buscarPorUsuarioId(2L)).thenReturn(Optional.of(profesionalMock));
-        when(atencionRepository.existePorCitaId(10L)).thenReturn(true);
+        when(userRepository.findByPublicId("prof-usr-1")).thenReturn(Optional.of(profUsuario));
+        when(appointmentRepository.findEntityByPublicId(citaPubId)).thenReturn(Optional.of(cita));
+        when(availabilitySlotRepository.findById(50L)).thenReturn(Optional.of(slotIniciado));
+        when(professionalRepository.findByUserId(2L)).thenReturn(Optional.of(profesionalMock));
+        when(attentionRepository.existsByAppointmentId(10L)).thenReturn(true);
 
-        assertThatThrownBy(() -> appointmentService.marcarNoAsistio(
+        assertThatThrownBy(() -> appointmentService.markNoShow(
                 citaPubId,
                 "prof-usr-1",
                 List.of(new SimpleGrantedAuthority("ROLE_PROFESIONAL")),
                 IP_CLIENTE
-        )).isInstanceOf(ConflictoOperacionException.class)
+        )).isInstanceOf(OperationConflictException.class)
                 .hasMessageContaining("No es posible marcar inasistencia para una cita que ya cuenta con una atencion clinica vinculada");
     }
 
     @Test
-    void marcarNoAsistio_falla_estadoDistintoDeProgramada_lanzaConflictoOperacion() {
+    void markNotShow_fails_statusDifferentOfScheduled_throwsOperationConflict() {
         String citaPubId = "cita-ya-atendida";
-        Cita cita = new Cita(10L, citaPubId, 50L, 10L, null, null, "ATENDIDA", null, NOW.minusSeconds(7200), null);
-        DisponibilidadSlot slotIniciado = new DisponibilidadSlot(
+        Appointment cita = new Appointment(10L, citaPubId, 50L, 10L, null, null, "ATENDIDA", null, NOW.minusSeconds(7200), null);
+        AvailabilitySlot slotIniciado = new AvailabilitySlot(
                 50L, "slot-1", 100L, 200L, 300L, NOW.minusSeconds(600), NOW.plusSeconds(1200), "PRESENCIAL", "OCUPADO"
         );
-        Usuario profUsuario = new Usuario(2L, "prof-usr-1", "medico@test.com", "hash", "ACTIVO", 0, null, NOW, false);
+        User profUsuario = new User(2L, "prof-usr-1", "medico@test.com", "hash", "ACTIVO", 0, null, NOW, false);
 
-        when(usuarioRepository.buscarPorPublicId("prof-usr-1")).thenReturn(Optional.of(profUsuario));
-        when(citaRepository.buscarEntidadPorPublicId(citaPubId)).thenReturn(Optional.of(cita));
-        when(disponibilidadSlotRepository.buscarPorId(50L)).thenReturn(Optional.of(slotIniciado));
-        when(profesionalRepository.buscarPorUsuarioId(2L)).thenReturn(Optional.of(profesionalMock));
+        when(userRepository.findByPublicId("prof-usr-1")).thenReturn(Optional.of(profUsuario));
+        when(appointmentRepository.findEntityByPublicId(citaPubId)).thenReturn(Optional.of(cita));
+        when(availabilitySlotRepository.findById(50L)).thenReturn(Optional.of(slotIniciado));
+        when(professionalRepository.findByUserId(2L)).thenReturn(Optional.of(profesionalMock));
 
-        assertThatThrownBy(() -> appointmentService.marcarNoAsistio(
+        assertThatThrownBy(() -> appointmentService.markNoShow(
                 citaPubId,
                 "prof-usr-1",
                 List.of(new SimpleGrantedAuthority("ROLE_PROFESIONAL")),
                 IP_CLIENTE
-        )).isInstanceOf(ConflictoOperacionException.class)
+        )).isInstanceOf(OperationConflictException.class)
                 .hasMessageContaining("Solo es posible marcar inasistencia para citas en estado PROGRAMADA");
     }
 
     @Test
-    void marcarNoAsistio_falla_otroProfesionalNoDuenio_lanzaAccesoNoAutorizado() {
+    void markNotShow_fails_otherProfessionalNotDuenio_throwsUnauthorizedAccess() {
         String citaPubId = "cita-otro-medico";
-        Cita cita = new Cita(10L, citaPubId, 50L, 10L, null, null, "PROGRAMADA", null, NOW.minusSeconds(7200), null);
-        DisponibilidadSlot slotMedicoA = new DisponibilidadSlot(
+        Appointment cita = new Appointment(10L, citaPubId, 50L, 10L, null, null, "PROGRAMADA", null, NOW.minusSeconds(7200), null);
+        AvailabilitySlot slotMedicoA = new AvailabilitySlot(
                 50L, "slot-1", 100L, 200L, 300L, NOW.minusSeconds(600), NOW.plusSeconds(1200), "PRESENCIAL", "OCUPADO"
         );
-        Usuario profBUsuario = new Usuario(3L, "prof-usr-b", "otromedico@test.com", "hash", "ACTIVO", 0, null, NOW, false);
-        Profesional profB = new Profesional(
+        User profBUsuario = new User(3L, "prof-usr-b", "otromedico@test.com", "hash", "ACTIVO", 0, null, NOW, false);
+        Professional profB = new Professional(
                 101L, 3L, "prof-uuid-b", 300L, "RM-99999", "Gregory", "House Jr", NOW, null
         );
 
-        when(usuarioRepository.buscarPorPublicId("prof-usr-b")).thenReturn(Optional.of(profBUsuario));
-        when(citaRepository.buscarEntidadPorPublicId(citaPubId)).thenReturn(Optional.of(cita));
-        when(disponibilidadSlotRepository.buscarPorId(50L)).thenReturn(Optional.of(slotMedicoA));
-        when(profesionalRepository.buscarPorUsuarioId(3L)).thenReturn(Optional.of(profB));
+        when(userRepository.findByPublicId("prof-usr-b")).thenReturn(Optional.of(profBUsuario));
+        when(appointmentRepository.findEntityByPublicId(citaPubId)).thenReturn(Optional.of(cita));
+        when(availabilitySlotRepository.findById(50L)).thenReturn(Optional.of(slotMedicoA));
+        when(professionalRepository.findByUserId(3L)).thenReturn(Optional.of(profB));
 
-        assertThatThrownBy(() -> appointmentService.marcarNoAsistio(
+        assertThatThrownBy(() -> appointmentService.markNoShow(
                 citaPubId,
                 "prof-usr-b",
                 List.of(new SimpleGrantedAuthority("ROLE_PROFESIONAL")),
                 IP_CLIENTE
-        )).isInstanceOf(AccesoNoAutorizadoException.class)
+        )).isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessageContaining("El profesional no tiene autorizacion para marcar inasistencia de citas de otro colega");
     }
 
     @Test
-    void marcarNoAsistio_falla_rolPaciente_lanzaAccesoNoAutorizado() {
+    void markNotShow_fails_patientRole_throwsUnauthorizedAccess() {
         String citaPubId = "cita-pac-intento";
-        Cita cita = new Cita(10L, citaPubId, 50L, 10L, null, null, "PROGRAMADA", null, NOW.minusSeconds(7200), null);
-        Usuario pacUsuario = new Usuario(1L, "pac-usr-1", "paciente@test.com", "hash", "ACTIVO", 0, null, NOW, false);
+        Appointment cita = new Appointment(10L, citaPubId, 50L, 10L, null, null, "PROGRAMADA", null, NOW.minusSeconds(7200), null);
+        User pacUsuario = new User(1L, "pac-usr-1", "paciente@test.com", "hash", "ACTIVO", 0, null, NOW, false);
 
-        when(usuarioRepository.buscarPorPublicId("pac-usr-1")).thenReturn(Optional.of(pacUsuario));
-        when(citaRepository.buscarEntidadPorPublicId(citaPubId)).thenReturn(Optional.of(cita));
+        when(userRepository.findByPublicId("pac-usr-1")).thenReturn(Optional.of(pacUsuario));
+        when(appointmentRepository.findEntityByPublicId(citaPubId)).thenReturn(Optional.of(cita));
 
-        assertThatThrownBy(() -> appointmentService.marcarNoAsistio(
+        assertThatThrownBy(() -> appointmentService.markNoShow(
                 citaPubId,
                 "pac-usr-1",
                 List.of(new SimpleGrantedAuthority("ROLE_PACIENTE")),
                 IP_CLIENTE
-        )).isInstanceOf(AccesoNoAutorizadoException.class)
+        )).isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessageContaining("No tiene autorizacion para marcar inasistencia de citas");
     }
 
     @Test
-    void marcarNoAsistio_falla_citaNoExiste_lanzaRecursoNoEncontrado() {
-        Usuario profUsuario = new Usuario(2L, "prof-usr-1", "medico@test.com", "hash", "ACTIVO", 0, null, NOW, false);
-        when(usuarioRepository.buscarPorPublicId("prof-usr-1")).thenReturn(Optional.of(profUsuario));
-        when(citaRepository.buscarEntidadPorPublicId("cita-inexistente")).thenReturn(Optional.empty());
+    void markNotShow_fails_appointmentNotFound_throwsResourceNotFound() {
+        User profUsuario = new User(2L, "prof-usr-1", "medico@test.com", "hash", "ACTIVO", 0, null, NOW, false);
+        when(userRepository.findByPublicId("prof-usr-1")).thenReturn(Optional.of(profUsuario));
+        when(appointmentRepository.findEntityByPublicId("cita-inexistente")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> appointmentService.marcarNoAsistio(
+        assertThatThrownBy(() -> appointmentService.markNoShow(
                 "cita-inexistente",
                 "prof-usr-1",
                 List.of(new SimpleGrantedAuthority("ROLE_PROFESIONAL")),
                 IP_CLIENTE
-        )).isInstanceOf(RecursoNoEncontradoException.class)
+        )).isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("Cita no encontrada.");
     }
 }

@@ -34,6 +34,24 @@ test.describe('Auditoría Integral: Dashboard Administrativo y Menú Lateral', (
       });
     });
 
+    await page.route('**/api/v1/hospital/census*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          sedePublicId: 'site-1',
+          sedeNombre: 'Hospital Central Valledupar',
+          totalCamas: 120,
+          ocupadas: 84,
+          disponibles: 36,
+          enLimpieza: 0,
+          enMantenimiento: 0,
+          tasaOcupacionPorcentaje: 70,
+          areas: []
+        })
+      });
+    });
+
     // Mock de métricas para el Dashboard
     await page.route('**/api/v1/admin/sites*', async (route) => {
       await route.fulfill({
@@ -146,7 +164,7 @@ test.describe('Auditoría Integral: Dashboard Administrativo y Menú Lateral', (
     await expect(page.locator('text=Aislamiento de Privilegios')).toBeVisible();
 
     // 3. Comprobar que los KPIs numéricos cargan reemplazando los skeletons
-    await expect(page.locator('#dashMetricSites')).toHaveText('2');
+    await expect(page.locator('#dashMetricBeds')).toBeVisible();
     await expect(page.locator('#dashMetricPros')).toHaveText('12');
     await expect(page.locator('#dashMetricSpecs')).toHaveText('8');
     await expect(page.locator('#dashMetricSlots')).toHaveText('45');
@@ -174,8 +192,8 @@ test.describe('Auditoría Integral: Dashboard Administrativo y Menú Lateral', (
     await expect(sidebar.locator('a[href="#/hospital/census"]')).toBeVisible();
 
     // Comprobar infraestructura
-    await expect(sidebar.locator('a[href="#/admin/institutions"]')).toBeVisible();
-    await expect(sidebar.locator('a[href="#/admin/sites"]')).toBeVisible();
+    // Hospital único: no hay enlaces de instituciones ni sedes
+    await expect(sidebar.locator('a[href="#/admin/sites"]')).toHaveCount(0);
 
     // Comprobar cuerpo médico y citas
     await expect(sidebar.locator('a[href="#/admin/specialties"]')).toBeVisible();

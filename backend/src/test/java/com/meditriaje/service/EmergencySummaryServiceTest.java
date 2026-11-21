@@ -1,25 +1,25 @@
 package com.meditriaje.service;
 
-import com.meditriaje.dto.clinical.AtencionResponse;
-import com.meditriaje.dto.emergency.ConsultarResumenRequest;
-import com.meditriaje.dto.emergency.summary.ResumenSaludResponse;
-import com.meditriaje.dto.prescription.RecetaDetalleResponse;
-import com.meditriaje.dto.prescription.RecetaResponse;
-import com.meditriaje.exception.CredencialesInvalidasException;
-import com.meditriaje.exception.DatosInvalidosException;
-import com.meditriaje.exception.RecursoNoEncontradoException;
-import com.meditriaje.model.AccesoTemporalQr;
-import com.meditriaje.model.AccionAuditable;
-import com.meditriaje.model.Alergia;
-import com.meditriaje.model.EventoAuditoria;
-import com.meditriaje.model.Paciente;
-import com.meditriaje.model.Usuario;
-import com.meditriaje.repository.AccesoTemporalQrRepository;
-import com.meditriaje.repository.AlergiaRepository;
-import com.meditriaje.repository.AtencionRepository;
-import com.meditriaje.repository.PacienteRepository;
-import com.meditriaje.repository.RecetaRepository;
-import com.meditriaje.repository.UsuarioRepository;
+import com.meditriaje.dto.clinical.ClinicalAttentionResponse;
+import com.meditriaje.dto.emergency.ConsultSummaryRequest;
+import com.meditriaje.dto.emergency.summary.HealthSummaryResponse;
+import com.meditriaje.dto.prescription.PrescriptionDetailResponse;
+import com.meditriaje.dto.prescription.PrescriptionResponse;
+import com.meditriaje.exception.InvalidCredentialsException;
+import com.meditriaje.exception.InvalidDataException;
+import com.meditriaje.exception.ResourceNotFoundException;
+import com.meditriaje.model.TemporaryQrAccess;
+import com.meditriaje.model.AuditableAction;
+import com.meditriaje.model.Allergy;
+import com.meditriaje.model.AuditEvent;
+import com.meditriaje.model.Patient;
+import com.meditriaje.model.User;
+import com.meditriaje.repository.TemporaryQrAccessRepository;
+import com.meditriaje.repository.AllergyRepository;
+import com.meditriaje.repository.ClinicalAttentionRepository;
+import com.meditriaje.repository.PatientRepository;
+import com.meditriaje.repository.PrescriptionRepository;
+import com.meditriaje.repository.UserRepository;
 import com.meditriaje.security.TokenHashUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -52,25 +52,25 @@ import static org.mockito.Mockito.when;
 class EmergencySummaryServiceTest {
 
     @Mock
-    private AccesoTemporalQrRepository accesoTemporalQrRepository;
+    private TemporaryQrAccessRepository temporaryQrAccessRepository;
 
     @Mock
-    private PacienteRepository pacienteRepository;
+    private PatientRepository patientRepository;
 
     @Mock
-    private UsuarioRepository usuarioRepository;
+    private UserRepository userRepository;
 
     @Mock
-    private AlergiaRepository alergiaRepository;
+    private AllergyRepository allergyRepository;
 
     @Mock
-    private RecetaRepository recetaRepository;
+    private PrescriptionRepository prescriptionRepository;
 
     @Mock
-    private AtencionRepository atencionRepository;
+    private ClinicalAttentionRepository attentionRepository;
 
     @Mock
-    private AuditoriaService auditoriaService;
+    private AuditService auditService;
 
     @Mock
     private PasswordEncoder passwordEncoder;
@@ -80,8 +80,8 @@ class EmergencySummaryServiceTest {
 
     private EmergencySummaryService emergencySummaryService;
 
-    private Usuario usuario;
-    private Paciente paciente;
+    private User usuario;
+    private Patient paciente;
     private String tokenPlano;
     private String tokenHash;
 
@@ -91,13 +91,13 @@ class EmergencySummaryServiceTest {
         fixedClock = Clock.fixed(fixedInstant, ZoneOffset.UTC);
 
         emergencySummaryService = new EmergencySummaryService(
-                accesoTemporalQrRepository,
-                pacienteRepository,
-                usuarioRepository,
-                alergiaRepository,
-                recetaRepository,
-                atencionRepository,
-                auditoriaService,
+                temporaryQrAccessRepository,
+                patientRepository,
+                userRepository,
+                allergyRepository,
+                prescriptionRepository,
+                attentionRepository,
+                auditService,
                 passwordEncoder,
                 fixedClock
         );
@@ -105,7 +105,7 @@ class EmergencySummaryServiceTest {
         tokenPlano = "token-emergencia-12345678901234567890";
         tokenHash = TokenHashUtil.hash(tokenPlano);
 
-        usuario = new Usuario(
+        usuario = new User(
                 5L,
                 "user-uuid-5",
                 "paciente@test.com",
@@ -120,7 +120,7 @@ class EmergencySummaryServiceTest {
                 null
         );
 
-        paciente = new Paciente(
+        paciente = new Patient(
                 10L,
                 5L,
                 "pac-uuid-10",
@@ -137,297 +137,297 @@ class EmergencySummaryServiceTest {
 
     @Test
     @DisplayName("consultarResumenPorToken: consulta exitosa con todos los módulos y auditoría")
-    void consultarResumenPorToken_exitoCompleto() {
-        AccesoTemporalQr acceso = new AccesoTemporalQr(
+    void getSummaryByToken_successComplete() {
+        TemporaryQrAccess acceso = new TemporaryQrAccess(
                 1L, "qr-pub-1", 10L, tokenHash, null,
                 true, true, true, true,
                 3, 0, false,
                 fixedInstant.plus(15, ChronoUnit.MINUTES), fixedInstant, fixedInstant
         );
 
-        when(accesoTemporalQrRepository.buscarPorTokenHash(tokenHash)).thenReturn(Optional.of(acceso));
-        when(accesoTemporalQrRepository.registrarAcceso(1L, fixedInstant)).thenReturn(1);
-        when(pacienteRepository.buscarPorId(10L)).thenReturn(Optional.of(paciente));
-        when(usuarioRepository.buscarPorId(5L)).thenReturn(Optional.of(usuario));
+        when(temporaryQrAccessRepository.findByTokenHash(tokenHash)).thenReturn(Optional.of(acceso));
+        when(temporaryQrAccessRepository.recordAccess(1L, fixedInstant)).thenReturn(1);
+        when(patientRepository.findById(10L)).thenReturn(Optional.of(paciente));
+        when(userRepository.findById(5L)).thenReturn(Optional.of(usuario));
 
         // Alergias
-        Alergia alergia = new Alergia(100L, 10L, "Penicilina", "Shock anafilactico", "GRAVE", fixedInstant);
-        when(alergiaRepository.listarPorPacienteId(10L)).thenReturn(List.of(alergia));
+        Allergy alergia = new Allergy(100L, 10L, "Penicilina", "Shock anafilactico", "GRAVE", fixedInstant);
+        when(allergyRepository.listByPatientId(10L)).thenReturn(List.of(alergia));
 
         // Recetas vigentes
-        RecetaDetalleResponse det1 = new RecetaDetalleResponse(
+        PrescriptionDetailResponse det1 = new PrescriptionDetailResponse(
                 "med-1", "MED-001", "Amoxicilina", "Amoxicilina", "Capsulas", "500mg",
                 "1 cada 8 horas", "Oral", 7, 21, "Tomar con alimentos"
         );
-        RecetaResponse recetaVigente = new RecetaResponse(
+        PrescriptionResponse recetaVigente = new PrescriptionResponse(
                 "rec-1", "at-1", "pac-uuid-10", "Maria Gomez", "prof-1", "Dr. Perez",
                 "Medicina General", 30, fixedInstant.minus(5, ChronoUnit.DAYS), List.of(det1)
         );
-        when(recetaRepository.listarPorPacienteId(10L, 0, 50)).thenReturn(List.of(recetaVigente));
+        when(prescriptionRepository.listByPatientId(10L, 0, 50)).thenReturn(List.of(recetaVigente));
 
         // Atenciones recientes
-        AtencionResponse atencion = new AtencionResponse(
+        ClinicalAttentionResponse atencion = new ClinicalAttentionResponse(
                 "at-1", "cita-1", "pac-uuid-10", "Maria Gomez", "prof-1", "Dr. Perez",
                 "Medicina General", "CERRADA", fixedInstant.minus(5, ChronoUnit.DAYS), fixedInstant.minus(5, ChronoUnit.DAYS),
                 "J00", "Rinofaringitis aguda", "Congestion y dolor de garganta", "Evolucion adecuada",
                 "Reposo e hidratacion", null, List.of()
         );
-        when(atencionRepository.listarHistoriaPaciente(10L, 0, 5)).thenReturn(List.of(atencion));
+        when(attentionRepository.listPatientHistory(10L, 0, 5)).thenReturn(List.of(atencion));
 
-        ResumenSaludResponse response = emergencySummaryService.consultarResumenPorToken(
+        HealthSummaryResponse response = emergencySummaryService.getSummaryByToken(
                 tokenPlano,
-                new ConsultarResumenRequest(null),
+                new ConsultSummaryRequest(null),
                 "200.1.2.3"
         );
 
         assertThat(response).isNotNull();
-        assertThat(response.paciente().nombreCompleto()).isEqualTo("Maria Gomez");
-        assertThat(response.paciente().tipoDocumento()).isEqualTo("CC");
-        assertThat(response.paciente().numeroDocumento()).isEqualTo("1020304050");
-        assertThat(response.paciente().edad()).isEqualTo(30);
-        assertThat(response.paciente().telefono()).isEqualTo("3101234567");
-        assertThat(response.paciente().email()).isEqualTo("paciente@test.com");
+        assertThat(response.patient().fullName()).isEqualTo("Maria Gomez");
+        assertThat(response.patient().documentType()).isEqualTo("CC");
+        assertThat(response.patient().documentNumber()).isEqualTo("1020304050");
+        assertThat(response.patient().age()).isEqualTo(30);
+        assertThat(response.patient().phone()).isEqualTo("3101234567");
+        assertThat(response.patient().email()).isEqualTo("paciente@test.com");
 
-        assertThat(response.alergias()).hasSize(1);
-        assertThat(response.alergias().get(0).sustancia()).isEqualTo("Penicilina");
-        assertThat(response.alergias().get(0).severidad()).isEqualTo("GRAVE");
+        assertThat(response.allergies()).hasSize(1);
+        assertThat(response.allergies().get(0).substance()).isEqualTo("Penicilina");
+        assertThat(response.allergies().get(0).severity()).isEqualTo("GRAVE");
 
-        assertThat(response.medicamentosActivos()).hasSize(1);
-        assertThat(response.medicamentosActivos().get(0).nombre()).isEqualTo("Amoxicilina");
+        assertThat(response.activeMedications()).hasSize(1);
+        assertThat(response.activeMedications().get(0).name()).isEqualTo("Amoxicilina");
 
-        assertThat(response.atencionesRecientes()).hasSize(1);
-        assertThat(response.atencionesRecientes().get(0).diagnosticoCodigo()).isEqualTo("J00");
-        assertThat(response.atencionesRecientes().get(0).diagnosticoDescripcion()).isEqualTo("Rinofaringitis aguda");
+        assertThat(response.recentAttentions()).hasSize(1);
+        assertThat(response.recentAttentions().get(0).diagnosisCode()).isEqualTo("J00");
+        assertThat(response.recentAttentions().get(0).diagnosisDescription()).isEqualTo("Rinofaringitis aguda");
 
-        verify(accesoTemporalQrRepository).registrarAcceso(1L, fixedInstant);
+        verify(temporaryQrAccessRepository).recordAccess(1L, fixedInstant);
 
-        ArgumentCaptor<EventoAuditoria> auditCaptor = ArgumentCaptor.forClass(EventoAuditoria.class);
-        verify(auditoriaService).auditar(auditCaptor.capture());
-        EventoAuditoria audit = auditCaptor.getValue();
-        assertThat(audit.accion()).isEqualTo(AccionAuditable.ACCESO_EMERGENCIA_QR);
-        assertThat(audit.recursoPublicId()).isEqualTo("qr-pub-1");
-        assertThat(audit.ipOrigen()).isEqualTo("200.1.2.3");
+        ArgumentCaptor<AuditEvent> auditCaptor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).audit(auditCaptor.capture());
+        AuditEvent audit = auditCaptor.getValue();
+        assertThat(audit.action()).isEqualTo(AuditableAction.ACCESO_EMERGENCIA_QR);
+        assertThat(audit.resourcePublicId()).isEqualTo("qr-pub-1");
+        assertThat(audit.sourceIp()).isEqualTo("200.1.2.3");
     }
 
     @Test
     @DisplayName("consultarResumenPorToken: con PIN numérico válido permite la consulta")
-    void consultarResumenPorToken_conPinValido() {
-        AccesoTemporalQr accesoConPin = new AccesoTemporalQr(
+    void getSummaryByToken_withPinValid() {
+        TemporaryQrAccess accesoConPin = new TemporaryQrAccess(
                 2L, "qr-pub-2", 10L, tokenHash, "argon2id$hashed",
                 true, true, true, true,
                 3, 0, false,
                 fixedInstant.plus(15, ChronoUnit.MINUTES), fixedInstant, fixedInstant
         );
 
-        when(accesoTemporalQrRepository.buscarPorTokenHash(tokenHash)).thenReturn(Optional.of(accesoConPin));
+        when(temporaryQrAccessRepository.findByTokenHash(tokenHash)).thenReturn(Optional.of(accesoConPin));
         when(passwordEncoder.matches("4321", "argon2id$hashed")).thenReturn(true);
-        when(accesoTemporalQrRepository.registrarAcceso(2L, fixedInstant)).thenReturn(1);
-        when(pacienteRepository.buscarPorId(10L)).thenReturn(Optional.of(paciente));
-        when(usuarioRepository.buscarPorId(5L)).thenReturn(Optional.of(usuario));
+        when(temporaryQrAccessRepository.recordAccess(2L, fixedInstant)).thenReturn(1);
+        when(patientRepository.findById(10L)).thenReturn(Optional.of(paciente));
+        when(userRepository.findById(5L)).thenReturn(Optional.of(usuario));
 
-        ResumenSaludResponse response = emergencySummaryService.consultarResumenPorToken(
+        HealthSummaryResponse response = emergencySummaryService.getSummaryByToken(
                 tokenPlano,
-                new ConsultarResumenRequest("4321"),
+                new ConsultSummaryRequest("4321"),
                 "127.0.0.1"
         );
 
         assertThat(response).isNotNull();
-        verify(accesoTemporalQrRepository).registrarAcceso(2L, fixedInstant);
+        verify(temporaryQrAccessRepository).recordAccess(2L, fixedInstant);
     }
 
     @Test
     @DisplayName("consultarResumenPorToken: PIN incorrecto o ausente lanza CredencialesInvalidasException")
-    void consultarResumenPorToken_pinIncorrecto_lanzaCredencialesInvalidasException() {
-        AccesoTemporalQr accesoConPin = new AccesoTemporalQr(
+    void getSummaryByToken_pinIncorrect_throwsInvalidCredentialsException() {
+        TemporaryQrAccess accesoConPin = new TemporaryQrAccess(
                 2L, "qr-pub-2", 10L, tokenHash, "argon2id$hashed",
                 true, true, true, true,
                 3, 0, false,
                 fixedInstant.plus(15, ChronoUnit.MINUTES), fixedInstant, fixedInstant
         );
 
-        when(accesoTemporalQrRepository.buscarPorTokenHash(tokenHash)).thenReturn(Optional.of(accesoConPin));
+        when(temporaryQrAccessRepository.findByTokenHash(tokenHash)).thenReturn(Optional.of(accesoConPin));
         when(passwordEncoder.matches("0000", "argon2id$hashed")).thenReturn(false);
 
-        assertThatThrownBy(() -> emergencySummaryService.consultarResumenPorToken(
+        assertThatThrownBy(() -> emergencySummaryService.getSummaryByToken(
                 tokenPlano,
-                new ConsultarResumenRequest("0000"),
+                new ConsultSummaryRequest("0000"),
                 "127.0.0.1"
-        )).isInstanceOf(CredencialesInvalidasException.class)
+        )).isInstanceOf(InvalidCredentialsException.class)
                 .hasMessageContaining("El PIN de seguridad proporcionado es incorrecto");
 
-        verify(accesoTemporalQrRepository).registrarPinFallido(2L);
-        verify(accesoTemporalQrRepository, never()).registrarAcceso(anyLong(), any());
+        verify(temporaryQrAccessRepository).recordFailedPin(2L);
+        verify(temporaryQrAccessRepository, never()).recordAccess(anyLong(), any());
     }
 
     @Test
     @DisplayName("consultarResumenPorToken: flags de alcance respetan las exclusiones del paciente")
-    void consultarResumenPorToken_flagsExclusiones() {
-        AccesoTemporalQr accesoRestringido = new AccesoTemporalQr(
+    void getSummaryByToken_flagsExclusions() {
+        TemporaryQrAccess accesoRestringido = new TemporaryQrAccess(
                 3L, "qr-pub-3", 10L, tokenHash, null,
                 false, false, false, false,
                 3, 0, false,
                 fixedInstant.plus(15, ChronoUnit.MINUTES), fixedInstant, fixedInstant
         );
 
-        when(accesoTemporalQrRepository.buscarPorTokenHash(tokenHash)).thenReturn(Optional.of(accesoRestringido));
-        when(accesoTemporalQrRepository.registrarAcceso(3L, fixedInstant)).thenReturn(1);
-        when(pacienteRepository.buscarPorId(10L)).thenReturn(Optional.of(paciente));
-        when(usuarioRepository.buscarPorId(5L)).thenReturn(Optional.of(usuario));
+        when(temporaryQrAccessRepository.findByTokenHash(tokenHash)).thenReturn(Optional.of(accesoRestringido));
+        when(temporaryQrAccessRepository.recordAccess(3L, fixedInstant)).thenReturn(1);
+        when(patientRepository.findById(10L)).thenReturn(Optional.of(paciente));
+        when(userRepository.findById(5L)).thenReturn(Optional.of(usuario));
 
-        ResumenSaludResponse response = emergencySummaryService.consultarResumenPorToken(
+        HealthSummaryResponse response = emergencySummaryService.getSummaryByToken(
                 tokenPlano,
-                new ConsultarResumenRequest(null),
+                new ConsultSummaryRequest(null),
                 "127.0.0.1"
         );
 
-        assertThat(response.alergias()).isEmpty();
-        assertThat(response.medicamentosActivos()).isEmpty();
-        assertThat(response.atencionesRecientes()).isEmpty();
-        assertThat(response.paciente().telefono()).isNull();
-        assertThat(response.paciente().email()).isNull();
+        assertThat(response.allergies()).isEmpty();
+        assertThat(response.activeMedications()).isEmpty();
+        assertThat(response.recentAttentions()).isEmpty();
+        assertThat(response.patient().phone()).isNull();
+        assertThat(response.patient().email()).isNull();
 
-        verify(alergiaRepository, never()).listarPorPacienteId(anyLong());
-        verify(recetaRepository, never()).listarPorPacienteId(anyLong(), any(Integer.class), any(Integer.class));
-        verify(atencionRepository, never()).listarHistoriaPaciente(anyLong(), any(Integer.class), any(Integer.class));
+        verify(allergyRepository, never()).listByPatientId(anyLong());
+        verify(prescriptionRepository, never()).listByPatientId(anyLong(), any(Integer.class), any(Integer.class));
+        verify(attentionRepository, never()).listPatientHistory(anyLong(), any(Integer.class), any(Integer.class));
     }
 
     @Test
     @DisplayName("consultarResumenPorToken: recetas vencidas no se incluyen en medicamentos activos")
-    void consultarResumenPorToken_recetasVencidasNoIncluidas() {
-        AccesoTemporalQr acceso = new AccesoTemporalQr(
+    void getSummaryByToken_prescriptionsExpiredNotIncluded() {
+        TemporaryQrAccess acceso = new TemporaryQrAccess(
                 4L, "qr-pub-4", 10L, tokenHash, null,
                 false, true, false, false,
                 3, 0, false,
                 fixedInstant.plus(15, ChronoUnit.MINUTES), fixedInstant, fixedInstant
         );
 
-        when(accesoTemporalQrRepository.buscarPorTokenHash(tokenHash)).thenReturn(Optional.of(acceso));
-        when(accesoTemporalQrRepository.registrarAcceso(4L, fixedInstant)).thenReturn(1);
-        when(pacienteRepository.buscarPorId(10L)).thenReturn(Optional.of(paciente));
-        when(usuarioRepository.buscarPorId(5L)).thenReturn(Optional.of(usuario));
+        when(temporaryQrAccessRepository.findByTokenHash(tokenHash)).thenReturn(Optional.of(acceso));
+        when(temporaryQrAccessRepository.recordAccess(4L, fixedInstant)).thenReturn(1);
+        when(patientRepository.findById(10L)).thenReturn(Optional.of(paciente));
+        when(userRepository.findById(5L)).thenReturn(Optional.of(usuario));
 
         // Receta emitida hace 40 días con vigencia de 30 días -> vencida
-        RecetaDetalleResponse detVencido = new RecetaDetalleResponse(
+        PrescriptionDetailResponse detVencido = new PrescriptionDetailResponse(
                 "med-old", "MED-OLD", "Ibuprofeno", "Ibuprofeno", "Tabletas", "400mg",
                 "1 cada 8h", "Oral", 3, 9, "Tomar con agua"
         );
-        RecetaResponse recetaVencida = new RecetaResponse(
+        PrescriptionResponse recetaVencida = new PrescriptionResponse(
                 "rec-old", "at-old", "pac-uuid-10", "Maria Gomez", "prof-1", "Dr. Perez",
                 "Medicina General", 30, fixedInstant.minus(40, ChronoUnit.DAYS), List.of(detVencido)
         );
-        when(recetaRepository.listarPorPacienteId(10L, 0, 50)).thenReturn(List.of(recetaVencida));
+        when(prescriptionRepository.listByPatientId(10L, 0, 50)).thenReturn(List.of(recetaVencida));
 
-        ResumenSaludResponse response = emergencySummaryService.consultarResumenPorToken(
+        HealthSummaryResponse response = emergencySummaryService.getSummaryByToken(
                 tokenPlano,
-                new ConsultarResumenRequest(null),
+                new ConsultSummaryRequest(null),
                 "127.0.0.1"
         );
 
-        assertThat(response.medicamentosActivos()).isEmpty();
+        assertThat(response.activeMedications()).isEmpty();
     }
 
     @Test
     @DisplayName("consultarResumenPorToken: token expirado lanza DatosInvalidosException")
-    void consultarResumenPorToken_expirado_lanzaDatosInvalidos() {
-        AccesoTemporalQr expirado = new AccesoTemporalQr(
+    void getSummaryByToken_expired_throwsInvalidData() {
+        TemporaryQrAccess expirado = new TemporaryQrAccess(
                 5L, "qr-pub-5", 10L, tokenHash, null,
                 true, true, true, true,
                 3, 0, false,
                 fixedInstant.minus(1, ChronoUnit.SECONDS), fixedInstant.minus(16, ChronoUnit.MINUTES), fixedInstant
         );
 
-        when(accesoTemporalQrRepository.buscarPorTokenHash(tokenHash)).thenReturn(Optional.of(expirado));
+        when(temporaryQrAccessRepository.findByTokenHash(tokenHash)).thenReturn(Optional.of(expirado));
 
-        assertThatThrownBy(() -> emergencySummaryService.consultarResumenPorToken(
+        assertThatThrownBy(() -> emergencySummaryService.getSummaryByToken(
                 tokenPlano,
-                new ConsultarResumenRequest(null),
+                new ConsultSummaryRequest(null),
                 "127.0.0.1"
-        )).isInstanceOf(DatosInvalidosException.class)
+        )).isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("El acceso QR ha expirado.");
     }
 
     @Test
     @DisplayName("consultarResumenPorToken: token revocado lanza DatosInvalidosException")
-    void consultarResumenPorToken_revocado_lanzaDatosInvalidos() {
-        AccesoTemporalQr revocado = new AccesoTemporalQr(
+    void getSummaryByToken_revoked_throwsInvalidData() {
+        TemporaryQrAccess revocado = new TemporaryQrAccess(
                 6L, "qr-pub-6", 10L, tokenHash, null,
                 true, true, true, true,
                 3, 0, true,
                 fixedInstant.plus(10, ChronoUnit.MINUTES), fixedInstant, fixedInstant
         );
 
-        when(accesoTemporalQrRepository.buscarPorTokenHash(tokenHash)).thenReturn(Optional.of(revocado));
+        when(temporaryQrAccessRepository.findByTokenHash(tokenHash)).thenReturn(Optional.of(revocado));
 
-        assertThatThrownBy(() -> emergencySummaryService.consultarResumenPorToken(
+        assertThatThrownBy(() -> emergencySummaryService.getSummaryByToken(
                 tokenPlano,
-                new ConsultarResumenRequest(null),
+                new ConsultSummaryRequest(null),
                 "127.0.0.1"
-        )).isInstanceOf(DatosInvalidosException.class)
+        )).isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("El acceso QR ha sido revocado por el paciente.");
     }
 
     @Test
     @DisplayName("consultarResumenPorToken: token con lecturas agotadas lanza DatosInvalidosException")
-    void consultarResumenPorToken_agotado_lanzaDatosInvalidos() {
-        AccesoTemporalQr agotado = new AccesoTemporalQr(
+    void getSummaryByToken_agotado_throwsInvalidData() {
+        TemporaryQrAccess agotado = new TemporaryQrAccess(
                 7L, "qr-pub-7", 10L, tokenHash, null,
                 true, true, true, true,
                 3, 3, false,
                 fixedInstant.plus(10, ChronoUnit.MINUTES), fixedInstant, fixedInstant
         );
 
-        when(accesoTemporalQrRepository.buscarPorTokenHash(tokenHash)).thenReturn(Optional.of(agotado));
+        when(temporaryQrAccessRepository.findByTokenHash(tokenHash)).thenReturn(Optional.of(agotado));
 
-        assertThatThrownBy(() -> emergencySummaryService.consultarResumenPorToken(
+        assertThatThrownBy(() -> emergencySummaryService.getSummaryByToken(
                 tokenPlano,
-                new ConsultarResumenRequest(null),
+                new ConsultSummaryRequest(null),
                 "127.0.0.1"
-        )).isInstanceOf(DatosInvalidosException.class)
+        )).isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("superado el limite maximo de lecturas permitidas");
     }
 
     @Test
     @DisplayName("consultarResumenPorToken: token inexistente lanza RecursoNoEncontradoException")
-    void consultarResumenPorToken_inexistente_lanzaRecursoNoEncontrado() {
-        when(accesoTemporalQrRepository.buscarPorTokenHash(anyString())).thenReturn(Optional.empty());
+    void getSummaryByToken_notFound_throwsResourceNotFound() {
+        when(temporaryQrAccessRepository.findByTokenHash(anyString())).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> emergencySummaryService.consultarResumenPorToken(
+        assertThatThrownBy(() -> emergencySummaryService.getSummaryByToken(
                 "token-fantasma",
-                new ConsultarResumenRequest(null),
+                new ConsultSummaryRequest(null),
                 "127.0.0.1"
-        )).isInstanceOf(RecursoNoEncontradoException.class)
+        )).isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("Acceso de emergencia no valido o inexistente.");
     }
 
     @Test
     @DisplayName("consultarResumenPorToken: alergias activas retornan con su origen clínico y autorreportado (D3, T4)")
-    void consultarResumenPorToken_alergiasConOrigen_exitoso() {
-        AccesoTemporalQr acceso = new AccesoTemporalQr(
+    void getSummaryByToken_allergiesWithOrigin_success() {
+        TemporaryQrAccess acceso = new TemporaryQrAccess(
                 1L, "qr-pub-1", 10L, tokenHash, null,
                 true, false, false, false,
                 3, 0, false,
                 fixedInstant.plus(15, ChronoUnit.MINUTES), fixedInstant, fixedInstant
         );
 
-        when(accesoTemporalQrRepository.buscarPorTokenHash(tokenHash)).thenReturn(Optional.of(acceso));
-        when(accesoTemporalQrRepository.registrarAcceso(1L, fixedInstant)).thenReturn(1);
-        when(pacienteRepository.buscarPorId(10L)).thenReturn(Optional.of(paciente));
-        when(usuarioRepository.buscarPorId(5L)).thenReturn(Optional.of(usuario));
+        when(temporaryQrAccessRepository.findByTokenHash(tokenHash)).thenReturn(Optional.of(acceso));
+        when(temporaryQrAccessRepository.recordAccess(1L, fixedInstant)).thenReturn(1);
+        when(patientRepository.findById(10L)).thenReturn(Optional.of(paciente));
+        when(userRepository.findById(5L)).thenReturn(Optional.of(usuario));
 
-        Alergia a1 = new Alergia(101L, "ale-1", 10L, "Penicilina", "Shock", "GRAVE", "ACTIVA", "PROFESIONAL", 1L, null, null, null, null, fixedInstant, fixedInstant);
-        Alergia a2 = new Alergia(102L, "ale-2", 10L, "Mariscos", "Urticaria", "MODERADA", "ACTIVA", "PACIENTE", 5L, null, null, null, null, fixedInstant, fixedInstant);
-        when(alergiaRepository.listarPorPacienteId(10L)).thenReturn(List.of(a1, a2));
+        Allergy a1 = new Allergy(101L, "ale-1", 10L, "Penicilina", "Shock", "GRAVE", "ACTIVA", "PROFESIONAL", 1L, null, null, null, null, fixedInstant, fixedInstant);
+        Allergy a2 = new Allergy(102L, "ale-2", 10L, "Mariscos", "Urticaria", "MODERADA", "ACTIVA", "PACIENTE", 5L, null, null, null, null, fixedInstant, fixedInstant);
+        when(allergyRepository.listByPatientId(10L)).thenReturn(List.of(a1, a2));
 
-        ResumenSaludResponse res = emergencySummaryService.consultarResumenPorToken(
+        HealthSummaryResponse res = emergencySummaryService.getSummaryByToken(
                 tokenPlano,
-                new ConsultarResumenRequest(null),
+                new ConsultSummaryRequest(null),
                 "127.0.0.1"
         );
 
-        assertThat(res.alergias()).hasSize(2);
-        assertThat(res.alergias().get(0).sustancia()).isEqualTo("Penicilina");
-        assertThat(res.alergias().get(0).origen()).isEqualTo("PROFESIONAL");
-        assertThat(res.alergias().get(1).sustancia()).isEqualTo("Mariscos");
-        assertThat(res.alergias().get(1).origen()).isEqualTo("PACIENTE");
+        assertThat(res.allergies()).hasSize(2);
+        assertThat(res.allergies().get(0).substance()).isEqualTo("Penicilina");
+        assertThat(res.allergies().get(0).origin()).isEqualTo("PROFESIONAL");
+        assertThat(res.allergies().get(1).substance()).isEqualTo("Mariscos");
+        assertThat(res.allergies().get(1).origin()).isEqualTo("PACIENTE");
     }
 }

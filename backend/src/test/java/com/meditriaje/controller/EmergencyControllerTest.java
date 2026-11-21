@@ -3,12 +3,12 @@ package com.meditriaje.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.meditriaje.config.CorsConfig;
 import com.meditriaje.config.SecurityConfig;
-import com.meditriaje.dto.emergency.EpisodioUrgenciaResponse;
-import com.meditriaje.dto.emergency.ItemColaUrgenciaResponse;
-import com.meditriaje.dto.emergency.ReconciliarIdentidadRequest;
-import com.meditriaje.dto.emergency.RegistrarAdmisionUrgenciaRequest;
-import com.meditriaje.dto.emergency.RegistrarValoracionTriajeRequest;
-import com.meditriaje.dto.emergency.ValoracionTriajeResponse;
+import com.meditriaje.dto.emergency.EmergencyEpisodeResponse;
+import com.meditriaje.dto.emergency.EmergencyQueueItemResponse;
+import com.meditriaje.dto.emergency.ReconcileIdentityRequest;
+import com.meditriaje.dto.emergency.RegisterEmergencyAdmissionRequest;
+import com.meditriaje.dto.emergency.RegisterTriageAssessmentRequest;
+import com.meditriaje.dto.emergency.TriageAssessmentResponse;
 import com.meditriaje.exception.GlobalExceptionHandler;
 import com.meditriaje.security.JwtService;
 import com.meditriaje.service.EmergencyService;
@@ -66,21 +66,21 @@ class EmergencyControllerTest {
 
     @BeforeEach
     void setUp() {
-        when(jwtService.esValido(TOKEN_ENFERMERIA)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_ENFERMERIA)).thenReturn(ENFERMERA_UUID);
-        when(jwtService.extraerRoles(TOKEN_ENFERMERIA)).thenReturn(List.of("ROLE_ENFERMERIA"));
+        when(jwtService.isValid(TOKEN_ENFERMERIA)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_ENFERMERIA)).thenReturn(ENFERMERA_UUID);
+        when(jwtService.extractRoles(TOKEN_ENFERMERIA)).thenReturn(List.of("ROLE_ENFERMERIA"));
 
-        when(jwtService.esValido(TOKEN_PROFESIONAL)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_PROFESIONAL)).thenReturn("usr-prof-uuid");
-        when(jwtService.extraerRoles(TOKEN_PROFESIONAL)).thenReturn(List.of("ROLE_PROFESIONAL"));
+        when(jwtService.isValid(TOKEN_PROFESIONAL)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_PROFESIONAL)).thenReturn("usr-prof-uuid");
+        when(jwtService.extractRoles(TOKEN_PROFESIONAL)).thenReturn(List.of("ROLE_PROFESIONAL"));
 
-        when(jwtService.esValido(TOKEN_PACIENTE)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_PACIENTE)).thenReturn(PACIENTE_UUID);
-        when(jwtService.extraerRoles(TOKEN_PACIENTE)).thenReturn(List.of("ROLE_PACIENTE"));
+        when(jwtService.isValid(TOKEN_PACIENTE)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_PACIENTE)).thenReturn(PACIENTE_UUID);
+        when(jwtService.extractRoles(TOKEN_PACIENTE)).thenReturn(List.of("ROLE_PACIENTE"));
 
-        when(jwtService.esValido(TOKEN_ADMIN)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_ADMIN)).thenReturn(ADMIN_UUID);
-        when(jwtService.extraerRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
+        when(jwtService.isValid(TOKEN_ADMIN)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_ADMIN)).thenReturn(ADMIN_UUID);
+        when(jwtService.extractRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
     }
 
     private Cookie cookie(String token) {
@@ -89,9 +89,9 @@ class EmergencyControllerTest {
 
     @Test
     @DisplayName("SEC01: Petición anónima a admisiones retorna 401 Unauthorized")
-    void registrarAdmision_sinSesion_retorna401() throws Exception {
-        RegistrarAdmisionUrgenciaRequest req = new RegistrarAdmisionUrgenciaRequest(
-                "sede-pub", null, true, "ESPONTANEO", "Dolor fuerte", null, null, null, null, null, null, null
+    void registerAdmission_withoutSession_returns401() throws Exception {
+        RegisterEmergencyAdmissionRequest req = new RegisterEmergencyAdmissionRequest(
+                null, true, "ESPONTANEO", "Dolor fuerte", null, null, null, null, null, null, null
         );
 
         mockMvc.perform(post("/api/v1/emergency/admissions")
@@ -103,9 +103,9 @@ class EmergencyControllerTest {
 
     @Test
     @DisplayName("SEC02: Paciente intentando registrar admisión retorna 403 Forbidden")
-    void registrarAdmision_paciente_retorna403() throws Exception {
-        RegistrarAdmisionUrgenciaRequest req = new RegistrarAdmisionUrgenciaRequest(
-                "sede-pub", null, true, "ESPONTANEO", "Dolor fuerte", null, null, null, null, null, null, null
+    void registerAdmission_patient_returns403() throws Exception {
+        RegisterEmergencyAdmissionRequest req = new RegisterEmergencyAdmissionRequest(
+                null, true, "ESPONTANEO", "Dolor fuerte", null, null, null, null, null, null, null
         );
 
         mockMvc.perform(post("/api/v1/emergency/admissions")
@@ -118,17 +118,17 @@ class EmergencyControllerTest {
 
     @Test
     @DisplayName("U02: Enfermería registrando admisión presencial retorna 201 Created y Location")
-    void registrarAdmision_enfermeria_retorna201() throws Exception {
-        RegistrarAdmisionUrgenciaRequest req = new RegistrarAdmisionUrgenciaRequest(
-                "sede-pub", null, true, "AMBULANCIA", "Trauma", null, null, null, null, null, null, null
+    void registerAdmission_nursing_returns201() throws Exception {
+        RegisterEmergencyAdmissionRequest req = new RegisterEmergencyAdmissionRequest(
+                null, true, "AMBULANCIA", "Trauma", null, null, null, null, null, null, null
         );
 
-        EpisodioUrgenciaResponse respMock = new EpisodioUrgenciaResponse(
+        EmergencyEpisodeResponse respMock = new EmergencyEpisodeResponse(
                 "ep-pub-123", null, null, "sede-pub", "Hospital", "URGENCIA",
                 "REGISTRADO", true, "NN-20261010-ABCD", "PROVISIONAL", "AMBULANCIA",
                 "Trauma", "PENDIENTE_VALORACION", null, Instant.now(), null, Instant.now()
         );
-        when(emergencyService.registrarAdmisionUrgencia(any(), eq(ENFERMERA_UUID), anyString()))
+        when(emergencyService.registerEmergencyAdmission(any(), eq(ENFERMERA_UUID), anyString()))
                 .thenReturn(respMock);
 
         mockMvc.perform(post("/api/v1/emergency/admissions")
@@ -144,17 +144,17 @@ class EmergencyControllerTest {
 
     @Test
     @DisplayName("U04: Enfermería registrando valoración presencial retorna 201 Created")
-    void registrarValoracionTriaje_enfermeria_retorna201() throws Exception {
-        RegistrarValoracionTriajeRequest req = new RegistrarValoracionTriajeRequest(
+    void registerAssessmentTriage_nursing_returns201() throws Exception {
+        RegisterTriageAssessmentRequest req = new RegisterTriageAssessmentRequest(
                 "II", "Dolor precordial", "Diaforesis", "130/80", 95, 20, 96, new BigDecimal("36.8"), 15, false, null
         );
 
-        ValoracionTriajeResponse respMock = new ValoracionTriajeResponse(
+        TriageAssessmentResponse respMock = new TriageAssessmentResponse(
                 "val-pub-456", "ep-pub-123", 1, "II", "Dolor precordial",
                 "Diaforesis", "130/80", 95, 20, 96, new BigDecimal("36.8"), 15,
                 "Maria Perez", false, null, Instant.now()
         );
-        when(emergencyService.registrarValoracionTriaje(eq("ep-pub-123"), any(), eq(ENFERMERA_UUID), any(), anyString()))
+        when(emergencyService.recordTriageAssessment(eq("ep-pub-123"), any(), eq(ENFERMERA_UUID), any(), anyString()))
                 .thenReturn(respMock);
 
         mockMvc.perform(post("/api/v1/emergency/episodes/ep-pub-123/triage-assessments")
@@ -170,8 +170,8 @@ class EmergencyControllerTest {
 
     @Test
     @DisplayName("SEC03: Administrador intentando registrar triaje clínico presencial recibe 403 Forbidden")
-    void registrarValoracionTriaje_admin_retorna403() throws Exception {
-        RegistrarValoracionTriajeRequest req = new RegistrarValoracionTriajeRequest(
+    void registerAssessmentTriage_admin_returns403() throws Exception {
+        RegisterTriageAssessmentRequest req = new RegisterTriageAssessmentRequest(
                 "III", "Consulta", null, null, null, null, null, null, null, false, null
         );
 
@@ -185,12 +185,12 @@ class EmergencyControllerTest {
 
     @Test
     @DisplayName("U05: Consultar cola de urgencias retorna 200 OK con elementos priorizados")
-    void obtenerCola_enfermeria_retorna200() throws Exception {
-        ItemColaUrgenciaResponse item = new ItemColaUrgenciaResponse(
+    void getQueue_nursing_returns200() throws Exception {
+        EmergencyQueueItemResponse item = new EmergencyQueueItemResponse(
                 "ep-pub-123", null, "NN (NN-20261010-ABCD)", "NN-20261010-ABCD",
                 "sede-pub", "Hospital", "URGENCIA", "EN_TRIAJE", "II", "Dolor", 10L, Instant.now(), null
         );
-        when(emergencyService.listarColaUrgencias(any(), any())).thenReturn(List.of(item));
+        when(emergencyService.listEmergencyQueue(any())).thenReturn(List.of(item));
 
         mockMvc.perform(get("/api/v1/emergency/queue")
                         .cookie(cookie(TOKEN_ENFERMERIA))
@@ -202,15 +202,15 @@ class EmergencyControllerTest {
 
     @Test
     @DisplayName("U03: Reconciliar identidad provisional de paciente NN retorna 200 OK")
-    void reconciliarIdentidad_enfermeria_retorna200() throws Exception {
-        ReconciliarIdentidadRequest req = new ReconciliarIdentidadRequest("pac-real-pub", "Documento verificado");
+    void reconcileIdentity_nursing_returns200() throws Exception {
+        ReconcileIdentityRequest req = new ReconcileIdentityRequest("pac-real-pub", "Documento verificado");
 
-        EpisodioUrgenciaResponse respMock = new EpisodioUrgenciaResponse(
+        EmergencyEpisodeResponse respMock = new EmergencyEpisodeResponse(
                 "ep-pub-123", "pac-real-pub", "Juan Gomez", "sede-pub", "Hospital", "URGENCIA",
                 "REGISTRADO", true, "NN-20261010-ABCD", "VINCULADA", "AMBULANCIA",
                 "Trauma", "PENDIENTE_VALORACION", null, Instant.now(), null, Instant.now()
         );
-        when(emergencyService.reconciliarIdentidad(eq("ep-pub-123"), any(), eq(ENFERMERA_UUID), anyString()))
+        when(emergencyService.reconcileIdentity(eq("ep-pub-123"), any(), eq(ENFERMERA_UUID), anyString()))
                 .thenReturn(respMock);
 
         mockMvc.perform(post("/api/v1/emergency/episodes/ep-pub-123/reconcile")

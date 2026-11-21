@@ -1,8 +1,8 @@
 package com.meditriaje.controller;
 
-import com.meditriaje.dto.emergency.ConsultarResumenRequest;
-import com.meditriaje.dto.emergency.VerificarQrResponse;
-import com.meditriaje.dto.emergency.summary.ResumenSaludResponse;
+import com.meditriaje.dto.emergency.ConsultSummaryRequest;
+import com.meditriaje.dto.emergency.VerifyQrResponse;
+import com.meditriaje.dto.emergency.summary.HealthSummaryResponse;
 import com.meditriaje.security.QrRateLimiter;
 import com.meditriaje.service.EmergencyQrService;
 import com.meditriaje.service.EmergencySummaryService;
@@ -54,13 +54,13 @@ public class EmergencySummaryController {
      * Verificación pública del token QR escaneado (indica si está vigente, expirado o agotado, y si requiere PIN).
      */
     @GetMapping("/{token}/check")
-    public ResponseEntity<VerificarQrResponse> verificarToken(
-            @PathVariable String token,
+    public ResponseEntity<VerifyQrResponse> verifyToken(
+            @PathVariable("token") String token,
             HttpServletRequest httpRequest
     ) {
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
-        qrRateLimiter.validarLimite(ipOrigen);
-        VerificarQrResponse response = emergencyQrService.verificarTokenPublico(token);
+        String sourceIp = IpUtil.extractIp(httpRequest);
+        qrRateLimiter.validateLimit(sourceIp);
+        VerifyQrResponse response = emergencyQrService.verifyPublicToken(token);
         return ResponseEntity.ok(response);
     }
 
@@ -69,14 +69,14 @@ public class EmergencySummaryController {
      * Incrementa atómicamente el contador de accesos en BD y audita el evento sin datos clínicos.
      */
     @PostMapping("/{token}")
-    public ResponseEntity<ResumenSaludResponse> consultarResumen(
-            @PathVariable String token,
-            @RequestBody(required = false) ConsultarResumenRequest request,
+    public ResponseEntity<HealthSummaryResponse> getSummary(
+            @PathVariable("token") String token,
+            @RequestBody(required = false) ConsultSummaryRequest request,
             HttpServletRequest httpRequest
     ) {
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
-        qrRateLimiter.validarLimite(ipOrigen);
-        ResumenSaludResponse response = emergencySummaryService.consultarResumenPorToken(token, request, ipOrigen);
+        String sourceIp = IpUtil.extractIp(httpRequest);
+        qrRateLimiter.validateLimit(sourceIp);
+        HealthSummaryResponse response = emergencySummaryService.getSummaryByToken(token, request, sourceIp);
         return ResponseEntity.ok(response);
     }
 }

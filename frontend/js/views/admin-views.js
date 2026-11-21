@@ -1,7 +1,7 @@
 /**
  * MediTriaje 2.0 — Pantallas de Administración (admin-views.js)
  * M8.4 (HU-10, ADR-002, ADR-003, ADR-005, ADR-007, ADR-011, ADR-012).
- * CRUD de Instituciones, Sedes, Especialidades, Profesionales y Generador de Slots.
+ * CRUD de Especialidades, Profesionales y Generador de Slots (hospital único: sin gestión de sedes).
  * REGLA ESTRICTA: Cero exposición de contenido clínico a roles administrativos.
  */
 
@@ -62,8 +62,7 @@ function statusBadge(estado) {
 export async function adminDashboardView(container, { tab = 'dashboard' } = {}) {
   const hash = window.location.hash;
   let activeTab = tab;
-  if (hash.includes('/admin/sites')) activeTab = 'sites';
-  else if (hash.includes('/admin/specialties')) activeTab = 'specialties';
+  if (hash.includes('/admin/specialties')) activeTab = 'specialties';
   else if (hash.includes('/admin/professionals')) activeTab = 'professionals';
   else if (hash.includes('/admin/slots')) activeTab = 'slots';
   else if (hash.includes('/admin/appointments')) activeTab = 'appointments';
@@ -72,7 +71,6 @@ export async function adminDashboardView(container, { tab = 'dashboard' } = {}) 
   else if (hash.includes('/admin/operational')) activeTab = 'operational';
   else if (hash.includes('/admin/reports')) activeTab = 'reports';
   else if (hash.includes('/admin/audit')) activeTab = 'audit';
-  else if (hash.includes('/admin/institutions')) activeTab = 'institutions';
   else if (hash === '#/admin' || hash === '#/admin/' || hash.includes('/admin/dashboard')) activeTab = 'dashboard';
 
   if (activeTab === 'dashboard') {
@@ -98,8 +96,7 @@ export async function adminDashboardView(container, { tab = 'dashboard' } = {}) 
     renderFn(target);
   }
 
-  if (activeTab === 'sites') renderSectionWrapper('Sedes Hospitalarias', renderSites);
-  else if (activeTab === 'specialties') renderSectionWrapper('Especialidades Médicas', renderSpecialties);
+  if (activeTab === 'specialties') renderSectionWrapper('Especialidades Médicas', renderSpecialties);
   else if (activeTab === 'professionals') renderSectionWrapper('Profesionales de la Salud', renderProfessionals);
   else if (activeTab === 'slots') renderSectionWrapper('Slots de Turnos', renderSlots);
   else if (activeTab === 'appointments') renderSectionWrapper('Calendario de Citas', renderAdminAppointments);
@@ -108,7 +105,7 @@ export async function adminDashboardView(container, { tab = 'dashboard' } = {}) 
   else if (activeTab === 'operational') renderOperationalDashboard(container);
   else if (activeTab === 'reports') renderSectionWrapper('Reportes Operativos', renderReports);
   else if (activeTab === 'audit') renderSectionWrapper('Auditoría del Sistema', renderAudit);
-  else renderSectionWrapper('Instituciones de Salud', renderInstitutions);
+  else renderSectionWrapper('Especialidades Médicas', renderSpecialties);
 }
 
 /**
@@ -154,18 +151,18 @@ async function renderAdminDashboardHome(container) {
 
       <!-- Métricas Clave del Sistema (KPIs) -->
       <div class="grid grid-cols-1 grid-cols-2-md grid-cols-4-lg gap-4 mb-8" aria-label="Indicadores del sistema">
-        <div class="card card--interactive p-4 flex flex-col justify-between" role="region" aria-label="Indicador de Sedes">
+        <div class="card card--interactive p-4 flex flex-col justify-between" role="region" aria-label="Indicador de Camas">
           <div class="flex items-center justify-between mb-2">
-            <span class="text-xs text-muted font-medium uppercase tracking-wide">Sedes Hospitalarias</span>
-            <div class="stat-icon-wrapper" aria-hidden="true">${ui.icon('map-pin', 'icon icon--md')}</div>
+            <span class="text-xs text-muted font-medium uppercase tracking-wide">Camas Hospitalarias</span>
+            <div class="stat-icon-wrapper" aria-hidden="true">${ui.icon('hospital', 'icon icon--md')}</div>
           </div>
-          <div class="text-3xl font-bold mb-1" id="dashMetricSites" aria-live="polite">
+          <div class="text-3xl font-bold mb-1" id="dashMetricBeds" aria-live="polite">
             <span class="skeleton" style="display:inline-block; width:3.5rem; height:2rem; border-radius:var(--radius-sm);" aria-hidden="true"></span>
           </div>
           <div class="text-xs text-muted flex justify-between items-center">
-            <span>Sedes registradas</span>
-            <a href="#/admin/sites" class="text-primary font-medium hover:underline flex items-center gap-1">
-              <span>Ver sedes</span>
+            <span>Camas registradas</span>
+            <a href="#/hospital/census" class="text-primary font-medium hover:underline flex items-center gap-1">
+              <span>Ver censo</span>
               <span aria-hidden="true">&rarr;</span>
             </a>
           </div>
@@ -233,24 +230,6 @@ async function renderAdminDashboardHome(container) {
             <h3 class="text-md font-bold m-0">Infraestructura</h3>
           </div>
           <ul class="flex flex-col gap-1 list-none p-0 m-0 text-sm">
-            <li>
-              <a href="#/admin/institutions" class="admin-dash-link">
-                <div class="flex items-center gap-2">
-                  <span class="text-primary">${ui.icon('hospital', 'icon icon--sm')}</span>
-                  <span>Instituciones de Salud</span>
-                </div>
-                <span class="admin-dash-arrow text-muted text-sm" aria-hidden="true">&rarr;</span>
-              </a>
-            </li>
-            <li>
-              <a href="#/admin/sites" class="admin-dash-link">
-                <div class="flex items-center gap-2">
-                  <span class="text-primary">${ui.icon('map-pin', 'icon icon--sm')}</span>
-                  <span>Sedes Hospitalarias</span>
-                </div>
-                <span class="admin-dash-arrow text-muted text-sm" aria-hidden="true">&rarr;</span>
-              </a>
-            </li>
             <li>
               <a href="#/hospital/census" class="admin-dash-link">
                 <div class="flex items-center gap-2">
@@ -425,21 +404,20 @@ async function renderAdminDashboardHome(container) {
  */
 async function loadDashboardMetrics(container) {
   try {
-    const [sitesRes, prosRes, specsRes, slotsRes] = await Promise.allSettled([
-      api.get('/admin/sites', { page: 0, size: 100, estado: 'ACTIVO' }),
+    const [censusRes, prosRes, specsRes, slotsRes] = await Promise.allSettled([
+      api.get('/hospital/census'),
       api.get('/admin/professionals', { page: 0, size: 100, estado: 'ACTIVO' }),
       api.get('/admin/specialties', { page: 0, size: 100, estado: 'ACTIVO' }),
       api.get('/admin/slots', { page: 0, size: 100 })
     ]);
 
-    const elSites = container.querySelector('#dashMetricSites');
+    const elBeds = container.querySelector('#dashMetricBeds');
     const elPros = container.querySelector('#dashMetricPros');
     const elSpecs = container.querySelector('#dashMetricSpecs');
     const elSlots = container.querySelector('#dashMetricSlots');
 
-    if (elSites) {
-      const totalSites = sitesRes.status === 'fulfilled' ? (sitesRes.value?.totalElements ?? sitesRes.value?.content?.length ?? (Array.isArray(sitesRes.value) ? sitesRes.value.length : 0)) : '—';
-      elSites.textContent = totalSites;
+    if (elBeds) {
+      elBeds.textContent = censusRes.status === 'fulfilled' ? (censusRes.value?.totalCamas ?? 0) : '—';
     }
     if (elPros) {
       const totalPros = prosRes.status === 'fulfilled' ? (prosRes.value?.totalElements ?? prosRes.value?.content?.length ?? (Array.isArray(prosRes.value) ? prosRes.value.length : 0)) : '—';
@@ -535,584 +513,6 @@ async function loadRecentAudit(container) {
       </div>
     `;
   }
-}
-
-/* ==========================================================================
-   1. PESTAÑA: INSTITUCIONES
-   ========================================================================== */
-async function renderInstitutions(container) {
-  let page = 0;
-  const size = 10;
-  let estadoFiltro = '';
-
-  container.innerHTML = `
-    <div>
-      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <h2 class="text-xl font-bold m-0">Instituciones de Salud</h2>
-        <button type="button" id="btnToggleNewInst" class="btn btn-primary btn--sm" aria-label="Registrar nueva institución de salud">
-          ${ui.icon('plus', 'icon icon--sm')}<span>+ Nueva institución</span>
-        </button>
-      </div>
-
-      <!-- Formulario colapsable de creación -->
-      <div id="newInstCard" class="card p-4 mb-6" style="display: none; border-left: 4px solid var(--primary);">
-        <h3 class="text-md font-bold mb-3">Registrar nueva institución</h3>
-        <form id="newInstForm" novalidate>
-          <div class="grid grid-cols-1 grid-cols-2-md gap-4 mb-3">
-            <div class="form-group m-0">
-              <label for="instNit" class="form-label text-xs">NIT <span class="required">*</span></label>
-              <input type="text" id="instNit" class="form-input" maxlength="20" placeholder="Ej. 900123456-1" required>
-            </div>
-            <div class="form-group m-0">
-              <label for="instRazonSocial" class="form-label text-xs">Razón social <span class="required">*</span></label>
-              <input type="text" id="instRazonSocial" class="form-input" maxlength="120" placeholder="Ej. Hospital San Rafael" required>
-            </div>
-          </div>
-          <p id="newInstError" class="text-xs text-danger mb-3" role="alert"></p>
-          <div class="flex gap-2 justify-end">
-            <button type="button" id="btnCancelNewInst" class="btn btn-secondary btn--sm">Cancelar</button>
-            <button type="submit" id="btnSaveNewInst" class="btn btn-primary btn--sm">Guardar institución</button>
-          </div>
-        </form>
-      </div>
-
-      <!-- Filtro rápido y tabla -->
-      <div class="flex items-center justify-between gap-3 mb-3">
-        <div class="form-group m-0" style="max-width: 14rem;">
-          <select id="instEstadoFilter" class="form-select" aria-label="Filtrar por estado">
-            <option value="">Todos los estados</option>
-            <option value="ACTIVO">Solo Activos</option>
-            <option value="INACTIVO">Solo Inactivos</option>
-          </select>
-        </div>
-        <div id="instPaginationInfo" class="text-xs text-muted"></div>
-      </div>
-
-      <div id="instTableContainer"></div>
-    </div>
-  `;
-
-  const newCard = container.querySelector('#newInstCard');
-  const toggleBtn = container.querySelector('#btnToggleNewInst');
-  toggleBtn.addEventListener('click', () => {
-    newCard.style.display = newCard.style.display === 'none' ? 'block' : 'none';
-    if (newCard.style.display === 'block') container.querySelector('#instNit').focus();
-  });
-  container.querySelector('#btnCancelNewInst').addEventListener('click', () => {
-    newCard.style.display = 'none';
-  });
-
-  container.querySelector('#newInstForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const nit = container.querySelector('#instNit').value.trim();
-    const razonSocial = container.querySelector('#instRazonSocial').value.trim();
-    const errEl = container.querySelector('#newInstError');
-    errEl.textContent = '';
-
-    if (!nit || !razonSocial) {
-      errEl.textContent = 'El NIT y la razón social son obligatorios.';
-      return;
-    }
-
-    const saveBtn = container.querySelector('#btnSaveNewInst');
-    ui.setButtonLoading(saveBtn, true);
-    try {
-      await api.post('/admin/institutions', { nit, razonSocial });
-      ui.showToast('Institución registrada correctamente.', 'success');
-      newCard.style.display = 'none';
-      container.querySelector('#newInstForm').reset();
-      load();
-    } catch (err) {
-      errEl.textContent = err.message || 'No fue posible guardar la institución.';
-    } finally {
-      ui.setButtonLoading(saveBtn, false);
-    }
-  });
-
-  container.querySelector('#instEstadoFilter').addEventListener('change', (e) => {
-    estadoFiltro = e.target.value;
-    page = 0;
-    load();
-  });
-
-  async function load() {
-    const tableBox = container.querySelector('#instTableContainer');
-    ui.renderLoading(tableBox, 'Cargando instituciones...');
-    try {
-      const res = await api.get('/admin/institutions', {
-        page,
-        size,
-        estado: estadoFiltro || undefined
-      });
-      renderTable(res);
-    } catch (err) {
-      ui.renderError(tableBox, {
-        title: 'Error al consultar instituciones',
-        message: err.message,
-        onRetry: load
-      });
-    }
-  }
-
-  function renderTable(data) {
-    const list = data?.content || [];
-    const tableBox = container.querySelector('#instTableContainer');
-    container.querySelector('#instPaginationInfo').textContent =
-      `Mostrando ${list.length} de ${data?.totalElements || 0} registros`;
-
-    if (list.length === 0) {
-      ui.renderEmpty(tableBox, {
-        icon: 'hospital',
-        title: 'Sin instituciones',
-        description: 'No se encontraron instituciones registradas con los filtros actuales.'
-      });
-      return;
-    }
-
-    tableBox.innerHTML = `
-      <div class="table-container mb-4">
-        <table class="table table--stacked">
-          <thead>
-            <tr>
-              <th scope="col">NIT</th>
-              <th scope="col">Razón Social</th>
-              <th scope="col">Estado</th>
-              <th scope="col" style="text-align: right;">Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${list.map(it => `
-              <tr>
-                <td data-label="NIT"><span class="font-mono">${esc(it.nit)}</span></td>
-                <td data-label="Razón Social"><strong>${esc(it.razonSocial)}</strong></td>
-                <td data-label="Estado">${statusBadge(it.estado)}</td>
-                <td data-label="Acciones" style="text-align: right;">
-                  <button type="button" class="btn btn-secondary btn--sm btn-edit" data-id="${esc(it.publicId)}" data-razon="${esc(it.razonSocial)}" aria-label="Editar institución ${esc(it.razonSocial)}">
-                    Editar
-                  </button>
-                  ${it.estado === 'ACTIVO' ? `
-                    <button type="button" class="btn btn-ghost btn--sm text-danger btn-deactivate" data-id="${esc(it.publicId)}" data-razon="${esc(it.razonSocial)}" aria-label="Desactivar institución ${esc(it.razonSocial)}">
-                      Desactivar
-                    </button>` : `
-                    <button type="button" class="btn btn-ghost btn--sm text-success btn-activate" data-id="${esc(it.publicId)}" data-razon="${esc(it.razonSocial)}" aria-label="Activar institución ${esc(it.razonSocial)}">
-                      Activar
-                    </button>`}
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
-
-      <!-- Paginación -->
-      <div class="flex items-center justify-between gap-3">
-        <button type="button" id="instPrev" class="btn btn-secondary btn--sm" ${!data?.hasPrevious ? 'disabled' : ''}>Anterior</button>
-        <span class="text-xs text-muted">Página ${(data?.page || 0) + 1} de ${Math.max(1, data?.totalPages || 1)}</span>
-        <button type="button" id="instNext" class="btn btn-secondary btn--sm" ${!data?.hasNext ? 'disabled' : ''}>Siguiente</button>
-      </div>
-    `;
-
-    tableBox.querySelector('#instPrev')?.addEventListener('click', () => { if (page > 0) { page--; load(); } });
-    tableBox.querySelector('#instNext')?.addEventListener('click', () => { page++; load(); });
-
-    // Editar
-    tableBox.querySelectorAll('.btn-edit').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = btn.dataset.id;
-        const currentRazon = btn.dataset.razon;
-        ui.showModal({
-          title: 'Editar Institución',
-          message: `
-            <div class="form-group mb-2">
-              <label for="editRazonInput" class="form-label text-xs">Nueva razón social</label>
-              <input type="text" id="editRazonInput" class="form-input" value="${esc(currentRazon)}" maxlength="120">
-            </div>
-            <p id="editRazonErr" class="text-xs text-danger m-0"></p>
-          `,
-          confirmText: 'Guardar cambios',
-          onConfirm: async () => {
-            const val = document.querySelector('#editRazonInput')?.value.trim();
-            if (!val) {
-              ui.showToast('La razón social no puede estar vacía.', 'warning');
-              return;
-            }
-            try {
-              await api.put(`/admin/institutions/${id}`, { razonSocial: val });
-              ui.showToast('Institución actualizada.', 'success');
-              load();
-            } catch (err) {
-              ui.showToast(err.message || 'No fue posible actualizar.', 'danger');
-            }
-          }
-        });
-      });
-    });
-
-    // Desactivar
-    tableBox.querySelectorAll('.btn-deactivate').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = btn.dataset.id;
-        const razon = btn.dataset.razon;
-        ui.showModal({
-          title: '¿Desactivar institución?',
-          message: `La institución <strong>${esc(razon)}</strong> quedará inactiva y no podrán asignársele nuevas sedes.`,
-          confirmText: 'Sí, desactivar',
-          isDanger: true,
-          onConfirm: async () => {
-            try {
-              await api.patch(`/admin/institutions/${id}/deactivate`);
-              ui.showToast('Institución desactivada.', 'info');
-              load();
-            } catch (err) {
-              ui.showToast(err.message || 'Error al desactivar.', 'danger');
-            }
-          }
-        });
-      });
-    });
-
-    // Activar
-    tableBox.querySelectorAll('.btn-activate').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = btn.dataset.id;
-        const razon = btn.dataset.razon;
-        ui.showModal({
-          title: '¿Activar institución?',
-          message: `La institución <strong>${esc(razon)}</strong> pasará a estar activa.`,
-          confirmText: 'Sí, activar',
-          onConfirm: async () => {
-            try {
-              await api.patch(`/admin/institutions/${id}/activate`);
-              ui.showToast('Institución activada.', 'success');
-              load();
-            } catch (err) {
-              ui.showToast(err.message || 'Error al activar.', 'danger');
-            }
-          }
-        });
-      });
-    });
-  }
-
-  await load();
-}
-
-/* ==========================================================================
-   2. PESTAÑA: SEDES
-   ========================================================================== */
-async function renderSites(container) {
-  let page = 0;
-  const size = 10;
-  let institucionFiltro = '';
-  let estadoFiltro = '';
-  let activeInstitutions = [];
-
-  container.innerHTML = `
-    <div>
-      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <h2 class="text-xl font-bold m-0">Sedes Asistenciales</h2>
-        <button type="button" id="btnToggleNewSite" class="btn btn-primary btn--sm" aria-label="Registrar nueva sede asistencial">
-          ${ui.icon('plus', 'icon icon--sm')}<span>+ Nueva sede</span>
-        </button>
-      </div>
-
-      <!-- Formulario colapsable de creación -->
-      <div id="newSiteCard" class="card p-4 mb-6" style="display: none; border-left: 4px solid var(--primary);">
-        <h3 class="text-md font-bold mb-3">Registrar nueva sede</h3>
-        <form id="newSiteForm" novalidate>
-          <div class="grid grid-cols-1 grid-cols-2-md gap-4 mb-3">
-            <div class="form-group m-0">
-              <label for="siteInstSelect" class="form-label text-xs">Institución <span class="required">*</span></label>
-              <select id="siteInstSelect" class="form-select" required>
-                <option value="">Selecciona una institución...</option>
-              </select>
-            </div>
-            <div class="form-group m-0">
-              <label for="siteNombre" class="form-label text-xs">Nombre de la sede <span class="required">*</span></label>
-              <input type="text" id="siteNombre" class="form-input" maxlength="80" placeholder="Ej. Sede Norte Principal" required>
-            </div>
-            <div class="form-group m-0">
-              <label for="siteDireccion" class="form-label text-xs">Dirección <span class="required">*</span></label>
-              <input type="text" id="siteDireccion" class="form-input" maxlength="120" placeholder="Ej. Calle 100 # 15-20" required>
-            </div>
-            <div class="form-group m-0">
-              <label for="siteCiudad" class="form-label text-xs">Ciudad <span class="required">*</span></label>
-              <input type="text" id="siteCiudad" class="form-input" maxlength="60" placeholder="Ej. Bogotá D.C." required>
-            </div>
-          </div>
-          <p id="newSiteError" class="text-xs text-danger mb-3" role="alert"></p>
-          <div class="flex gap-2 justify-end">
-            <button type="button" id="btnCancelNewSite" class="btn btn-secondary btn--sm">Cancelar</button>
-            <button type="submit" id="btnSaveNewSite" class="btn btn-primary btn--sm">Guardar sede</button>
-          </div>
-        </form>
-      </div>
-
-      <!-- Filtros -->
-      <div class="grid grid-cols-1 grid-cols-3-md gap-3 mb-3">
-        <div class="form-group m-0">
-          <select id="siteInstFilter" class="form-select" aria-label="Filtrar por institución">
-            <option value="">Todas las instituciones</option>
-          </select>
-        </div>
-        <div class="form-group m-0">
-          <select id="siteEstadoFilter" class="form-select" aria-label="Filtrar por estado">
-            <option value="">Todos los estados</option>
-            <option value="ACTIVO">Solo Activos</option>
-            <option value="INACTIVO">Solo Inactivos</option>
-          </select>
-        </div>
-        <div id="sitePaginationInfo" class="text-xs text-muted flex items-center justify-end"></div>
-      </div>
-
-      <div id="siteTableContainer"></div>
-    </div>
-  `;
-
-  // Cargar instituciones activas para el select del formulario y el filtro
-  try {
-    const resInst = await api.get('/admin/institutions', { page: 0, size: 100, estado: 'ACTIVO' });
-    activeInstitutions = resInst?.content || [];
-    const selectEl = container.querySelector('#siteInstSelect');
-    const filterEl = container.querySelector('#siteInstFilter');
-    activeInstitutions.forEach(inst => {
-      selectEl.insertAdjacentHTML('beforeend', `<option value="${esc(inst.publicId)}">${esc(inst.razonSocial)}</option>`);
-      filterEl.insertAdjacentHTML('beforeend', `<option value="${esc(inst.publicId)}">${esc(inst.razonSocial)}</option>`);
-    });
-  } catch {
-    // Si falla, el select quedará con la opción default
-  }
-
-  const newCard = container.querySelector('#newSiteCard');
-  container.querySelector('#btnToggleNewSite').addEventListener('click', () => {
-    newCard.style.display = newCard.style.display === 'none' ? 'block' : 'none';
-    if (newCard.style.display === 'block') container.querySelector('#siteInstSelect').focus();
-  });
-  container.querySelector('#btnCancelNewSite').addEventListener('click', () => {
-    newCard.style.display = 'none';
-  });
-
-  container.querySelector('#newSiteForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const institucionPublicId = container.querySelector('#siteInstSelect').value;
-    const nombre = container.querySelector('#siteNombre').value.trim();
-    const direccion = container.querySelector('#siteDireccion').value.trim();
-    const ciudad = container.querySelector('#siteCiudad').value.trim();
-    const errEl = container.querySelector('#newSiteError');
-    errEl.textContent = '';
-
-    if (!institucionPublicId || !nombre || !direccion || !ciudad) {
-      errEl.textContent = 'Todos los campos son obligatorios.';
-      return;
-    }
-
-    const saveBtn = container.querySelector('#btnSaveNewSite');
-    ui.setButtonLoading(saveBtn, true);
-    try {
-      await api.post('/admin/sites', { institucionPublicId, nombre, direccion, ciudad });
-      ui.showToast('Sede registrada correctamente.', 'success');
-      newCard.style.display = 'none';
-      container.querySelector('#newSiteForm').reset();
-      load();
-    } catch (err) {
-      errEl.textContent = err.message || 'No fue posible registrar la sede.';
-    } finally {
-      ui.setButtonLoading(saveBtn, false);
-    }
-  });
-
-  container.querySelector('#siteInstFilter').addEventListener('change', (e) => {
-    institucionFiltro = e.target.value;
-    page = 0;
-    load();
-  });
-
-  container.querySelector('#siteEstadoFilter').addEventListener('change', (e) => {
-    estadoFiltro = e.target.value;
-    page = 0;
-    load();
-  });
-
-  async function load() {
-    const tableBox = container.querySelector('#siteTableContainer');
-    ui.renderLoading(tableBox, 'Cargando sedes...');
-    try {
-      const res = await api.get('/admin/sites', {
-        page,
-        size,
-        institucionPublicId: institucionFiltro || undefined,
-        estado: estadoFiltro || undefined
-      });
-      renderTable(res);
-    } catch (err) {
-      ui.renderError(tableBox, {
-        title: 'Error al consultar sedes',
-        message: err.message,
-        onRetry: load
-      });
-    }
-  }
-
-  function renderTable(data) {
-    const list = data?.content || [];
-    const tableBox = container.querySelector('#siteTableContainer');
-    container.querySelector('#sitePaginationInfo').textContent =
-      `Mostrando ${list.length} de ${data?.totalElements || 0} registros`;
-
-    if (list.length === 0) {
-      ui.renderEmpty(tableBox, {
-        icon: 'map-pin',
-        title: 'Sin sedes',
-        description: 'No se encontraron sedes con los filtros aplicados.'
-      });
-      return;
-    }
-
-    tableBox.innerHTML = `
-      <div class="table-container mb-4">
-        <table class="table table--stacked">
-          <thead>
-            <tr>
-              <th scope="col">Sede</th>
-              <th scope="col">Institución</th>
-              <th scope="col">Ubicación</th>
-              <th scope="col">Estado</th>
-              <th scope="col" style="text-align: right;">Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${list.map(it => `
-              <tr>
-                <td data-label="Sede"><strong>${esc(it.nombre)}</strong></td>
-                <td data-label="Institución"><span class="text-sm">${esc(it.institucionRazonSocial || '—')}</span></td>
-                <td data-label="Ubicación">${esc(it.direccion)}, ${esc(it.ciudad)}</td>
-                <td data-label="Estado">${statusBadge(it.estado)}</td>
-                <td data-label="Acciones" style="text-align: right;">
-                  <button type="button" class="btn btn-secondary btn--sm btn-edit"
-                    data-id="${esc(it.publicId)}"
-                    data-nombre="${esc(it.nombre)}"
-                    data-dir="${esc(it.direccion)}"
-                    data-ciudad="${esc(it.ciudad)}"
-                    aria-label="Editar sede ${esc(it.nombre)}">
-                    Editar
-                  </button>
-                  ${it.estado === 'ACTIVO' ? `
-                    <button type="button" class="btn btn-ghost btn--sm text-danger btn-deactivate" data-id="${esc(it.publicId)}" data-nombre="${esc(it.nombre)}" aria-label="Desactivar sede ${esc(it.nombre)}">
-                      Desactivar
-                    </button>` : `
-                    <button type="button" class="btn btn-ghost btn--sm text-success btn-activate" data-id="${esc(it.publicId)}" data-nombre="${esc(it.nombre)}" aria-label="Activar sede ${esc(it.nombre)}">
-                      Activar
-                    </button>`}
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
-
-      <!-- Paginación -->
-      <div class="flex items-center justify-between gap-3">
-        <button type="button" id="sitePrev" class="btn btn-secondary btn--sm" ${!data?.hasPrevious ? 'disabled' : ''}>Anterior</button>
-        <span class="text-xs text-muted">Página ${(data?.page || 0) + 1} de ${Math.max(1, data?.totalPages || 1)}</span>
-        <button type="button" id="siteNext" class="btn btn-secondary btn--sm" ${!data?.hasNext ? 'disabled' : ''}>Siguiente</button>
-      </div>
-    `;
-
-    tableBox.querySelector('#sitePrev')?.addEventListener('click', () => { if (page > 0) { page--; load(); } });
-    tableBox.querySelector('#siteNext')?.addEventListener('click', () => { page++; load(); });
-
-    // Editar sede
-    tableBox.querySelectorAll('.btn-edit').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = btn.dataset.id;
-        const curNombre = btn.dataset.nombre;
-        const curDir = btn.dataset.dir;
-        const curCiudad = btn.dataset.ciudad;
-
-        ui.showModal({
-          title: 'Editar Sede',
-          message: `
-            <div class="form-group mb-2">
-              <label for="editSiteNombre" class="form-label text-xs">Nombre de la sede</label>
-              <input type="text" id="editSiteNombre" class="form-input" value="${esc(curNombre)}" maxlength="80">
-            </div>
-            <div class="form-group mb-2">
-              <label for="editSiteDir" class="form-label text-xs">Dirección</label>
-              <input type="text" id="editSiteDir" class="form-input" value="${esc(curDir)}" maxlength="120">
-            </div>
-            <div class="form-group mb-2">
-              <label for="editSiteCiudad" class="form-label text-xs">Ciudad</label>
-              <input type="text" id="editSiteCiudad" class="form-input" value="${esc(curCiudad)}" maxlength="60">
-            </div>
-          `,
-          confirmText: 'Guardar cambios',
-          onConfirm: async () => {
-            const nombre = document.querySelector('#editSiteNombre')?.value.trim();
-            const direccion = document.querySelector('#editSiteDir')?.value.trim();
-            const ciudad = document.querySelector('#editSiteCiudad')?.value.trim();
-            if (!nombre || !direccion || !ciudad) {
-              ui.showToast('Todos los campos son obligatorios.', 'warning');
-              return;
-            }
-            try {
-              await api.put(`/admin/sites/${id}`, { nombre, direccion, ciudad });
-              ui.showToast('Sede actualizada.', 'success');
-              load();
-            } catch (err) {
-              ui.showToast(err.message || 'Error al actualizar sede.', 'danger');
-            }
-          }
-        });
-      });
-    });
-
-    // Desactivar sede
-    tableBox.querySelectorAll('.btn-deactivate').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = btn.dataset.id;
-        const nombre = btn.dataset.nombre;
-        ui.showModal({
-          title: '¿Desactivar sede?',
-          message: `La sede <strong>${esc(nombre)}</strong> no estará disponible para nuevos slots.`,
-          confirmText: 'Sí, desactivar',
-          isDanger: true,
-          onConfirm: async () => {
-            try {
-              await api.patch(`/admin/sites/${id}/deactivate`);
-              ui.showToast('Sede desactivada.', 'info');
-              load();
-            } catch (err) {
-              ui.showToast(err.message || 'Error al desactivar sede.', 'danger');
-            }
-          }
-        });
-      });
-    });
-
-    // Activar sede
-    tableBox.querySelectorAll('.btn-activate').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = btn.dataset.id;
-        const nombre = btn.dataset.nombre;
-        ui.showModal({
-          title: '¿Activar sede?',
-          message: `La sede <strong>${esc(nombre)}</strong> pasará a estar activa.`,
-          confirmText: 'Sí, activar',
-          onConfirm: async () => {
-            try {
-              await api.patch(`/admin/sites/${id}/activate`);
-              ui.showToast('Sede activada.', 'success');
-              load();
-            } catch (err) {
-              ui.showToast(err.message || 'Error al activar sede.', 'danger');
-            }
-          }
-        });
-      });
-    });
-  }
-
-  await load();
 }
 
 /* ==========================================================================
@@ -2040,7 +1440,6 @@ async function renderSlots(container) {
   let page = 0;
   const size = 15;
   let activePros = [];
-  let activeSites = [];
 
   const today = todayBogota();
   const nextWeek = addDays(today, 7);
@@ -2056,7 +1455,7 @@ async function renderSlots(container) {
       <div class="card p-6 mb-8" style="border-top: 4px solid var(--primary);">
         <h3 class="text-lg font-bold mb-2">Generador masivo de slots</h3>
         <p class="text-xs text-muted mb-4">
-          Crea turnos continuos para un profesional en una sede sin colisiones ni solapes horarios.
+          Crea turnos continuos para un profesional del hospital sin colisiones ni solapes horarios.
         </p>
 
         <form id="slotGenForm" novalidate>
@@ -2065,12 +1464,6 @@ async function renderSlots(container) {
               <label for="genProf" class="form-label text-xs">Profesional <span class="required">*</span></label>
               <select id="genProf" class="form-select" required>
                 <option value="">Selecciona profesional...</option>
-              </select>
-            </div>
-            <div class="form-group m-0">
-              <label for="genSite" class="form-label text-xs">Sede <span class="required">*</span></label>
-              <select id="genSite" class="form-select" required>
-                <option value="">Selecciona sede...</option>
               </select>
             </div>
             <div class="form-group m-0">
@@ -2159,14 +1552,10 @@ async function renderSlots(container) {
     </div>
   `;
 
-  // Cargar profesionales y sedes para los selects
+  // Cargar profesionales para los selects (la sede la resuelve el servidor)
   try {
-    const [resP, resS] = await Promise.all([
-      api.get('/admin/professionals', { page: 0, size: 100, estado: 'ACTIVO' }),
-      api.get('/admin/sites', { page: 0, size: 100, estado: 'ACTIVO' })
-    ]);
+    const resP = await api.get('/admin/professionals', { page: 0, size: 100, estado: 'ACTIVO' });
     activePros = resP?.content || [];
-    activeSites = resS?.content || [];
 
     const genP = container.querySelector('#genProf');
     const filP = container.querySelector('#filterProf');
@@ -2174,11 +1563,6 @@ async function renderSlots(container) {
       const opt = `<option value="${esc(p.publicId)}">${esc(p.nombres)} ${esc(p.apellidos)} (${esc(p.especialidadNombre)})</option>`;
       genP.insertAdjacentHTML('beforeend', opt);
       filP.insertAdjacentHTML('beforeend', opt);
-    });
-
-    const genS = container.querySelector('#genSite');
-    activeSites.forEach(s => {
-      genS.insertAdjacentHTML('beforeend', `<option value="${esc(s.publicId)}">${esc(s.nombre)}</option>`);
     });
   } catch {
     // Manejo silencioso de carga de catálogos
@@ -2188,7 +1572,6 @@ async function renderSlots(container) {
   container.querySelector('#slotGenForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const profesionalPublicId = container.querySelector('#genProf').value;
-    const sedePublicId = container.querySelector('#genSite').value;
     const modalidad = container.querySelector('#genModalidad').value;
     const fechaInicio = container.querySelector('#genFechaInicio').value;
     const fechaFin = container.querySelector('#genFechaFin').value;
@@ -2200,7 +1583,7 @@ async function renderSlots(container) {
     const errEl = container.querySelector('#genError');
     errEl.textContent = '';
 
-    if (!profesionalPublicId || !sedePublicId || !fechaInicio || !fechaFin || !horaInicio || !horaFin) {
+    if (!profesionalPublicId || !fechaInicio || !fechaFin || !horaInicio || !horaFin) {
       errEl.textContent = 'Completa todos los campos obligatorios del generador.';
       return;
     }
@@ -2218,7 +1601,6 @@ async function renderSlots(container) {
     try {
       const res = await api.post('/admin/slots/generate', {
         profesionalPublicId,
-        sedePublicId,
         fechaInicio,
         fechaFin,
         horaInicio,

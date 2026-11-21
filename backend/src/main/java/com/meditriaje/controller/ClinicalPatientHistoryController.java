@@ -1,6 +1,6 @@
 package com.meditriaje.controller;
 
-import com.meditriaje.dto.clinical.AtencionResponse;
+import com.meditriaje.dto.clinical.ClinicalAttentionResponse;
 import com.meditriaje.dto.common.PaginatedResponse;
 import com.meditriaje.service.ClinicalAttentionService;
 import com.meditriaje.util.IpUtil;
@@ -41,8 +41,8 @@ public class ClinicalPatientHistoryController {
      * Restringido a ROLE_PROFESIONAL con relación asistencial o Break-Glass vigente.
      */
     @GetMapping("/{publicId}/history")
-    public ResponseEntity<PaginatedResponse<AtencionResponse>> obtenerHistoriaPaciente(
-            @PathVariable String publicId,
+    public ResponseEntity<PaginatedResponse<ClinicalAttentionResponse>> getPatientHistory(
+            @PathVariable("publicId") String publicId,
             @RequestParam(name = "page", defaultValue = "0") int page,
             @RequestParam(name = "size", defaultValue = "10") int size,
             Authentication authentication,
@@ -50,10 +50,10 @@ public class ClinicalPatientHistoryController {
     ) {
         String usuarioPublicId = authentication.getName();
         Collection<? extends GrantedAuthority> authorities = authentication.getAuthorities();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
+        String sourceIp = IpUtil.extractIp(httpRequest);
 
-        PaginatedResponse<AtencionResponse> historia = clinicalAttentionService.obtenerHistoriaClinicaPaciente(
-                publicId, usuarioPublicId, authorities, page, size, ipOrigen
+        PaginatedResponse<ClinicalAttentionResponse> historia = clinicalAttentionService.getPatientClinicalHistory(
+                publicId, usuarioPublicId, authorities, page, size, sourceIp
         );
         return ResponseEntity.ok(historia);
     }

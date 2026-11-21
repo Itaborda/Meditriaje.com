@@ -1,29 +1,29 @@
 package com.meditriaje.service;
 
 import com.meditriaje.dto.common.PaginatedResponse;
-import com.meditriaje.dto.pharmacy.DetalleEntregaRequest;
-import com.meditriaje.dto.pharmacy.DispensacionDetalleResponse;
-import com.meditriaje.dto.pharmacy.DispensacionResponse;
-import com.meditriaje.dto.pharmacy.RecetaDispensacionResponse;
-import com.meditriaje.dto.pharmacy.RegistrarDispensacionRequest;
-import com.meditriaje.dto.pharmacy.SaldoMedicamentoDto;
-import com.meditriaje.exception.AccesoNoAutorizadoException;
-import com.meditriaje.exception.DatosInvalidosException;
-import com.meditriaje.exception.RecursoNoEncontradoException;
-import com.meditriaje.model.AccionAuditable;
-import com.meditriaje.model.Dispensacion;
-import com.meditriaje.model.EstadoRecetaDispensacion;
-import com.meditriaje.model.Paciente;
-import com.meditriaje.model.Receta;
-import com.meditriaje.model.ResultadoAuditoria;
-import com.meditriaje.model.Sede;
-import com.meditriaje.model.Usuario;
-import com.meditriaje.repository.DispensacionRepository;
-import com.meditriaje.repository.DispensacionRepository.ItemPrescritoInfo;
-import com.meditriaje.repository.PacienteRepository;
-import com.meditriaje.repository.RecetaRepository;
-import com.meditriaje.repository.SedeRepository;
-import com.meditriaje.repository.UsuarioRepository;
+import com.meditriaje.dto.pharmacy.DeliveryDetailRequest;
+import com.meditriaje.dto.pharmacy.DispensationDetailResponse;
+import com.meditriaje.dto.pharmacy.DispensationResponse;
+import com.meditriaje.dto.pharmacy.PrescriptionDispensationResponse;
+import com.meditriaje.dto.pharmacy.RegisterDispensationRequest;
+import com.meditriaje.dto.pharmacy.MedicationBalanceDto;
+import com.meditriaje.exception.UnauthorizedAccessException;
+import com.meditriaje.exception.InvalidDataException;
+import com.meditriaje.exception.ResourceNotFoundException;
+import com.meditriaje.model.AuditableAction;
+import com.meditriaje.model.Dispensation;
+import com.meditriaje.model.PrescriptionDispensationStatus;
+import com.meditriaje.model.Patient;
+import com.meditriaje.model.Prescription;
+import com.meditriaje.model.AuditResult;
+import com.meditriaje.model.Site;
+import com.meditriaje.model.User;
+import com.meditriaje.repository.DispensationRepository;
+import com.meditriaje.repository.DispensationRepository.PrescribedItemInfo;
+import com.meditriaje.repository.PatientRepository;
+import com.meditriaje.repository.PrescriptionRepository;
+import com.meditriaje.repository.SiteRepository;
+import com.meditriaje.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -57,22 +57,22 @@ import static org.mockito.Mockito.when;
 class DispensationServiceTest {
 
     @Mock
-    private UsuarioRepository usuarioRepository;
+    private UserRepository userRepository;
 
     @Mock
-    private SedeRepository sedeRepository;
+    private SiteRepository siteRepository;
 
     @Mock
-    private RecetaRepository recetaRepository;
+    private PrescriptionRepository prescriptionRepository;
 
     @Mock
-    private PacienteRepository pacienteRepository;
+    private PatientRepository patientRepository;
 
     @Mock
-    private DispensacionRepository dispensacionRepository;
+    private DispensationRepository dispensationRepository;
 
     @Mock
-    private AuditoriaService auditoriaService;
+    private AuditService auditService;
 
     private final Instant now = Instant.parse("2026-10-04T12:00:00Z");
     private final Clock clock = Clock.fixed(now, ZoneId.of("America/Bogota"));
@@ -86,36 +86,36 @@ class DispensationServiceTest {
     @BeforeEach
     void setUp() {
         service = new DispensationService(
-                usuarioRepository,
-                sedeRepository,
-                recetaRepository,
-                pacienteRepository,
-                dispensacionRepository,
-                auditoriaService,
+                userRepository,
+                siteRepository,
+                prescriptionRepository,
+                patientRepository,
+                dispensationRepository,
+                auditService,
                 clock
         );
     }
 
     @Test
     @DisplayName("registrarDispensacion - Éxito: dispensa medicamentos, guarda lote INVIMA y audita")
-    void registrarDispensacion_exito() {
-        Usuario farmaceutico = new Usuario(10L, "usr-farm-1", "farmacia@ejemplo.com", "hash", "ACTIVO", 0, null, null, false, false, null, null);
-        Sede sede = new Sede(20L, 1L, "sede-uuid-1", "Sede Central", "Calle 100", "Bogotá", "ACTIVO");
-        Receta receta = new Receta(30L, "rec-uuid-1", 100L, 200L, 300L, 30, now.minus(5, ChronoUnit.DAYS));
+    void registerDispensation_success() {
+        User farmaceutico = new User(10L, "usr-farm-1", "farmacia@ejemplo.com", "hash", "ACTIVO", 0, null, null, false, false, null, null);
+        Site sede = new Site(20L, 1L, "sede-uuid-1", "Sede Central", "Calle 100", "Bogotá", "ACTIVO");
+        Prescription receta = new Prescription(30L, "rec-uuid-1", 100L, 200L, 300L, 30, now.minus(5, ChronoUnit.DAYS));
 
-        when(usuarioRepository.buscarPorPublicId("usr-farm-1")).thenReturn(Optional.of(farmaceutico));
-        when(sedeRepository.buscarPorPublicId("sede-uuid-1")).thenReturn(Optional.of(sede));
-        when(recetaRepository.buscarEntidadPorPublicId("rec-uuid-1")).thenReturn(Optional.of(receta));
+        when(userRepository.findByPublicId("usr-farm-1")).thenReturn(Optional.of(farmaceutico));
+        when(siteRepository.getSingleSite()).thenReturn(sede);
+        when(prescriptionRepository.findEntityByPublicId("rec-uuid-1")).thenReturn(Optional.of(receta));
 
-        List<ItemPrescritoInfo> items = List.of(
-                new ItemPrescritoInfo(501L, "med-uuid-1", "Acetaminofen", 20),
-                new ItemPrescritoInfo(502L, "med-uuid-2", "Ibuprofeno", 10)
+        List<PrescribedItemInfo> items = List.of(
+                new PrescribedItemInfo(501L, "med-uuid-1", "Acetaminofen", 20),
+                new PrescribedItemInfo(502L, "med-uuid-2", "Ibuprofeno", 10)
         );
-        when(dispensacionRepository.buscarItemsPrescripcion(30L)).thenReturn(items);
-        when(dispensacionRepository.obtenerTotalesDispensadosPorRecetaId(30L)).thenReturn(Map.of(501L, 5)); // previo 5 de 20
-        when(dispensacionRepository.crearDispensacion(any(Dispensacion.class))).thenReturn(888L);
+        when(dispensationRepository.findPrescriptionItems(30L)).thenReturn(items);
+        when(dispensationRepository.getDispensedTotalsByPrescriptionId(30L)).thenReturn(Map.of(501L, 5)); // previo 5 de 20
+        when(dispensationRepository.createDispensation(any(Dispensation.class))).thenReturn(888L);
 
-        DispensacionResponse mockResp = new DispensacionResponse(
+        DispensationResponse mockResp = new DispensationResponse(
                 "disp-uuid-abc",
                 "rec-uuid-1",
                 "sede-uuid-1",
@@ -124,221 +124,193 @@ class DispensationServiceTest {
                 "farmacia@ejemplo.com",
                 "Primera entrega",
                 now,
-                List.of(new DispensacionDetalleResponse("med-uuid-1", "MED-ACE-500", "Acetaminofen", 10, "LOTE-INV-1", LocalDate.of(2027, 12, 31), now))
+                List.of(new DispensationDetailResponse("med-uuid-1", "MED-ACE-500", "Acetaminofen", 10, "LOTE-INV-1", LocalDate.of(2027, 12, 31), now))
         );
-        when(dispensacionRepository.buscarPorPublicId(anyString())).thenReturn(Optional.of(mockResp));
+        when(dispensationRepository.findByPublicId(anyString())).thenReturn(Optional.of(mockResp));
 
-        RegistrarDispensacionRequest request = new RegistrarDispensacionRequest(
+        RegisterDispensationRequest request = new RegisterDispensationRequest(
                 "rec-uuid-1",
-                "sede-uuid-1",
                 "Primera entrega",
-                List.of(new DetalleEntregaRequest("med-uuid-1", 10, "LOTE-INV-1", LocalDate.of(2027, 12, 31)))
+                List.of(new DeliveryDetailRequest("med-uuid-1", 10, "LOTE-INV-1", LocalDate.of(2027, 12, 31)))
         );
 
-        DispensacionResponse response = service.registrarDispensacion(request, "usr-farm-1", authoritiesFarmaceutico, "192.168.1.10");
+        DispensationResponse response = service.registerDispensation(request, "usr-farm-1", authoritiesFarmaceutico, "192.168.1.10");
 
         assertThat(response).isNotNull();
         assertThat(response.publicId()).isEqualTo("disp-uuid-abc");
-        assertThat(response.detalles()).hasSize(1);
-        assertThat(response.detalles().get(0).cantidadEntregada()).isEqualTo(10);
+        assertThat(response.details()).hasSize(1);
+        assertThat(response.details().get(0).deliveredQuantity()).isEqualTo(10);
 
-        verify(dispensacionRepository).guardarDetalles(eq(888L), any());
-        verify(auditoriaService).registrarEvento(
+        verify(dispensationRepository).saveDetails(eq(888L), any());
+        verify(auditService).recordEvent(
                 eq(10L),
-                eq(AccionAuditable.DISPENSACION_RECETA),
+                eq(AuditableAction.DISPENSACION_RECETA),
                 eq("RECETA"),
                 eq("rec-uuid-1"),
-                eq(ResultadoAuditoria.EXITO),
+                eq(AuditResult.EXITO),
                 eq("192.168.1.10")
         );
     }
 
     @Test
     @DisplayName("registrarDispensacion - Rechaza solicitud si la receta ha expirado")
-    void registrarDispensacion_rechazaRecetaExpirada() {
-        Usuario farmaceutico = new Usuario(10L, "usr-farm-1", "farmacia@ejemplo.com", "hash", "ACTIVO", 0, null, null, false, false, null, null);
-        Sede sede = new Sede(20L, 1L, "sede-uuid-1", "Sede Central", "Calle 100", "Bogotá", "ACTIVO");
+    void registerDispensation_rejectsExpiredPrescription() {
+        User farmaceutico = new User(10L, "usr-farm-1", "farmacia@ejemplo.com", "hash", "ACTIVO", 0, null, null, false, false, null, null);
+        Site sede = new Site(20L, 1L, "sede-uuid-1", "Sede Central", "Calle 100", "Bogotá", "ACTIVO");
         // Emitida hace 35 días con vigencia de 30 días -> Expirada
-        Receta receta = new Receta(30L, "rec-uuid-1", 100L, 200L, 300L, 30, now.minus(35, ChronoUnit.DAYS));
+        Prescription receta = new Prescription(30L, "rec-uuid-1", 100L, 200L, 300L, 30, now.minus(35, ChronoUnit.DAYS));
 
-        when(usuarioRepository.buscarPorPublicId("usr-farm-1")).thenReturn(Optional.of(farmaceutico));
-        when(sedeRepository.buscarPorPublicId("sede-uuid-1")).thenReturn(Optional.of(sede));
-        when(recetaRepository.buscarEntidadPorPublicId("rec-uuid-1")).thenReturn(Optional.of(receta));
+        when(userRepository.findByPublicId("usr-farm-1")).thenReturn(Optional.of(farmaceutico));
+        when(siteRepository.getSingleSite()).thenReturn(sede);
+        when(prescriptionRepository.findEntityByPublicId("rec-uuid-1")).thenReturn(Optional.of(receta));
 
-        RegistrarDispensacionRequest request = new RegistrarDispensacionRequest(
+        RegisterDispensationRequest request = new RegisterDispensationRequest(
                 "rec-uuid-1",
-                "sede-uuid-1",
                 null,
-                List.of(new DetalleEntregaRequest("med-uuid-1", 5, "LOTE-1", null))
+                List.of(new DeliveryDetailRequest("med-uuid-1", 5, "LOTE-1", null))
         );
 
-        assertThatThrownBy(() -> service.registrarDispensacion(request, "usr-farm-1", authoritiesFarmaceutico, "127.0.0.1"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> service.registerDispensation(request, "usr-farm-1", authoritiesFarmaceutico, "127.0.0.1"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("ha expirado");
 
-        verify(dispensacionRepository, never()).crearDispensacion(any());
-        verify(auditoriaService, never()).registrarEvento(any(), any(), any(), any(), any(), any());
+        verify(dispensationRepository, never()).createDispensation(any());
+        verify(auditService, never()).recordEvent(any(), any(), any(), any(), any(), any());
     }
 
     @Test
     @DisplayName("registrarDispensacion - Rechaza acceso si el usuario no tiene rol ROLE_FARMACEUTICO")
-    void registrarDispensacion_rechazaRolNoFarmaceutico() {
-        RegistrarDispensacionRequest request = new RegistrarDispensacionRequest(
+    void registerDispensation_rejectsNonPharmacistRole() {
+        RegisterDispensationRequest request = new RegisterDispensationRequest(
                 "rec-uuid-1",
-                "sede-uuid-1",
                 null,
-                List.of(new DetalleEntregaRequest("med-uuid-1", 5, "LOTE-1", null))
+                List.of(new DeliveryDetailRequest("med-uuid-1", 5, "LOTE-1", null))
         );
 
-        assertThatThrownBy(() -> service.registrarDispensacion(request, "usr-admin-1", authoritiesAdmin, "127.0.0.1"))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+        assertThatThrownBy(() -> service.registerDispensation(request, "usr-admin-1", authoritiesAdmin, "127.0.0.1"))
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessageContaining("ROLE_FARMACEUTICO");
 
-        assertThatThrownBy(() -> service.registrarDispensacion(request, "usr-pac-1", authoritiesPaciente, "127.0.0.1"))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+        assertThatThrownBy(() -> service.registerDispensation(request, "usr-pac-1", authoritiesPaciente, "127.0.0.1"))
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessageContaining("ROLE_FARMACEUTICO");
     }
 
     @Test
     @DisplayName("registrarDispensacion - Rechaza sobre-dispensación que supere el saldo pendiente")
-    void registrarDispensacion_rechazaSobreDispensacion() {
-        Usuario farmaceutico = new Usuario(10L, "usr-farm-1", "farmacia@ejemplo.com", "hash", "ACTIVO", 0, null, null, false, false, null, null);
-        Sede sede = new Sede(20L, 1L, "sede-uuid-1", "Sede Central", "Calle 100", "Bogotá", "ACTIVO");
-        Receta receta = new Receta(30L, "rec-uuid-1", 100L, 200L, 300L, 30, now.minus(2, ChronoUnit.DAYS));
+    void registerDispensation_rejectsOverDispensation() {
+        User farmaceutico = new User(10L, "usr-farm-1", "farmacia@ejemplo.com", "hash", "ACTIVO", 0, null, null, false, false, null, null);
+        Site sede = new Site(20L, 1L, "sede-uuid-1", "Sede Central", "Calle 100", "Bogotá", "ACTIVO");
+        Prescription receta = new Prescription(30L, "rec-uuid-1", 100L, 200L, 300L, 30, now.minus(2, ChronoUnit.DAYS));
 
-        when(usuarioRepository.buscarPorPublicId("usr-farm-1")).thenReturn(Optional.of(farmaceutico));
-        when(sedeRepository.buscarPorPublicId("sede-uuid-1")).thenReturn(Optional.of(sede));
-        when(recetaRepository.buscarEntidadPorPublicId("rec-uuid-1")).thenReturn(Optional.of(receta));
+        when(userRepository.findByPublicId("usr-farm-1")).thenReturn(Optional.of(farmaceutico));
+        when(siteRepository.getSingleSite()).thenReturn(sede);
+        when(prescriptionRepository.findEntityByPublicId("rec-uuid-1")).thenReturn(Optional.of(receta));
 
         // Prescrito: 10. Ya entregado: 8. Saldo disponible: 2.
-        List<ItemPrescritoInfo> items = List.of(
-                new ItemPrescritoInfo(501L, "med-uuid-1", "Amoxicilina", 10)
+        List<PrescribedItemInfo> items = List.of(
+                new PrescribedItemInfo(501L, "med-uuid-1", "Amoxicilina", 10)
         );
-        when(dispensacionRepository.buscarItemsPrescripcion(30L)).thenReturn(items);
-        when(dispensacionRepository.obtenerTotalesDispensadosPorRecetaId(30L)).thenReturn(Map.of(501L, 8));
+        when(dispensationRepository.findPrescriptionItems(30L)).thenReturn(items);
+        when(dispensationRepository.getDispensedTotalsByPrescriptionId(30L)).thenReturn(Map.of(501L, 8));
 
         // Solicita 5 (supera saldo de 2)
-        RegistrarDispensacionRequest request = new RegistrarDispensacionRequest(
+        RegisterDispensationRequest request = new RegisterDispensationRequest(
                 "rec-uuid-1",
-                "sede-uuid-1",
                 null,
-                List.of(new DetalleEntregaRequest("med-uuid-1", 5, "LOTE-1", null))
+                List.of(new DeliveryDetailRequest("med-uuid-1", 5, "LOTE-1", null))
         );
 
-        assertThatThrownBy(() -> service.registrarDispensacion(request, "usr-farm-1", authoritiesFarmaceutico, "127.0.0.1"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> service.registerDispensation(request, "usr-farm-1", authoritiesFarmaceutico, "127.0.0.1"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("excede el saldo pendiente (2)");
     }
 
     @Test
     @DisplayName("registrarDispensacion - Rechaza entrega de medicamento ya dispensado en su totalidad")
-    void registrarDispensacion_rechazaMedicamentoYaTotalmenteDispensado() {
-        Usuario farmaceutico = new Usuario(10L, "usr-farm-1", "farmacia@ejemplo.com", "hash", "ACTIVO", 0, null, null, false, false, null, null);
-        Sede sede = new Sede(20L, 1L, "sede-uuid-1", "Sede Central", "Calle 100", "Bogotá", "ACTIVO");
-        Receta receta = new Receta(30L, "rec-uuid-1", 100L, 200L, 300L, 30, now.minus(2, ChronoUnit.DAYS));
+    void registerDispensation_rejectsAlreadyFullyDispensedMedication() {
+        User farmaceutico = new User(10L, "usr-farm-1", "farmacia@ejemplo.com", "hash", "ACTIVO", 0, null, null, false, false, null, null);
+        Site sede = new Site(20L, 1L, "sede-uuid-1", "Sede Central", "Calle 100", "Bogotá", "ACTIVO");
+        Prescription receta = new Prescription(30L, "rec-uuid-1", 100L, 200L, 300L, 30, now.minus(2, ChronoUnit.DAYS));
 
-        when(usuarioRepository.buscarPorPublicId("usr-farm-1")).thenReturn(Optional.of(farmaceutico));
-        when(sedeRepository.buscarPorPublicId("sede-uuid-1")).thenReturn(Optional.of(sede));
-        when(recetaRepository.buscarEntidadPorPublicId("rec-uuid-1")).thenReturn(Optional.of(receta));
+        when(userRepository.findByPublicId("usr-farm-1")).thenReturn(Optional.of(farmaceutico));
+        when(siteRepository.getSingleSite()).thenReturn(sede);
+        when(prescriptionRepository.findEntityByPublicId("rec-uuid-1")).thenReturn(Optional.of(receta));
 
         // Prescrito: 10. Ya entregado: 10. Saldo: 0.
-        List<ItemPrescritoInfo> items = List.of(
-                new ItemPrescritoInfo(501L, "med-uuid-1", "Omeprazol", 10)
+        List<PrescribedItemInfo> items = List.of(
+                new PrescribedItemInfo(501L, "med-uuid-1", "Omeprazol", 10)
         );
-        when(dispensacionRepository.buscarItemsPrescripcion(30L)).thenReturn(items);
-        when(dispensacionRepository.obtenerTotalesDispensadosPorRecetaId(30L)).thenReturn(Map.of(501L, 10));
+        when(dispensationRepository.findPrescriptionItems(30L)).thenReturn(items);
+        when(dispensationRepository.getDispensedTotalsByPrescriptionId(30L)).thenReturn(Map.of(501L, 10));
 
-        RegistrarDispensacionRequest request = new RegistrarDispensacionRequest(
+        RegisterDispensationRequest request = new RegisterDispensationRequest(
                 "rec-uuid-1",
-                "sede-uuid-1",
                 null,
-                List.of(new DetalleEntregaRequest("med-uuid-1", 1, "LOTE-1", null))
+                List.of(new DeliveryDetailRequest("med-uuid-1", 1, "LOTE-1", null))
         );
 
-        assertThatThrownBy(() -> service.registrarDispensacion(request, "usr-farm-1", authoritiesFarmaceutico, "127.0.0.1"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> service.registerDispensation(request, "usr-farm-1", authoritiesFarmaceutico, "127.0.0.1"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("ya ha sido dispensado en su totalidad");
     }
 
     @Test
     @DisplayName("registrarDispensacion - Rechaza medicamento que no pertenece a la receta")
-    void registrarDispensacion_rechazaMedicamentoNoPrescrito() {
-        Usuario farmaceutico = new Usuario(10L, "usr-farm-1", "farmacia@ejemplo.com", "hash", "ACTIVO", 0, null, null, false, false, null, null);
-        Sede sede = new Sede(20L, 1L, "sede-uuid-1", "Sede Central", "Calle 100", "Bogotá", "ACTIVO");
-        Receta receta = new Receta(30L, "rec-uuid-1", 100L, 200L, 300L, 30, now.minus(2, ChronoUnit.DAYS));
+    void registerDispensation_rejectsUnprescribedMedication() {
+        User farmaceutico = new User(10L, "usr-farm-1", "farmacia@ejemplo.com", "hash", "ACTIVO", 0, null, null, false, false, null, null);
+        Site sede = new Site(20L, 1L, "sede-uuid-1", "Sede Central", "Calle 100", "Bogotá", "ACTIVO");
+        Prescription receta = new Prescription(30L, "rec-uuid-1", 100L, 200L, 300L, 30, now.minus(2, ChronoUnit.DAYS));
 
-        when(usuarioRepository.buscarPorPublicId("usr-farm-1")).thenReturn(Optional.of(farmaceutico));
-        when(sedeRepository.buscarPorPublicId("sede-uuid-1")).thenReturn(Optional.of(sede));
-        when(recetaRepository.buscarEntidadPorPublicId("rec-uuid-1")).thenReturn(Optional.of(receta));
+        when(userRepository.findByPublicId("usr-farm-1")).thenReturn(Optional.of(farmaceutico));
+        when(siteRepository.getSingleSite()).thenReturn(sede);
+        when(prescriptionRepository.findEntityByPublicId("rec-uuid-1")).thenReturn(Optional.of(receta));
 
-        List<ItemPrescritoInfo> items = List.of(
-                new ItemPrescritoInfo(501L, "med-uuid-1", "Omeprazol", 10)
+        List<PrescribedItemInfo> items = List.of(
+                new PrescribedItemInfo(501L, "med-uuid-1", "Omeprazol", 10)
         );
-        when(dispensacionRepository.buscarItemsPrescripcion(30L)).thenReturn(items);
+        when(dispensationRepository.findPrescriptionItems(30L)).thenReturn(items);
 
-        RegistrarDispensacionRequest request = new RegistrarDispensacionRequest(
+        RegisterDispensationRequest request = new RegisterDispensationRequest(
                 "rec-uuid-1",
-                "sede-uuid-1",
                 null,
-                List.of(new DetalleEntregaRequest("med-uuid-999", 5, "LOTE-1", null))
+                List.of(new DeliveryDetailRequest("med-uuid-999", 5, "LOTE-1", null))
         );
 
-        assertThatThrownBy(() -> service.registrarDispensacion(request, "usr-farm-1", authoritiesFarmaceutico, "127.0.0.1"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> service.registerDispensation(request, "usr-farm-1", authoritiesFarmaceutico, "127.0.0.1"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("no forma parte de la receta médica");
     }
 
     @Test
     @DisplayName("registrarDispensacion - Rechaza medicamentos duplicados en la misma solicitud")
-    void registrarDispensacion_rechazaMedicamentosDuplicadosEnSolicitud() {
-        Usuario farmaceutico = new Usuario(10L, "usr-farm-1", "farmacia@ejemplo.com", "hash", "ACTIVO", 0, null, null, false, false, null, null);
-        Sede sede = new Sede(20L, 1L, "sede-uuid-1", "Sede Central", "Calle 100", "Bogotá", "ACTIVO");
-        Receta receta = new Receta(30L, "rec-uuid-1", 100L, 200L, 300L, 30, now.minus(2, ChronoUnit.DAYS));
+    void registerDispensation_rejectsDuplicateMedicationsInRequest() {
+        User farmaceutico = new User(10L, "usr-farm-1", "farmacia@ejemplo.com", "hash", "ACTIVO", 0, null, null, false, false, null, null);
+        Site sede = new Site(20L, 1L, "sede-uuid-1", "Sede Central", "Calle 100", "Bogotá", "ACTIVO");
+        Prescription receta = new Prescription(30L, "rec-uuid-1", 100L, 200L, 300L, 30, now.minus(2, ChronoUnit.DAYS));
 
-        when(usuarioRepository.buscarPorPublicId("usr-farm-1")).thenReturn(Optional.of(farmaceutico));
-        when(sedeRepository.buscarPorPublicId("sede-uuid-1")).thenReturn(Optional.of(sede));
-        when(recetaRepository.buscarEntidadPorPublicId("rec-uuid-1")).thenReturn(Optional.of(receta));
+        when(userRepository.findByPublicId("usr-farm-1")).thenReturn(Optional.of(farmaceutico));
+        when(siteRepository.getSingleSite()).thenReturn(sede);
+        when(prescriptionRepository.findEntityByPublicId("rec-uuid-1")).thenReturn(Optional.of(receta));
 
-        RegistrarDispensacionRequest request = new RegistrarDispensacionRequest(
+        RegisterDispensationRequest request = new RegisterDispensationRequest(
                 "rec-uuid-1",
-                "sede-uuid-1",
                 null,
                 List.of(
-                        new DetalleEntregaRequest("med-uuid-1", 5, "LOTE-1", null),
-                        new DetalleEntregaRequest("med-uuid-1", 5, "LOTE-2", null)
+                        new DeliveryDetailRequest("med-uuid-1", 5, "LOTE-1", null),
+                        new DeliveryDetailRequest("med-uuid-1", 5, "LOTE-2", null)
                 )
         );
 
-        assertThatThrownBy(() -> service.registrarDispensacion(request, "usr-farm-1", authoritiesFarmaceutico, "127.0.0.1"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> service.registerDispensation(request, "usr-farm-1", authoritiesFarmaceutico, "127.0.0.1"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("duplicados");
     }
 
     @Test
-    @DisplayName("registrarDispensacion - Rechaza sede inactiva")
-    void registrarDispensacion_rechazaSedeInactiva() {
-        Usuario farmaceutico = new Usuario(10L, "usr-farm-1", "farmacia@ejemplo.com", "hash", "ACTIVO", 0, null, null, false, false, null, null);
-        Sede sedeInactiva = new Sede(20L, 1L, "sede-uuid-1", "Sede Antigua", "Calle 50", "Medellín", "INACTIVO");
-
-        when(usuarioRepository.buscarPorPublicId("usr-farm-1")).thenReturn(Optional.of(farmaceutico));
-        when(sedeRepository.buscarPorPublicId("sede-uuid-1")).thenReturn(Optional.of(sedeInactiva));
-
-        RegistrarDispensacionRequest request = new RegistrarDispensacionRequest(
-                "rec-uuid-1",
-                "sede-uuid-1",
-                null,
-                List.of(new DetalleEntregaRequest("med-uuid-1", 5, "LOTE-1", null))
-        );
-
-        assertThatThrownBy(() -> service.registrarDispensacion(request, "usr-farm-1", authoritiesFarmaceutico, "127.0.0.1"))
-                .isInstanceOf(DatosInvalidosException.class)
-                .hasMessageContaining("inactiva");
-    }
-
-    @Test
     @DisplayName("consultarRecetaParaFarmacia - Éxito: retorna saldos y datos de reclamación")
-    void consultarRecetaParaFarmacia_exito() {
-        RecetaDispensacionResponse mockResp = new RecetaDispensacionResponse(
+    void getPrescriptionForPharmacy_success() {
+        PrescriptionDispensationResponse mockResp = new PrescriptionDispensationResponse(
                 "rec-uuid-1",
                 "REC-A1B2C3D4",
                 "atn-1",
@@ -352,31 +324,31 @@ class DispensationServiceTest {
                 now.minus(5, ChronoUnit.DAYS),
                 now.plus(25, ChronoUnit.DAYS),
                 false,
-                EstadoRecetaDispensacion.PENDIENTE,
+                PrescriptionDispensationStatus.PENDIENTE,
                 List.of(),
                 List.of()
         );
-        when(dispensacionRepository.buscarRecetaDispensacionPorPublicId("rec-uuid-1")).thenReturn(Optional.of(mockResp));
+        when(dispensationRepository.findPrescriptionDispensationByPublicId("rec-uuid-1")).thenReturn(Optional.of(mockResp));
 
-        RecetaDispensacionResponse res = service.consultarRecetaParaFarmacia("rec-uuid-1", authoritiesFarmaceutico);
+        PrescriptionDispensationResponse res = service.getPrescriptionForPharmacy("rec-uuid-1", authoritiesFarmaceutico);
 
         assertThat(res).isNotNull();
-        assertThat(res.recetaPublicId()).isEqualTo("rec-uuid-1");
-        assertThat(res.codigoReclamacion()).isEqualTo("REC-A1B2C3D4");
+        assertThat(res.prescriptionPublicId()).isEqualTo("rec-uuid-1");
+        assertThat(res.claimCode()).isEqualTo("REC-A1B2C3D4");
     }
 
     @Test
     @DisplayName("buscarRecetasParaFarmacia - Retorna lista paginada")
-    void buscarRecetasParaFarmacia_retornaPaginado() {
-        RecetaDispensacionResponse item = new RecetaDispensacionResponse(
+    void searchPrescriptionsForPharmacy_returnsPaginated() {
+        PrescriptionDispensationResponse item = new PrescriptionDispensationResponse(
                 "rec-uuid-1", "REC-1", "atn-1", "pac-1", "CC 10203040", "Carlos Gomez", "prof-1", "Dra. Perez",
-                "Medicina General", 30, now, now.plus(30, ChronoUnit.DAYS), false, EstadoRecetaDispensacion.PENDIENTE,
+                "Medicina General", 30, now, now.plus(30, ChronoUnit.DAYS), false, PrescriptionDispensationStatus.PENDIENTE,
                 List.of(), List.of()
         );
-        when(dispensacionRepository.buscarRecetasDispensacion("10203040", 0, 10)).thenReturn(List.of(item));
-        when(dispensacionRepository.contarRecetasDispensacion("10203040")).thenReturn(1);
+        when(dispensationRepository.searchPrescriptionDispensations("10203040", 0, 10)).thenReturn(List.of(item));
+        when(dispensationRepository.countPrescriptionDispensations("10203040")).thenReturn(1);
 
-        PaginatedResponse<RecetaDispensacionResponse> pag = service.buscarRecetasParaFarmacia("10203040", 0, 10, authoritiesFarmaceutico);
+        PaginatedResponse<PrescriptionDispensationResponse> pag = service.searchPrescriptionsForPharmacy("10203040", 0, 10, authoritiesFarmaceutico);
 
         assertThat(pag.content()).hasSize(1);
         assertThat(pag.totalElements()).isEqualTo(1L);
@@ -385,55 +357,42 @@ class DispensationServiceTest {
 
     @Test
     @DisplayName("consultarDispensacionPaciente - Éxito: paciente consulta su propia receta")
-    void consultarDispensacionPaciente_exito() {
-        Usuario userPac = new Usuario(50L, "usr-pac-1", "carlos@ejemplo.com", "hash", "ACTIVO", 0, null, null, false, false, null, null);
-        Paciente paciente = new Paciente(100L, 50L, "pac-uuid-1", "CC", "10203040", "Carlos", "Gomez", LocalDate.of(1990, 1, 1), "3001234567", now, null);
-        Receta receta = new Receta(30L, "rec-uuid-1", 200L, 100L, 300L, 30, now);
+    void getDispensationPatient_success() {
+        User userPac = new User(50L, "usr-pac-1", "carlos@ejemplo.com", "hash", "ACTIVO", 0, null, null, false, false, null, null);
+        Patient paciente = new Patient(100L, 50L, "pac-uuid-1", "CC", "10203040", "Carlos", "Gomez", LocalDate.of(1990, 1, 1), "3001234567", now, null);
+        Prescription receta = new Prescription(30L, "rec-uuid-1", 200L, 100L, 300L, 30, now);
 
-        when(usuarioRepository.buscarPorPublicId("usr-pac-1")).thenReturn(Optional.of(userPac));
-        when(pacienteRepository.buscarPorUsuarioId(50L)).thenReturn(Optional.of(paciente));
-        when(recetaRepository.buscarEntidadPorPublicId("rec-uuid-1")).thenReturn(Optional.of(receta));
+        when(userRepository.findByPublicId("usr-pac-1")).thenReturn(Optional.of(userPac));
+        when(patientRepository.findByUserId(50L)).thenReturn(Optional.of(paciente));
+        when(prescriptionRepository.findEntityByPublicId("rec-uuid-1")).thenReturn(Optional.of(receta));
 
-        RecetaDispensacionResponse mockResp = new RecetaDispensacionResponse(
+        PrescriptionDispensationResponse mockResp = new PrescriptionDispensationResponse(
                 "rec-uuid-1", "REC-12345678", "atn-1", "pac-uuid-1", "CC 10203040", "Carlos Gomez", "prof-1", "Dra. Perez",
-                "Medicina General", 30, now, now.plus(30, ChronoUnit.DAYS), false, EstadoRecetaDispensacion.PENDIENTE,
+                "Medicina General", 30, now, now.plus(30, ChronoUnit.DAYS), false, PrescriptionDispensationStatus.PENDIENTE,
                 List.of(), List.of()
         );
-        when(dispensacionRepository.buscarRecetaDispensacionPorPublicId("rec-uuid-1")).thenReturn(Optional.of(mockResp));
+        when(dispensationRepository.findPrescriptionDispensationByPublicId("rec-uuid-1")).thenReturn(Optional.of(mockResp));
 
-        RecetaDispensacionResponse res = service.consultarDispensacionPaciente("rec-uuid-1", "usr-pac-1");
+        PrescriptionDispensationResponse res = service.getPatientDispensation("rec-uuid-1", "usr-pac-1");
 
         assertThat(res).isNotNull();
-        assertThat(res.recetaPublicId()).isEqualTo("rec-uuid-1");
+        assertThat(res.prescriptionPublicId()).isEqualTo("rec-uuid-1");
     }
 
     @Test
     @DisplayName("consultarDispensacionPaciente - Rechaza consulta de receta ajena")
-    void consultarDispensacionPaciente_rechazaRecetaAjena() {
-        Usuario userPac = new Usuario(50L, "usr-pac-1", "carlos@ejemplo.com", "hash", "ACTIVO", 0, null, null, false, false, null, null);
-        Paciente paciente = new Paciente(100L, 50L, "pac-uuid-1", "CC", "10203040", "Carlos", "Gomez", LocalDate.of(1990, 1, 1), "3001234567", now, null);
+    void getDispensationPatient_rejectsOtherPatientPrescription() {
+        User userPac = new User(50L, "usr-pac-1", "carlos@ejemplo.com", "hash", "ACTIVO", 0, null, null, false, false, null, null);
+        Patient paciente = new Patient(100L, 50L, "pac-uuid-1", "CC", "10203040", "Carlos", "Gomez", LocalDate.of(1990, 1, 1), "3001234567", now, null);
         // Receta pertenece al paciente 999L, no al 100L
-        Receta recetaAjena = new Receta(30L, "rec-uuid-1", 200L, 999L, 300L, 30, now);
+        Prescription recetaAjena = new Prescription(30L, "rec-uuid-1", 200L, 999L, 300L, 30, now);
 
-        when(usuarioRepository.buscarPorPublicId("usr-pac-1")).thenReturn(Optional.of(userPac));
-        when(pacienteRepository.buscarPorUsuarioId(50L)).thenReturn(Optional.of(paciente));
-        when(recetaRepository.buscarEntidadPorPublicId("rec-uuid-1")).thenReturn(Optional.of(recetaAjena));
+        when(userRepository.findByPublicId("usr-pac-1")).thenReturn(Optional.of(userPac));
+        when(patientRepository.findByUserId(50L)).thenReturn(Optional.of(paciente));
+        when(prescriptionRepository.findEntityByPublicId("rec-uuid-1")).thenReturn(Optional.of(recetaAjena));
 
-        assertThatThrownBy(() -> service.consultarDispensacionPaciente("rec-uuid-1", "usr-pac-1"))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+        assertThatThrownBy(() -> service.getPatientDispensation("rec-uuid-1", "usr-pac-1"))
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessageContaining("otro paciente");
-    }
-
-    @Test
-    @DisplayName("listarSedesActivas - Retorna lista de sedes activas mapeadas")
-    void listarSedesActivas_retornaSedesDeRepository() {
-        Sede sede1 = new Sede(1L, 10L, "sede-1", "Sede Central", "Calle 10", "Bogotá", "ACTIVO");
-        when(sedeRepository.listar(0, 100, null, "ACTIVO")).thenReturn(List.of(sede1));
-
-        List<com.meditriaje.dto.admin.SedeResponse> result = service.listarSedesActivas();
-
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).publicId()).isEqualTo("sede-1");
-        assertThat(result.get(0).nombre()).isEqualTo("Sede Central");
     }
 }

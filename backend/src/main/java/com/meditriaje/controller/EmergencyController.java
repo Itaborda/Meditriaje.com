@@ -1,12 +1,12 @@
 package com.meditriaje.controller;
 
-import com.meditriaje.dto.emergency.AsignarEquipoRequest;
-import com.meditriaje.dto.emergency.EpisodioUrgenciaResponse;
-import com.meditriaje.dto.emergency.ItemColaUrgenciaResponse;
-import com.meditriaje.dto.emergency.ReconciliarIdentidadRequest;
-import com.meditriaje.dto.emergency.RegistrarAdmisionUrgenciaRequest;
-import com.meditriaje.dto.emergency.RegistrarValoracionTriajeRequest;
-import com.meditriaje.dto.emergency.ValoracionTriajeResponse;
+import com.meditriaje.dto.emergency.AssignTeamRequest;
+import com.meditriaje.dto.emergency.EmergencyEpisodeResponse;
+import com.meditriaje.dto.emergency.EmergencyQueueItemResponse;
+import com.meditriaje.dto.emergency.ReconcileIdentityRequest;
+import com.meditriaje.dto.emergency.RegisterEmergencyAdmissionRequest;
+import com.meditriaje.dto.emergency.RegisterTriageAssessmentRequest;
+import com.meditriaje.dto.emergency.TriageAssessmentResponse;
 import com.meditriaje.service.EmergencyService;
 import com.meditriaje.util.IpUtil;
 import jakarta.servlet.http.HttpServletRequest;
@@ -48,16 +48,16 @@ public class EmergencyController {
      */
     @PostMapping("/admissions")
     @PreAuthorize("hasAnyAuthority('ROLE_ENFERMERIA', 'ROLE_PROFESIONAL', 'ROLE_ADMINISTRADOR')")
-    public ResponseEntity<EpisodioUrgenciaResponse> registrarAdmision(
-            @Valid @RequestBody RegistrarAdmisionUrgenciaRequest request,
+    public ResponseEntity<EmergencyEpisodeResponse> registerAdmission(
+            @Valid @RequestBody RegisterEmergencyAdmissionRequest request,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String usuarioPublicId = authentication.getName();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
+        String sourceIp = IpUtil.extractIp(httpRequest);
 
-        EpisodioUrgenciaResponse response = emergencyService.registrarAdmisionUrgencia(request, usuarioPublicId, ipOrigen);
-        URI location = URI.create("/api/v1/emergency/admissions/" + response.episodioPublicId());
+        EmergencyEpisodeResponse response = emergencyService.registerEmergencyAdmission(request, usuarioPublicId, sourceIp);
+        URI location = URI.create("/api/v1/emergency/admissions/" + response.episodePublicId());
 
         return ResponseEntity.created(location).body(response);
     }
@@ -66,11 +66,11 @@ public class EmergencyController {
      * Endpoint para consultar el detalle de un episodio de urgencias (U02).
      */
     @GetMapping("/admissions/{episodePublicId}")
-    public ResponseEntity<EpisodioUrgenciaResponse> obtenerDetalleEpisodio(
-            @PathVariable String episodePublicId,
+    public ResponseEntity<EmergencyEpisodeResponse> getEpisodeDetail(
+            @PathVariable("episodePublicId") String episodePublicId,
             Authentication authentication
     ) {
-        EpisodioUrgenciaResponse response = emergencyService.obtenerDetalleEpisodio(
+        EmergencyEpisodeResponse response = emergencyService.getEpisodeDetail(
                 episodePublicId,
                 authentication.getName(),
                 authentication.getAuthorities()
@@ -83,16 +83,16 @@ public class EmergencyController {
      */
     @PostMapping("/episodes/{episodePublicId}/reconcile")
     @PreAuthorize("hasAnyAuthority('ROLE_ENFERMERIA', 'ROLE_PROFESIONAL', 'ROLE_ADMINISTRADOR')")
-    public ResponseEntity<EpisodioUrgenciaResponse> reconciliarIdentidad(
-            @PathVariable String episodePublicId,
-            @Valid @RequestBody ReconciliarIdentidadRequest request,
+    public ResponseEntity<EmergencyEpisodeResponse> reconcileIdentity(
+            @PathVariable("episodePublicId") String episodePublicId,
+            @Valid @RequestBody ReconcileIdentityRequest request,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String usuarioPublicId = authentication.getName();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
+        String sourceIp = IpUtil.extractIp(httpRequest);
 
-        EpisodioUrgenciaResponse response = emergencyService.reconciliarIdentidad(episodePublicId, request, usuarioPublicId, ipOrigen);
+        EmergencyEpisodeResponse response = emergencyService.reconcileIdentity(episodePublicId, request, usuarioPublicId, sourceIp);
         return ResponseEntity.ok(response);
     }
 
@@ -101,21 +101,21 @@ public class EmergencyController {
      */
     @PostMapping("/episodes/{episodePublicId}/triage-assessments")
     @PreAuthorize("hasAnyAuthority('ROLE_ENFERMERIA', 'ROLE_PROFESIONAL')")
-    public ResponseEntity<ValoracionTriajeResponse> registrarValoracionTriaje(
-            @PathVariable String episodePublicId,
-            @Valid @RequestBody RegistrarValoracionTriajeRequest request,
+    public ResponseEntity<TriageAssessmentResponse> recordTriageAssessment(
+            @PathVariable("episodePublicId") String episodePublicId,
+            @Valid @RequestBody RegisterTriageAssessmentRequest request,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String usuarioPublicId = authentication.getName();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
+        String sourceIp = IpUtil.extractIp(httpRequest);
 
-        ValoracionTriajeResponse response = emergencyService.registrarValoracionTriaje(
+        TriageAssessmentResponse response = emergencyService.recordTriageAssessment(
                 episodePublicId,
                 request,
                 usuarioPublicId,
                 authentication.getAuthorities(),
-                ipOrigen
+                sourceIp
         );
         URI location = URI.create("/api/v1/emergency/episodes/" + episodePublicId + "/triage-assessments/" + response.publicId());
 
@@ -126,11 +126,11 @@ public class EmergencyController {
      * Endpoint para consultar el historial de valoraciones de triaje de un episodio (U04).
      */
     @GetMapping("/episodes/{episodePublicId}/triage-assessments")
-    public ResponseEntity<List<ValoracionTriajeResponse>> listarHistorialTriaje(
-            @PathVariable String episodePublicId,
+    public ResponseEntity<List<TriageAssessmentResponse>> listTriageHistory(
+            @PathVariable("episodePublicId") String episodePublicId,
             Authentication authentication
     ) {
-        List<ValoracionTriajeResponse> response = emergencyService.listarHistorialTriaje(
+        List<TriageAssessmentResponse> response = emergencyService.listTriageHistory(
                 episodePublicId,
                 authentication.getName(),
                 authentication.getAuthorities()
@@ -143,31 +143,28 @@ public class EmergencyController {
      */
     @PostMapping("/episodes/{episodePublicId}/care-team")
     @PreAuthorize("hasAnyAuthority('ROLE_ENFERMERIA', 'ROLE_PROFESIONAL', 'ROLE_ADMINISTRADOR')")
-    public ResponseEntity<Map<String, String>> asignarEquipoAsistencial(
-            @PathVariable String episodePublicId,
-            @Valid @RequestBody AsignarEquipoRequest request,
+    public ResponseEntity<Map<String, String>> assignCareTeam(
+            @PathVariable("episodePublicId") String episodePublicId,
+            @Valid @RequestBody AssignTeamRequest request,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String usuarioPublicId = authentication.getName();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
+        String sourceIp = IpUtil.extractIp(httpRequest);
 
-        emergencyService.asignarEquipoAsistencial(episodePublicId, request, usuarioPublicId, ipOrigen);
+        emergencyService.assignCareTeam(episodePublicId, request, usuarioPublicId, sourceIp);
         return ResponseEntity.ok(Map.of("mensaje", "Profesional asignado exitosamente al equipo asistencial."));
     }
 
     /**
-     * Endpoint para consultar la cola priorizada de urgencias por sede (U05).
+     * Endpoint para consultar la cola priorizada de urgencias del hospital (U05).
      */
-    @GetMapping({"/queue", "/queue/{siteId}"})
+    @GetMapping("/queue")
     @PreAuthorize("hasAnyAuthority('ROLE_ENFERMERIA', 'ROLE_PROFESIONAL', 'ROLE_ADMINISTRADOR')")
-    public ResponseEntity<List<ItemColaUrgenciaResponse>> listarColaUrgencias(
-            @PathVariable(required = false) String siteId,
-            @RequestParam(name = "siteId", required = false) String querySiteId,
-            @RequestParam(required = false) String status
+    public ResponseEntity<List<EmergencyQueueItemResponse>> listEmergencyQueue(
+            @RequestParam(value = "status", required = false) String status
     ) {
-        String effectiveSiteId = siteId != null ? siteId : querySiteId;
-        List<ItemColaUrgenciaResponse> cola = emergencyService.listarColaUrgencias(effectiveSiteId, status);
+        List<EmergencyQueueItemResponse> cola = emergencyService.listEmergencyQueue(status);
         return ResponseEntity.ok(cola);
     }
 
@@ -176,15 +173,15 @@ public class EmergencyController {
      */
     @PostMapping("/episodes/{episodePublicId}/close")
     @PreAuthorize("hasAnyAuthority('ROLE_ENFERMERIA', 'ROLE_PROFESIONAL')")
-    public ResponseEntity<Map<String, String>> cerrarEpisodio(
-            @PathVariable String episodePublicId,
+    public ResponseEntity<Map<String, String>> closeEpisode(
+            @PathVariable("episodePublicId") String episodePublicId,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String usuarioPublicId = authentication.getName();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
+        String sourceIp = IpUtil.extractIp(httpRequest);
 
-        emergencyService.cerrarEpisodio(episodePublicId, usuarioPublicId, ipOrigen);
+        emergencyService.closeEpisode(episodePublicId, usuarioPublicId, sourceIp);
         return ResponseEntity.ok(Map.of("mensaje", "Episodio de urgencias cerrado y egresado exitosamente."));
     }
 }

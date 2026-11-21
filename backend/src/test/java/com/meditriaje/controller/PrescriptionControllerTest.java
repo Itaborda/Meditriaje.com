@@ -3,11 +3,11 @@ package com.meditriaje.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.meditriaje.config.CorsConfig;
 import com.meditriaje.config.SecurityConfig;
-import com.meditriaje.dto.prescription.CrearRecetaDetalleRequest;
-import com.meditriaje.dto.prescription.CrearRecetaRequest;
-import com.meditriaje.dto.prescription.RecetaDetalleResponse;
-import com.meditriaje.dto.prescription.RecetaResponse;
-import com.meditriaje.exception.AccesoNoAutorizadoException;
+import com.meditriaje.dto.prescription.CreatePrescriptionDetailRequest;
+import com.meditriaje.dto.prescription.CreatePrescriptionRequest;
+import com.meditriaje.dto.prescription.PrescriptionDetailResponse;
+import com.meditriaje.dto.prescription.PrescriptionResponse;
+import com.meditriaje.exception.UnauthorizedAccessException;
 import com.meditriaje.exception.GlobalExceptionHandler;
 import com.meditriaje.security.JwtService;
 import com.meditriaje.service.PrescriptionService;
@@ -64,21 +64,21 @@ class PrescriptionControllerTest {
 
     @BeforeEach
     void setUpTokens() {
-        when(jwtService.esValido(TOKEN_PACIENTE)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_PACIENTE)).thenReturn(PACIENTE_UUID);
-        when(jwtService.extraerRoles(TOKEN_PACIENTE)).thenReturn(List.of("ROLE_PACIENTE"));
+        when(jwtService.isValid(TOKEN_PACIENTE)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_PACIENTE)).thenReturn(PACIENTE_UUID);
+        when(jwtService.extractRoles(TOKEN_PACIENTE)).thenReturn(List.of("ROLE_PACIENTE"));
 
-        when(jwtService.esValido(TOKEN_PROFESIONAL)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_PROFESIONAL)).thenReturn(PROFESIONAL_UUID);
-        when(jwtService.extraerRoles(TOKEN_PROFESIONAL)).thenReturn(List.of("ROLE_PROFESIONAL"));
+        when(jwtService.isValid(TOKEN_PROFESIONAL)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_PROFESIONAL)).thenReturn(PROFESIONAL_UUID);
+        when(jwtService.extractRoles(TOKEN_PROFESIONAL)).thenReturn(List.of("ROLE_PROFESIONAL"));
 
-        when(jwtService.esValido(TOKEN_ADMIN)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_ADMIN)).thenReturn(ADMIN_UUID);
-        when(jwtService.extraerRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
+        when(jwtService.isValid(TOKEN_ADMIN)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_ADMIN)).thenReturn(ADMIN_UUID);
+        when(jwtService.extractRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
     }
 
-    private RecetaResponse construirRecetaResponse(String publicId) {
-        return new RecetaResponse(
+    private PrescriptionResponse construirRecetaResponse(String publicId) {
+        return new PrescriptionResponse(
                 publicId,
                 "atencion-uuid-1",
                 "pac-uuid-1",
@@ -88,7 +88,7 @@ class PrescriptionControllerTest {
                 "Medicina General",
                 30,
                 Instant.now(),
-                List.of(new RecetaDetalleResponse(
+                List.of(new PrescriptionDetailResponse(
                         "med-uuid-1",
                         "MED-ACE-500",
                         "Acetaminofen",
@@ -106,14 +106,14 @@ class PrescriptionControllerTest {
 
     @Test
     @DisplayName("POST /api/v1/prescriptions - Profesional: 201 Created con cabecera Location")
-    void emitirReceta_profesional_retorna201Created() throws Exception {
-        CrearRecetaRequest request = new CrearRecetaRequest(
+    void issuePrescription_professional_returns201Created() throws Exception {
+        CreatePrescriptionRequest request = new CreatePrescriptionRequest(
                 "atencion-uuid-1",
                 30,
-                List.of(new CrearRecetaDetalleRequest("med-uuid-1", "500 mg", "Cada 8 horas", 5, 15, "Tomar con agua"))
+                List.of(new CreatePrescriptionDetailRequest("med-uuid-1", "500 mg", "Cada 8 horas", 5, 15, "Tomar con agua"))
         );
 
-        when(prescriptionService.emitirReceta(any(CrearRecetaRequest.class), eq(PROFESIONAL_UUID), anyString()))
+        when(prescriptionService.issuePrescription(any(CreatePrescriptionRequest.class), eq(PROFESIONAL_UUID), anyString()))
                 .thenReturn(construirRecetaResponse("receta-uuid-1"));
 
         mockMvc.perform(post("/api/v1/prescriptions")
@@ -130,11 +130,11 @@ class PrescriptionControllerTest {
 
     @Test
     @DisplayName("POST /api/v1/prescriptions - Paciente: 403 Forbidden")
-    void emitirReceta_paciente_retorna403() throws Exception {
-        CrearRecetaRequest request = new CrearRecetaRequest(
+    void issuePrescription_patient_returns403() throws Exception {
+        CreatePrescriptionRequest request = new CreatePrescriptionRequest(
                 "atencion-uuid-1",
                 30,
-                List.of(new CrearRecetaDetalleRequest("med-uuid-1", "500 mg", "Cada 8 horas", 5, 15, "Tomar con agua"))
+                List.of(new CreatePrescriptionDetailRequest("med-uuid-1", "500 mg", "Cada 8 horas", 5, 15, "Tomar con agua"))
         );
 
         mockMvc.perform(post("/api/v1/prescriptions")
@@ -147,11 +147,11 @@ class PrescriptionControllerTest {
 
     @Test
     @DisplayName("POST /api/v1/prescriptions - Administrador: 403 Forbidden")
-    void emitirReceta_admin_retorna403() throws Exception {
-        CrearRecetaRequest request = new CrearRecetaRequest(
+    void issuePrescription_admin_returns403() throws Exception {
+        CreatePrescriptionRequest request = new CreatePrescriptionRequest(
                 "atencion-uuid-1",
                 30,
-                List.of(new CrearRecetaDetalleRequest("med-uuid-1", "500 mg", "Cada 8 horas", 5, 15, "Tomar con agua"))
+                List.of(new CreatePrescriptionDetailRequest("med-uuid-1", "500 mg", "Cada 8 horas", 5, 15, "Tomar con agua"))
         );
 
         mockMvc.perform(post("/api/v1/prescriptions")
@@ -164,11 +164,11 @@ class PrescriptionControllerTest {
 
     @Test
     @DisplayName("POST /api/v1/prescriptions - Sin autenticación: 401 Unauthorized")
-    void emitirReceta_sinAuth_retorna401() throws Exception {
-        CrearRecetaRequest request = new CrearRecetaRequest(
+    void issuePrescription_withoutAuth_returns401() throws Exception {
+        CreatePrescriptionRequest request = new CreatePrescriptionRequest(
                 "atencion-uuid-1",
                 30,
-                List.of(new CrearRecetaDetalleRequest("med-uuid-1", "500 mg", "Cada 8 horas", 5, 15, "Tomar con agua"))
+                List.of(new CreatePrescriptionDetailRequest("med-uuid-1", "500 mg", "Cada 8 horas", 5, 15, "Tomar con agua"))
         );
 
         mockMvc.perform(post("/api/v1/prescriptions")
@@ -180,9 +180,9 @@ class PrescriptionControllerTest {
 
     @Test
     @DisplayName("POST /api/v1/prescriptions - 400 Bad Request ante validaciones de DTO")
-    void emitirReceta_dtoInvalido_retorna400() throws Exception {
+    void issuePrescription_invalidDto_returns400() throws Exception {
         // Detalles vacíos y atención en blanco
-        CrearRecetaRequest requestInvalido = new CrearRecetaRequest("", 30, List.of());
+        CreatePrescriptionRequest requestInvalido = new CreatePrescriptionRequest("", 30, List.of());
 
         mockMvc.perform(post("/api/v1/prescriptions")
                         .header("X-Requested-With", "XMLHttpRequest")
@@ -196,8 +196,8 @@ class PrescriptionControllerTest {
 
     @Test
     @DisplayName("GET /api/v1/prescriptions/{publicId} - 200 OK para usuario autorizado")
-    void obtenerReceta_autorizado_retorna200Ok() throws Exception {
-        when(prescriptionService.obtenerPorPublicId(eq("receta-uuid-1"), eq(PROFESIONAL_UUID), anyCollection()))
+    void getPrescription_authorized_returns200Ok() throws Exception {
+        when(prescriptionService.getByPublicId(eq("receta-uuid-1"), eq(PROFESIONAL_UUID), anyCollection()))
                 .thenReturn(construirRecetaResponse("receta-uuid-1"));
 
         mockMvc.perform(get("/api/v1/prescriptions/receta-uuid-1")
@@ -210,9 +210,9 @@ class PrescriptionControllerTest {
 
     @Test
     @DisplayName("GET /api/v1/prescriptions/{publicId} - 403 Forbidden ante acceso no autorizado")
-    void obtenerReceta_noAutorizado_retorna403() throws Exception {
-        when(prescriptionService.obtenerPorPublicId(eq("receta-uuid-1"), eq(PACIENTE_UUID), anyCollection()))
-                .thenThrow(new AccesoNoAutorizadoException("No tiene autorizacion para acceder a la receta de otro paciente."));
+    void getPrescription_notAuthorized_returns403() throws Exception {
+        when(prescriptionService.getByPublicId(eq("receta-uuid-1"), eq(PACIENTE_UUID), anyCollection()))
+                .thenThrow(new UnauthorizedAccessException("No tiene autorizacion para acceder a la receta de otro paciente."));
 
         mockMvc.perform(get("/api/v1/prescriptions/receta-uuid-1")
                         .header("X-Requested-With", "XMLHttpRequest")

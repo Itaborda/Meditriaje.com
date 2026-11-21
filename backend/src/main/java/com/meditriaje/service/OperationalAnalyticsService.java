@@ -1,9 +1,10 @@
 package com.meditriaje.service;
 
-import com.meditriaje.dto.hospital.CensoCamasResponse;
-import com.meditriaje.dto.emergency.ItemColaUrgenciaResponse;
+import com.meditriaje.dto.hospital.BedCensusResponse;
+import com.meditriaje.dto.emergency.EmergencyQueueItemResponse;
 import com.meditriaje.dto.operational.*;
-import com.meditriaje.exception.RecursoNoEncontradoException;
+import com.meditriaje.exception.OperationConflictException;
+import com.meditriaje.exception.ResourceNotFoundException;
 import com.meditriaje.model.*;
 import com.meditriaje.repository.*;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -21,67 +22,62 @@ import java.util.*;
 @Service
 public class OperationalAnalyticsService {
 
-    private final AlertaOperativaRepository alertaRepository;
-    private final SeguimientoQrRepository seguimientoQrRepository;
+    private final OperationalAlertRepository alertRepository;
+    private final TrackingQrRepository trackingQrRepository;
     private final HospitalService hospitalService;
-    private final SedeRepository sedeRepository;
-    private final EpisodioAtencionRepository episodioRepository;
-    private final ValoracionTriajeRepository triajeRepository;
-    private final IdentidadProvisionalRepository identidadRepository;
-    private final UsuarioRepository usuarioRepository;
-    private final AuditoriaService auditoriaService;
+    private final SiteRepository siteRepository;
+    private final CareEpisodeRepository episodeRepository;
+    private final TriageAssessmentRepository triageRepository;
+    private final ProvisionalIdentityRepository identityRepository;
+    private final UserRepository userRepository;
+    private final AuditService auditService;
     private final Clock clock;
 
     public OperationalAnalyticsService(
-            AlertaOperativaRepository alertaRepository,
-            SeguimientoQrRepository seguimientoQrRepository,
+            OperationalAlertRepository alertRepository,
+            TrackingQrRepository trackingQrRepository,
             HospitalService hospitalService,
-            SedeRepository sedeRepository,
-            EpisodioAtencionRepository episodioRepository,
-            ValoracionTriajeRepository triajeRepository,
-            IdentidadProvisionalRepository identidadRepository,
-            UsuarioRepository usuarioRepository,
-            AuditoriaService auditoriaService,
+            SiteRepository siteRepository,
+            CareEpisodeRepository episodeRepository,
+            TriageAssessmentRepository triageRepository,
+            ProvisionalIdentityRepository identityRepository,
+            UserRepository userRepository,
+            AuditService auditService,
             Clock clock
     ) {
-        this.alertaRepository = Objects.requireNonNull(alertaRepository);
-        this.seguimientoQrRepository = Objects.requireNonNull(seguimientoQrRepository);
+        this.alertRepository = Objects.requireNonNull(alertRepository);
+        this.trackingQrRepository = Objects.requireNonNull(trackingQrRepository);
         this.hospitalService = Objects.requireNonNull(hospitalService);
-        this.sedeRepository = Objects.requireNonNull(sedeRepository);
-        this.episodioRepository = Objects.requireNonNull(episodioRepository);
-        this.triajeRepository = Objects.requireNonNull(triajeRepository);
-        this.identidadRepository = Objects.requireNonNull(identidadRepository);
-        this.usuarioRepository = Objects.requireNonNull(usuarioRepository);
-        this.auditoriaService = Objects.requireNonNull(auditoriaService);
+        this.siteRepository = Objects.requireNonNull(siteRepository);
+        this.episodeRepository = Objects.requireNonNull(episodeRepository);
+        this.triageRepository = Objects.requireNonNull(triageRepository);
+        this.identityRepository = Objects.requireNonNull(identityRepository);
+        this.userRepository = Objects.requireNonNull(userRepository);
+        this.auditService = Objects.requireNonNull(auditService);
         this.clock = Objects.requireNonNull(clock);
     }
 
     /**
-     * O01: Construye el panel analítico hospitalario en tiempo real para una sede.
+     * O01: Construye el panel analítico hospitalario en tiempo real (hospital único).
      */
     @Transactional
-    public DashboardHospitalarioResponse obtenerDashboardHospitalario(
-            String sedePublicId,
+    public HospitalDashboardResponse getHospitalDashboard(
             String usuarioAutenticadoPublicId,
             String ipOrigen
     ) {
-        Sede sede = (sedePublicId != null && !sedePublicId.isBlank())
-                ? sedeRepository.buscarPorPublicId(sedePublicId)
-                    .orElseThrow(() -> new RecursoNoEncontradoException("Sede no encontrada: " + sedePublicId))
-                : sedeRepository.listar(0, 1, null, "ACTIVO").stream().findFirst()
-                    .orElseThrow(() -> new RecursoNoEncontradoException("No hay sedes activas registradas en el sistema."));
+        Site sede = siteRepository.getSingleSite();
 
         // Métricas de camas
-        CensoCamasResponse censo = hospitalService.obtenerCensoCamas(sede.publicId());
-        int totalCamas = censo.totalCamas();
-        int ocupadas = censo.ocupadas();
-        int disponibles = censo.disponibles();
-        int limpieza = censo.enLimpieza();
-        int mantenimiento = censo.enMantenimiento();
-        double tasaOcupacion = censo.tasaOcupacionPorcentaje();
+        BedCensusResponse censo = hospitalService.getBedCensus();
+        int totalCamas = censo.totalBeds();
+        int ocupadas = censo.occupied();
+        int disponibles = censo.available();
+        int limpieza = censo.inCleaning();
+        int mantenimiento = censo.inMaintenance();
+        double tasaOcupacion = censo.occupancyRatePercentage();
 
         // Episodios activos de urgencias obtenidos directamente de la cola con triaje y tiempos
-        List<ItemColaUrgenciaResponse> cola = episodioRepository.listarColaUrgenciaPorSede(sede.id(), null);
+        List<EmergencyQueueItemResponse> cola = episodeRepository.listEmergencyQueueBySite(sede.id(), null);
 
         Map<String, Long> episodiosPorTriaje = new HashMap<>();
         Map<String, List<Long>> minutosEsperaPorTriaje = new HashMap<>();
@@ -91,10 +87,10 @@ public class OperationalAnalyticsService {
             minutosEsperaPorTriaje.put(n, new ArrayList<>());
         }
 
-        for (ItemColaUrgenciaResponse item : cola) {
-            String nivel = item.nivelTriaje() != null ? item.nivelTriaje() : "PENDIENTE_VALORACION";
+        for (EmergencyQueueItemResponse item : cola) {
+            String nivel = item.triageLevel() != null ? item.triageLevel() : "PENDIENTE_VALORACION";
             episodiosPorTriaje.put(nivel, episodiosPorTriaje.getOrDefault(nivel, 0L) + 1);
-            minutosEsperaPorTriaje.computeIfAbsent(nivel, k -> new ArrayList<>()).add(item.minutosEspera());
+            minutosEsperaPorTriaje.computeIfAbsent(nivel, k -> new ArrayList<>()).add(item.waitMinutes());
         }
 
         Map<String, Double> tiemposPromedioEspera = new HashMap<>();
@@ -104,11 +100,11 @@ public class OperationalAnalyticsService {
         });
 
         // F-03: GET es estrictamente idempotente de consulta; no muta estado en base de datos.
-        List<AlertaOperativaResponse> alertasActivas = alertaRepository.listarPorSede(sede.id(), "ACTIVA");
+        List<OperationalAlertResponse> alertasActivas = alertRepository.listBySite(sede.id(), "ACTIVA");
 
-        return new DashboardHospitalarioResponse(
+        return new HospitalDashboardResponse(
                 sede.publicId(),
-                sede.nombre(),
+                sede.name(),
                 totalCamas,
                 disponibles,
                 ocupadas,
@@ -126,32 +122,32 @@ public class OperationalAnalyticsService {
      * Proceso desacoplado para evaluación y disparo idempotente de alertas operativas (F-03).
      */
     @Transactional
-    public void evaluarAlertasAutomaticas(
-            Sede sede,
+    public void evaluateAutomaticAlerts(
+            Site sede,
             double tasaOcupacion,
             Map<String, Long> episodiosPorTriaje,
             Map<String, Double> tiemposPromedio
     ) {
         // Alerta de camas si ocupación >= 85%
         if (tasaOcupacion >= 85.0) {
-            String msg = "Saturación hospitalaria crítica: Ocupación de camas al " + tasaOcupacion + "% en " + sede.nombre();
-            crearAlertaSiNoExiste(sede.id(), "SATURACION_CAMAS", "CRITICA", msg);
+            String msg = "Saturación hospitalaria crítica: Ocupación de camas al " + tasaOcupacion + "% en " + sede.name();
+            createAlertIfMissing(sede.id(), "SATURACION_CAMAS", "CRITICA", msg);
         }
 
         // Alerta de demora Triaje II > 30 min (Res 5596/2015)
         Double esperaT2 = tiemposPromedio.get("II");
         if (esperaT2 != null && esperaT2 > 30.0 && episodiosPorTriaje.getOrDefault("II", 0L) > 0) {
             String msg = "Demora en Triaje II: Tiempo promedio de espera (" + esperaT2 + " min) supera el estándar normativo de 30 min.";
-            crearAlertaSiNoExiste(sede.id(), "DEMORA_TRIAJE_II", "ALTA", msg);
+            createAlertIfMissing(sede.id(), "DEMORA_TRIAJE_II", "ALTA", msg);
         }
     }
 
-    private void crearAlertaSiNoExiste(Long sedeId, String tipo, String severidad, String mensaje) {
-        List<AlertaOperativaResponse> existentes = alertaRepository.listarPorSede(sedeId, "ACTIVA");
-        boolean yaExiste = existentes.stream().anyMatch(a -> tipo.equals(a.tipoAlerta()));
+    private void createAlertIfMissing(Long sedeId, String tipo, String severidad, String mensaje) {
+        List<OperationalAlertResponse> existentes = alertRepository.listBySite(sedeId, "ACTIVA");
+        boolean yaExiste = existentes.stream().anyMatch(a -> tipo.equals(a.alertType()));
         if (!yaExiste) {
             try {
-                alertaRepository.guardar(new AlertaOperativa(
+                alertRepository.save(new OperationalAlert(
                         null,
                         UUID.randomUUID().toString(),
                         sedeId,
@@ -164,49 +160,45 @@ public class OperationalAnalyticsService {
                         null,
                         Instant.now(clock)
                 ));
-            } catch (DataIntegrityViolationException ignored) {
-                // Deduplicado de forma segura por el índice único UQ_ALERTA_SEDE_TIPO_ACTIVA
+            } catch (DataIntegrityViolationException | OperationConflictException ignored) {
+                // Deduplicado de forma segura por el índice único UQ_ALERTA_OPERATIVA_ACTIVA (V025)
             }
         }
     }
 
     /**
-     * O02: Lista alertas operativas de una sede.
+     * O02: Lista las alertas operativas del hospital.
      */
-    public List<AlertaOperativaResponse> listarAlertas(String sedePublicId, String estado) {
-        Long sedeId = null;
-        if (sedePublicId != null && !sedePublicId.isBlank()) {
-            sedeId = sedeRepository.buscarPorPublicId(sedePublicId)
-                    .map(Sede::id).orElse(null);
-        }
-        return alertaRepository.listarPorSede(sedeId, estado);
+    public List<OperationalAlertResponse> listAlerts(String estado) {
+        // Hospital único: sin filtro de sede se listan todas las alertas.
+        return alertRepository.listBySite(null, estado);
     }
 
     /**
      * O02: Reconoce y silencia auditadamente una alerta operativa.
      */
     @Transactional
-    public void reconocerAlerta(
+    public void acknowledgeAlert(
             String alertaPublicId,
-            ReconocerAlertaRequest req,
+            AcknowledgeAlertRequest req,
             String usuarioAutenticadoPublicId,
             String ipOrigen
     ) {
-        AlertaOperativa alerta = alertaRepository.buscarPorPublicId(alertaPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Alerta no encontrada: " + alertaPublicId));
+        OperationalAlert alerta = alertRepository.findByPublicId(alertaPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Alerta no encontrada: " + alertaPublicId));
 
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
 
         Instant ahora = Instant.now(clock);
-        alertaRepository.reconocerAlerta(alerta.id(), usuario.id(), ahora, req.motivo());
+        alertRepository.acknowledgeAlert(alerta.id(), usuario.id(), ahora, req.reason());
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.ALERTA_OPERATIVA_RECONOCIDA,
+                AuditableAction.ALERTA_OPERATIVA_RECONOCIDA,
                 "ALERTA_OPERATIVA",
                 alertaPublicId,
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
     }
@@ -215,27 +207,27 @@ public class OperationalAnalyticsService {
      * O03: Genera o recupera un token QR seguro de seguimiento intrahospitalario para manilla/cabecera.
      */
     @Transactional
-    public QrSeguimientoResponse generarQrSeguimiento(
+    public TrackingQrResponse generateTrackingQr(
             String episodioPublicId,
             String usuarioAutenticadoPublicId,
             String ipOrigen
     ) {
-        EpisodioAtencion ep = episodioRepository.buscarPorPublicId(episodioPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Episodio no encontrado: " + episodioPublicId));
+        CareEpisode ep = episodeRepository.findByPublicId(episodioPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Episodio no encontrado: " + episodioPublicId));
 
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
 
-        Optional<SeguimientoIntrahospitalarioQr> existenteOpt = seguimientoQrRepository.buscarActivoPorEpisodioId(ep.id());
-        boolean esVencido = existenteOpt.map(q -> q.expiraAt() != null && q.expiraAt().isBefore(Instant.now(clock))).orElse(false);
+        Optional<InpatientQrTracking> existenteOpt = trackingQrRepository.findActiveByEpisodeId(ep.id());
+        boolean esVencido = existenteOpt.map(q -> q.expiresAt() != null && q.expiresAt().isBefore(Instant.now(clock))).orElse(false);
 
-        SeguimientoIntrahospitalarioQr qr;
+        InpatientQrTracking qr;
         if (existenteOpt.isPresent() && !esVencido) {
             qr = existenteOpt.get();
         } else {
             String token = "QROP-" + UUID.randomUUID().toString().replace("-", "").toUpperCase();
             Instant expira = Instant.now(clock).plus(Duration.ofDays(7));
-            qr = seguimientoQrRepository.guardar(new SeguimientoIntrahospitalarioQr(
+            qr = trackingQrRepository.save(new InpatientQrTracking(
                     null,
                     UUID.randomUUID().toString(),
                     ep.id(),
@@ -247,84 +239,84 @@ public class OperationalAnalyticsService {
             ));
         }
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.QR_SEGUIMIENTO_GENERADO,
+                AuditableAction.QR_SEGUIMIENTO_GENERADO,
                 "SEGUIMIENTO_INTRAHOSPITALARIO_QR",
                 qr.publicId(), // S-03: Auditar publicId de recurso, jamás el token secreto
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
-        String codIdentidad = identidadRepository.buscarPorEpisodioId(ep.id())
-                .map(IdentidadProvisional::codigoProvisional).orElse("REGISTRADO");
+        String codIdentidad = identityRepository.findByEpisodeId(ep.id())
+                .map(ProvisionalIdentity::provisionalCode).orElse("REGISTRADO");
 
-        Optional<ValoracionTriaje> ultTriaje = triajeRepository.buscarUltimaPorEpisodioId(ep.id());
+        Optional<TriageAssessment> ultTriaje = triageRepository.findLatestByEpisodeId(ep.id());
 
-        return new QrSeguimientoResponse(
+        return new TrackingQrResponse(
                 qr.publicId(),
                 ep.publicId(),
                 codIdentidad,
-                qr.codigoQrToken(),
-                "/operational/tracking/" + qr.codigoQrToken(),
-                qr.ubicacionActualTexto(),
-                ep.estado(),
-                ultTriaje.map(ValoracionTriaje::nivel).orElse("PENDIENTE"),
-                qr.estado(),
-                qr.creadoAt(),
-                qr.expiraAt()
+                qr.qrTokenCode(),
+                "/operational/tracking/" + qr.qrTokenCode(),
+                qr.currentLocationText(),
+                ep.status(),
+                ultTriaje.map(TriageAssessment::level).orElse("PENDIENTE"),
+                qr.status(),
+                qr.createdAt(),
+                qr.expiresAt()
         );
     }
 
     /**
      * O03: Consulta la ubicación y estado básico mediante escaneo de QR (sin PHI médica ni nivel clínico, S-03).
      */
-    public QrSeguimientoResponse consultarPorTokenQr(String token, String ipOrigen) {
+    public TrackingQrResponse getByQrToken(String token, String ipOrigen) {
         if (token == null || token.isBlank()) {
-            throw new RecursoNoEncontradoException("Token QR de seguimiento no válido o expirado.");
+            throw new ResourceNotFoundException("Token QR de seguimiento no válido o expirado.");
         }
 
-        SeguimientoIntrahospitalarioQr qr = seguimientoQrRepository.buscarPorToken(token.trim())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Token QR de seguimiento no válido o expirado."));
+        InpatientQrTracking qr = trackingQrRepository.findByToken(token.trim())
+                .orElseThrow(() -> new ResourceNotFoundException("Token QR de seguimiento no válido o expirado."));
 
         // S-03: Validar que el QR se encuentre ACTIVO y no haya expirado
-        if (!"ACTIVO".equals(qr.estado()) || (qr.expiraAt() != null && qr.expiraAt().isBefore(Instant.now(clock)))) {
-            throw new RecursoNoEncontradoException("Token QR de seguimiento no válido o expirado.");
+        if (!"ACTIVO".equals(qr.status()) || (qr.expiresAt() != null && qr.expiresAt().isBefore(Instant.now(clock)))) {
+            throw new ResourceNotFoundException("Token QR de seguimiento no válido o expirado.");
         }
 
-        EpisodioAtencion ep = episodioRepository.buscarPorId(qr.episodioId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Episodio asociado no encontrado."));
+        CareEpisode ep = episodeRepository.findById(qr.episodeId())
+                .orElseThrow(() -> new ResourceNotFoundException("Episodio asociado no encontrado."));
 
         // S-03: Rechazar acceso si el episodio ya egresó o fue cancelado
-        if ("EGRESADO".equals(ep.estado()) || "CANCELADO".equals(ep.estado())) {
-            throw new RecursoNoEncontradoException("Token QR de seguimiento no válido o expirado.");
+        if ("EGRESADO".equals(ep.status()) || "CANCELADO".equals(ep.status())) {
+            throw new ResourceNotFoundException("Token QR de seguimiento no válido o expirado.");
         }
 
-        String codIdentidad = identidadRepository.buscarPorEpisodioId(ep.id())
-                .map(IdentidadProvisional::codigoProvisional).orElse("PACIENTE_IDENTIFICADO");
+        String codIdentidad = identityRepository.findByEpisodeId(ep.id())
+                .map(ProvisionalIdentity::provisionalCode).orElse("PACIENTE_IDENTIFICADO");
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 null,
-                AccionAuditable.QR_SEGUIMIENTO_ESCANEADO,
+                AuditableAction.QR_SEGUIMIENTO_ESCANEADO,
                 "SEGUIMIENTO_INTRAHOSPITALARIO_QR",
                 qr.publicId(), // S-03: Auditar publicId de recurso, jamás el token secreto
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
         // S-03: En la respuesta pública no divulgar dato clínico sensible (nivelTriaje -> NO_DIVULGABLE)
-        return new QrSeguimientoResponse(
+        return new TrackingQrResponse(
                 qr.publicId(),
                 ep.publicId(),
                 codIdentidad,
-                qr.codigoQrToken(),
-                "/operational/tracking/" + qr.codigoQrToken(),
-                qr.ubicacionActualTexto(),
-                ep.estado(),
+                qr.qrTokenCode(),
+                "/operational/tracking/" + qr.qrTokenCode(),
+                qr.currentLocationText(),
+                ep.status(),
                 "NO_DIVULGABLE",
-                qr.estado(),
-                qr.creadoAt(),
-                qr.expiraAt()
+                qr.status(),
+                qr.createdAt(),
+                qr.expiresAt()
         );
     }
 }

@@ -1,8 +1,8 @@
 package com.meditriaje.controller;
 
-import com.meditriaje.dto.allergy.AlergiaResponse;
-import com.meditriaje.dto.allergy.InactivarAlergiaRequest;
-import com.meditriaje.dto.allergy.RegistrarAlergiaRequest;
+import com.meditriaje.dto.allergy.AllergyResponse;
+import com.meditriaje.dto.allergy.InactivateAllergyRequest;
+import com.meditriaje.dto.allergy.RegisterAllergyRequest;
 import com.meditriaje.service.AllergyService;
 import com.meditriaje.util.IpUtil;
 import jakarta.servlet.http.HttpServletRequest;
@@ -43,21 +43,21 @@ public class ClinicalAllergyController {
      * Consulta las alergias de un paciente (activas por defecto; ?includeInactive=true).
      */
     @GetMapping("/patients/{patientPublicId}/allergies")
-    public ResponseEntity<List<AlergiaResponse>> listarAlergiasPaciente(
-            @PathVariable String patientPublicId,
+    public ResponseEntity<List<AllergyResponse>> listPatientAllergies(
+            @PathVariable("patientPublicId") String patientPublicId,
             @RequestParam(name = "includeInactive", defaultValue = "false") boolean includeInactive,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String usuarioPublicId = authentication.getName();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
+        String sourceIp = IpUtil.extractIp(httpRequest);
 
-        List<AlergiaResponse> alergias = allergyService.listarAlergiasPacienteParaProfesional(
+        List<AllergyResponse> alergias = allergyService.listPatientAllergiesForProfessional(
                 patientPublicId,
                 includeInactive,
                 usuarioPublicId,
                 authentication.getAuthorities(),
-                ipOrigen
+                sourceIp
         );
 
         return ResponseEntity.ok(alergias);
@@ -68,20 +68,20 @@ public class ClinicalAllergyController {
      * Break-Glass no permite registro (solo lectura).
      */
     @PostMapping("/patients/{patientPublicId}/allergies")
-    public ResponseEntity<AlergiaResponse> registrarAlergia(
-            @PathVariable String patientPublicId,
-            @Valid @RequestBody RegistrarAlergiaRequest request,
+    public ResponseEntity<AllergyResponse> registerAllergy(
+            @PathVariable("patientPublicId") String patientPublicId,
+            @Valid @RequestBody RegisterAllergyRequest request,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String usuarioPublicId = authentication.getName();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
+        String sourceIp = IpUtil.extractIp(httpRequest);
 
-        AlergiaResponse response = allergyService.registrarAlergiaPorProfesional(
+        AllergyResponse response = allergyService.registerAllergyByProfessional(
                 patientPublicId,
                 request,
                 usuarioPublicId,
-                ipOrigen
+                sourceIp
         );
 
         URI location = URI.create("/api/v1/clinical/allergies/" + response.publicId());
@@ -92,20 +92,20 @@ public class ClinicalAllergyController {
      * Inactiva una alergia con justificación clínica obligatoria.
      */
     @PatchMapping("/allergies/{publicId}/deactivate")
-    public ResponseEntity<AlergiaResponse> inactivarAlergia(
-            @PathVariable String publicId,
-            @Valid @RequestBody InactivarAlergiaRequest request,
+    public ResponseEntity<AllergyResponse> inactivateAllergy(
+            @PathVariable("publicId") String publicId,
+            @Valid @RequestBody InactivateAllergyRequest request,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String usuarioPublicId = authentication.getName();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
+        String sourceIp = IpUtil.extractIp(httpRequest);
 
-        AlergiaResponse response = allergyService.inactivarAlergiaPorProfesional(
+        AllergyResponse response = allergyService.inactivateAllergyByProfessional(
                 publicId,
                 request,
                 usuarioPublicId,
-                ipOrigen
+                sourceIp
         );
 
         return ResponseEntity.ok(response);

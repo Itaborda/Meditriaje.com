@@ -1,9 +1,9 @@
 package com.meditriaje.controller.admin;
 
-import com.meditriaje.dto.admin.ActualizarProfesionalRequest;
-import com.meditriaje.dto.admin.CrearProfesionalRequest;
-import com.meditriaje.dto.admin.CrearProfesionalResponse;
-import com.meditriaje.dto.admin.ProfesionalResponse;
+import com.meditriaje.dto.admin.UpdateProfessionalRequest;
+import com.meditriaje.dto.admin.CreateProfessionalRequest;
+import com.meditriaje.dto.admin.CreateProfessionalResponse;
+import com.meditriaje.dto.admin.ProfessionalResponse;
 import com.meditriaje.dto.common.PaginatedResponse;
 import com.meditriaje.service.AdminProfessionalService;
 import com.meditriaje.util.IpUtil;
@@ -41,68 +41,68 @@ public class AdminProfessionalController {
     }
 
     @PostMapping
-    public ResponseEntity<CrearProfesionalResponse> crear(
-            @Valid @RequestBody CrearProfesionalRequest request,
+    public ResponseEntity<CreateProfessionalResponse> create(
+            @Valid @RequestBody CreateProfessionalRequest request,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String adminPublicId = (String) authentication.getPrincipal();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
-        CrearProfesionalResponse response = professionalService.altaProfesional(request, adminPublicId, ipOrigen);
+        String sourceIp = IpUtil.extractIp(httpRequest);
+        CreateProfessionalResponse response = professionalService.registerProfessional(request, adminPublicId, sourceIp);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @GetMapping
-    public ResponseEntity<PaginatedResponse<ProfesionalResponse>> listar(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @RequestParam(required = false) String especialidadPublicId,
-            @RequestParam(required = false) String estado
+    public ResponseEntity<PaginatedResponse<ProfessionalResponse>> list(
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size,
+            @RequestParam(value = "especialidadPublicId", required = false) String specialtyPublicId,
+            @RequestParam(value = "estado", required = false) String status
     ) {
-        PaginatedResponse<ProfesionalResponse> response = professionalService.listar(page, size, especialidadPublicId, estado);
+        PaginatedResponse<ProfessionalResponse> response = professionalService.list(page, size, specialtyPublicId, status);
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/{publicId}")
-    public ResponseEntity<ProfesionalResponse> obtener(@PathVariable String publicId) {
-        ProfesionalResponse response = professionalService.obtenerPorPublicId(publicId);
+    public ResponseEntity<ProfessionalResponse> getByPublicId(@PathVariable("publicId") String publicId) {
+        ProfessionalResponse response = professionalService.getByPublicId(publicId);
         return ResponseEntity.ok(response);
     }
 
     @PutMapping("/{publicId}")
-    public ResponseEntity<ProfesionalResponse> actualizar(
-            @PathVariable String publicId,
-            @Valid @RequestBody ActualizarProfesionalRequest request,
+    public ResponseEntity<ProfessionalResponse> update(
+            @PathVariable("publicId") String publicId,
+            @Valid @RequestBody UpdateProfessionalRequest request,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String adminPublicId = (String) authentication.getPrincipal();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
-        ProfesionalResponse response = professionalService.actualizarProfesional(publicId, request, adminPublicId, ipOrigen);
+        String sourceIp = IpUtil.extractIp(httpRequest);
+        ProfessionalResponse response = professionalService.updateProfessional(publicId, request, adminPublicId, sourceIp);
         return ResponseEntity.ok(response);
     }
 
     @PatchMapping("/{publicId}/deactivate")
-    public ResponseEntity<ProfesionalResponse> desactivar(
-            @PathVariable String publicId,
+    public ResponseEntity<ProfessionalResponse> deactivate(
+            @PathVariable("publicId") String publicId,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String adminPublicId = (String) authentication.getPrincipal();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
-        ProfesionalResponse response = professionalService.cambiarEstado(publicId, "INACTIVO", adminPublicId, ipOrigen);
+        String sourceIp = IpUtil.extractIp(httpRequest);
+        ProfessionalResponse response = professionalService.changeStatus(publicId, "INACTIVO", adminPublicId, sourceIp);
         return ResponseEntity.ok(response);
     }
 
     @PatchMapping("/{publicId}/activate")
-    public ResponseEntity<ProfesionalResponse> activar(
-            @PathVariable String publicId,
+    public ResponseEntity<ProfessionalResponse> activate(
+            @PathVariable("publicId") String publicId,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String adminPublicId = (String) authentication.getPrincipal();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
-        ProfesionalResponse response = professionalService.cambiarEstado(publicId, "ACTIVO", adminPublicId, ipOrigen);
+        String sourceIp = IpUtil.extractIp(httpRequest);
+        ProfessionalResponse response = professionalService.changeStatus(publicId, "ACTIVO", adminPublicId, sourceIp);
         return ResponseEntity.ok(response);
     }
 }

@@ -1,20 +1,20 @@
 package com.meditriaje.service;
 
-import com.meditriaje.dto.clinical.AccesoBreakGlassResponse;
-import com.meditriaje.dto.clinical.ActivarBreakGlassRequest;
-import com.meditriaje.exception.AccesoNoAutorizadoException;
-import com.meditriaje.exception.DatosInvalidosException;
-import com.meditriaje.exception.RecursoNoEncontradoException;
-import com.meditriaje.model.AccesoBreakGlass;
-import com.meditriaje.model.AccionAuditable;
-import com.meditriaje.model.EventoAuditoria;
-import com.meditriaje.model.Paciente;
-import com.meditriaje.model.Profesional;
-import com.meditriaje.model.Usuario;
+import com.meditriaje.dto.clinical.BreakGlassAccessResponse;
+import com.meditriaje.dto.clinical.ActivateBreakGlassRequest;
+import com.meditriaje.exception.UnauthorizedAccessException;
+import com.meditriaje.exception.InvalidDataException;
+import com.meditriaje.exception.ResourceNotFoundException;
+import com.meditriaje.model.BreakGlassAccess;
+import com.meditriaje.model.AuditableAction;
+import com.meditriaje.model.AuditEvent;
+import com.meditriaje.model.Patient;
+import com.meditriaje.model.Professional;
+import com.meditriaje.model.User;
 import com.meditriaje.repository.BreakGlassRepository;
-import com.meditriaje.repository.PacienteRepository;
-import com.meditriaje.repository.ProfesionalRepository;
-import com.meditriaje.repository.UsuarioRepository;
+import com.meditriaje.repository.PatientRepository;
+import com.meditriaje.repository.ProfessionalRepository;
+import com.meditriaje.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -41,50 +41,50 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class BreakGlassServiceTest {
 
-    private static final ZoneId ZONE_BOGOTA = ZoneId.of("America/Bogota");
+    private static final ZoneId BOGOTA_ZONE = ZoneId.of("America/Bogota");
     private static final Instant AHORA = Instant.parse("2026-10-04T12:00:00Z");
 
     @Mock
-    private UsuarioRepository usuarioRepository;
+    private UserRepository userRepository;
 
     @Mock
-    private ProfesionalRepository profesionalRepository;
+    private ProfessionalRepository professionalRepository;
 
     @Mock
-    private PacienteRepository pacienteRepository;
+    private PatientRepository patientRepository;
 
     @Mock
     private BreakGlassRepository breakGlassRepository;
 
     @Mock
-    private AuditoriaService auditoriaService;
+    private AuditService auditService;
 
     private Clock clock;
     private BreakGlassService breakGlassService;
 
     @BeforeEach
     void setUp() {
-        clock = Clock.fixed(AHORA, ZONE_BOGOTA);
+        clock = Clock.fixed(AHORA, BOGOTA_ZONE);
         breakGlassService = new BreakGlassService(
-                usuarioRepository,
-                profesionalRepository,
-                pacienteRepository,
+                userRepository,
+                professionalRepository,
+                patientRepository,
                 breakGlassRepository,
-                auditoriaService,
+                auditService,
                 clock
         );
     }
 
-    private Usuario crearUsuario(Long id, String publicId, String email) {
-        return new Usuario(id, publicId, email, "hash", "ACTIVO", 0, null, AHORA, false);
+    private User crearUsuario(Long id, String publicId, String email) {
+        return new User(id, publicId, email, "hash", "ACTIVO", 0, null, AHORA, false);
     }
 
-    private Profesional crearProfesional(Long id, Long usuarioId, String publicId) {
-        return new Profesional(id, usuarioId, publicId, 1L, "RM-998877", "Roberto", "Gomez", AHORA, AHORA);
+    private Professional crearProfesional(Long id, Long usuarioId, String publicId) {
+        return new Professional(id, usuarioId, publicId, 1L, "RM-998877", "Roberto", "Gomez", AHORA, AHORA);
     }
 
-    private Paciente crearPaciente(Long id, Long usuarioId, String publicId) {
-        return new Paciente(id, usuarioId, publicId, "CC", "10203040", "Carlos", "Sanchez",
+    private Patient crearPaciente(Long id, Long usuarioId, String publicId) {
+        return new Patient(id, usuarioId, publicId, "CC", "10203040", "Carlos", "Sanchez",
                 LocalDate.of(1985, 5, 20), "3001234567", AHORA, AHORA);
     }
 
@@ -94,19 +94,19 @@ class BreakGlassServiceTest {
         String usuarioMedPubId = "usr-med-1";
         String pacPubId = "pac-100";
         String motivo = "Paciente en shock hipovolemico por hemorragia aguda; requiere acceso urgente al historial.";
-        ActivarBreakGlassRequest request = new ActivarBreakGlassRequest(pacPubId, motivo);
+        ActivateBreakGlassRequest request = new ActivateBreakGlassRequest(pacPubId, motivo);
 
-        Usuario usuario = crearUsuario(10L, usuarioMedPubId, "medico@test.com");
-        Profesional profesional = crearProfesional(100L, 10L, "prof-100");
-        Paciente paciente = crearPaciente(200L, 20L, pacPubId);
+        User usuario = crearUsuario(10L, usuarioMedPubId, "medico@test.com");
+        Professional profesional = crearProfesional(100L, 10L, "prof-100");
+        Patient paciente = crearPaciente(200L, 20L, pacPubId);
 
-        when(usuarioRepository.buscarPorPublicId(usuarioMedPubId)).thenReturn(Optional.of(usuario));
-        when(profesionalRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.of(profesional));
-        when(pacienteRepository.buscarPorPublicId(pacPubId)).thenReturn(Optional.of(paciente));
-        when(breakGlassRepository.registrarAcceso(any(AccesoBreakGlass.class))).thenReturn(1L);
+        when(userRepository.findByPublicId(usuarioMedPubId)).thenReturn(Optional.of(usuario));
+        when(professionalRepository.findByUserId(10L)).thenReturn(Optional.of(profesional));
+        when(patientRepository.findByPublicId(pacPubId)).thenReturn(Optional.of(paciente));
+        when(breakGlassRepository.recordAccess(any(BreakGlassAccess.class))).thenReturn(1L);
 
         Instant expiracionEsperada = AHORA.plus(24, ChronoUnit.HOURS);
-        AccesoBreakGlassResponse respuestaMock = new AccesoBreakGlassResponse(
+        BreakGlassAccessResponse respuestaMock = new BreakGlassAccessResponse(
                 "bg-created-uuid",
                 "prof-100",
                 "Roberto Gomez",
@@ -117,99 +117,99 @@ class BreakGlassServiceTest {
                 AHORA,
                 true
         );
-        when(breakGlassRepository.buscarPorPublicId(any(String.class), eq(AHORA))).thenReturn(Optional.of(respuestaMock));
+        when(breakGlassRepository.findByPublicId(any(String.class), eq(AHORA))).thenReturn(Optional.of(respuestaMock));
 
-        AccesoBreakGlassResponse response = breakGlassService.activarBreakGlass(request, usuarioMedPubId, "192.168.1.100");
+        BreakGlassAccessResponse response = breakGlassService.activateBreakGlass(request, usuarioMedPubId, "192.168.1.100");
 
         assertThat(response).isNotNull();
         assertThat(response.publicId()).isEqualTo("bg-created-uuid");
-        assertThat(response.activo()).isTrue();
-        assertThat(response.fechaExpiracion()).isEqualTo(expiracionEsperada);
+        assertThat(response.active()).isTrue();
+        assertThat(response.expirationDate()).isEqualTo(expiracionEsperada);
 
         // Verificar que el acceso guardado tenga los IDs y expiración exacta
-        ArgumentCaptor<AccesoBreakGlass> accesoCaptor = ArgumentCaptor.forClass(AccesoBreakGlass.class);
-        verify(breakGlassRepository).registrarAcceso(accesoCaptor.capture());
-        AccesoBreakGlass guardado = accesoCaptor.getValue();
-        assertThat(guardado.profesionalId()).isEqualTo(100L);
-        assertThat(guardado.pacienteId()).isEqualTo(200L);
-        assertThat(guardado.fechaExpiracion()).isEqualTo(expiracionEsperada);
-        assertThat(guardado.motivo()).isEqualTo(motivo);
+        ArgumentCaptor<BreakGlassAccess> accesoCaptor = ArgumentCaptor.forClass(BreakGlassAccess.class);
+        verify(breakGlassRepository).recordAccess(accesoCaptor.capture());
+        BreakGlassAccess guardado = accesoCaptor.getValue();
+        assertThat(guardado.professionalId()).isEqualTo(100L);
+        assertThat(guardado.patientId()).isEqualTo(200L);
+        assertThat(guardado.expirationDate()).isEqualTo(expiracionEsperada);
+        assertThat(guardado.reason()).isEqualTo(motivo);
 
         // Verificar auditoría reforzada inmutable
-        ArgumentCaptor<EventoAuditoria> audCaptor = ArgumentCaptor.forClass(EventoAuditoria.class);
-        verify(auditoriaService).auditar(audCaptor.capture());
-        EventoAuditoria aud = audCaptor.getValue();
-        assertThat(aud.usuarioId()).isEqualTo(10L);
-        assertThat(aud.accion()).isEqualTo(AccionAuditable.ACCESO_BREAK_GLASS);
-        assertThat(aud.tipoRecurso()).isEqualTo("PACIENTE");
-        assertThat(aud.recursoPublicId()).isEqualTo(pacPubId);
-        assertThat(aud.ipOrigen()).isEqualTo("192.168.1.100");
+        ArgumentCaptor<AuditEvent> audCaptor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).audit(audCaptor.capture());
+        AuditEvent aud = audCaptor.getValue();
+        assertThat(aud.userId()).isEqualTo(10L);
+        assertThat(aud.action()).isEqualTo(AuditableAction.ACCESO_BREAK_GLASS);
+        assertThat(aud.resourceType()).isEqualTo("PACIENTE");
+        assertThat(aud.resourcePublicId()).isEqualTo(pacPubId);
+        assertThat(aud.sourceIp()).isEqualTo("192.168.1.100");
     }
 
     @Test
     @DisplayName("activarBreakGlass: motivo con menos de 20 caracteres lanza DatosInvalidosException")
-    void activarBreakGlass_motivoCorto_lanzaDatosInvalidos() {
+    void activateBreakGlass_shortReason_throwsInvalidData() {
         String usuarioMedPubId = "usr-med-1";
         String pacPubId = "pac-100";
-        ActivarBreakGlassRequest request = new ActivarBreakGlassRequest(pacPubId, "Urgente");
+        ActivateBreakGlassRequest request = new ActivateBreakGlassRequest(pacPubId, "Urgente");
 
-        Usuario usuario = crearUsuario(10L, usuarioMedPubId, "medico@test.com");
-        Profesional profesional = crearProfesional(100L, 10L, "prof-100");
-        Paciente paciente = crearPaciente(200L, 20L, pacPubId);
+        User usuario = crearUsuario(10L, usuarioMedPubId, "medico@test.com");
+        Professional profesional = crearProfesional(100L, 10L, "prof-100");
+        Patient paciente = crearPaciente(200L, 20L, pacPubId);
 
-        when(usuarioRepository.buscarPorPublicId(usuarioMedPubId)).thenReturn(Optional.of(usuario));
-        when(profesionalRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.of(profesional));
-        when(pacienteRepository.buscarPorPublicId(pacPubId)).thenReturn(Optional.of(paciente));
+        when(userRepository.findByPublicId(usuarioMedPubId)).thenReturn(Optional.of(usuario));
+        when(professionalRepository.findByUserId(10L)).thenReturn(Optional.of(profesional));
+        when(patientRepository.findByPublicId(pacPubId)).thenReturn(Optional.of(paciente));
 
-        assertThatThrownBy(() -> breakGlassService.activarBreakGlass(request, usuarioMedPubId, "127.0.0.1"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> breakGlassService.activateBreakGlass(request, usuarioMedPubId, "127.0.0.1"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("al menos 20 caracteres");
     }
 
     @Test
     @DisplayName("activarBreakGlass: usuario no registrado como profesional lanza AccesoNoAutorizadoException")
-    void activarBreakGlass_usuarioNoProfesional_lanzaAccesoNoAutorizado() {
+    void activateBreakGlass_userNotProfessional_throwsUnauthorizedAccess() {
         String usuarioAdminPubId = "usr-admin-1";
-        ActivarBreakGlassRequest request = new ActivarBreakGlassRequest("pac-100", "Justificación de emergencia con más de veinte caracteres.");
+        ActivateBreakGlassRequest request = new ActivateBreakGlassRequest("pac-100", "Justificación de emergencia con más de veinte caracteres.");
 
-        Usuario usuario = crearUsuario(5L, usuarioAdminPubId, "admin@test.com");
-        when(usuarioRepository.buscarPorPublicId(usuarioAdminPubId)).thenReturn(Optional.of(usuario));
-        when(profesionalRepository.buscarPorUsuarioId(5L)).thenReturn(Optional.empty());
+        User usuario = crearUsuario(5L, usuarioAdminPubId, "admin@test.com");
+        when(userRepository.findByPublicId(usuarioAdminPubId)).thenReturn(Optional.of(usuario));
+        when(professionalRepository.findByUserId(5L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> breakGlassService.activarBreakGlass(request, usuarioAdminPubId, "127.0.0.1"))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+        assertThatThrownBy(() -> breakGlassService.activateBreakGlass(request, usuarioAdminPubId, "127.0.0.1"))
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessageContaining("Usuario no registrado como profesional");
     }
 
     @Test
     @DisplayName("activarBreakGlass: paciente inexistente lanza RecursoNoEncontradoException")
-    void activarBreakGlass_pacienteInexistente_lanzaRecursoNoEncontrado() {
+    void activateBreakGlass_patientInexistente_throwsResourceNotFound() {
         String usuarioMedPubId = "usr-med-1";
-        ActivarBreakGlassRequest request = new ActivarBreakGlassRequest("pac-fantasma", "Justificación de emergencia con más de veinte caracteres.");
+        ActivateBreakGlassRequest request = new ActivateBreakGlassRequest("pac-fantasma", "Justificación de emergencia con más de veinte caracteres.");
 
-        Usuario usuario = crearUsuario(10L, usuarioMedPubId, "medico@test.com");
-        Profesional profesional = crearProfesional(100L, 10L, "prof-100");
+        User usuario = crearUsuario(10L, usuarioMedPubId, "medico@test.com");
+        Professional profesional = crearProfesional(100L, 10L, "prof-100");
 
-        when(usuarioRepository.buscarPorPublicId(usuarioMedPubId)).thenReturn(Optional.of(usuario));
-        when(profesionalRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.of(profesional));
-        when(pacienteRepository.buscarPorPublicId("pac-fantasma")).thenReturn(Optional.empty());
+        when(userRepository.findByPublicId(usuarioMedPubId)).thenReturn(Optional.of(usuario));
+        when(professionalRepository.findByUserId(10L)).thenReturn(Optional.of(profesional));
+        when(patientRepository.findByPublicId("pac-fantasma")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> breakGlassService.activarBreakGlass(request, usuarioMedPubId, "127.0.0.1"))
-                .isInstanceOf(RecursoNoEncontradoException.class)
+        assertThatThrownBy(() -> breakGlassService.activateBreakGlass(request, usuarioMedPubId, "127.0.0.1"))
+                .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("Paciente no encontrado");
     }
 
     @Test
     @DisplayName("listarMisAccesosActivos: retorna autorizaciones vigentes del profesional")
-    void listarMisAccesosActivos_exitoso() {
+    void listMyAccessesActive_success() {
         String usuarioMedPubId = "usr-med-1";
-        Usuario usuario = crearUsuario(10L, usuarioMedPubId, "medico@test.com");
-        Profesional profesional = crearProfesional(100L, 10L, "prof-100");
+        User usuario = crearUsuario(10L, usuarioMedPubId, "medico@test.com");
+        Professional profesional = crearProfesional(100L, 10L, "prof-100");
 
-        when(usuarioRepository.buscarPorPublicId(usuarioMedPubId)).thenReturn(Optional.of(usuario));
-        when(profesionalRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.of(profesional));
+        when(userRepository.findByPublicId(usuarioMedPubId)).thenReturn(Optional.of(usuario));
+        when(professionalRepository.findByUserId(10L)).thenReturn(Optional.of(profesional));
 
-        AccesoBreakGlassResponse acceso = new AccesoBreakGlassResponse(
+        BreakGlassAccessResponse acceso = new BreakGlassAccessResponse(
                 "bg-1",
                 "prof-100",
                 "Roberto Gomez",
@@ -220,9 +220,9 @@ class BreakGlassServiceTest {
                 AHORA,
                 true
         );
-        when(breakGlassRepository.listarActivosPorProfesional(100L, AHORA)).thenReturn(List.of(acceso));
+        when(breakGlassRepository.listActiveByProfessional(100L, AHORA)).thenReturn(List.of(acceso));
 
-        List<AccesoBreakGlassResponse> lista = breakGlassService.listarMisAccesosActivos(usuarioMedPubId);
+        List<BreakGlassAccessResponse> lista = breakGlassService.listMyActiveAccesses(usuarioMedPubId);
 
         assertThat(lista).hasSize(1);
         assertThat(lista.get(0).publicId()).isEqualTo("bg-1");
@@ -230,15 +230,15 @@ class BreakGlassServiceTest {
 
     @Test
     @DisplayName("obtenerPorPublicId: si pertenece a otro profesional lanza AccesoNoAutorizadoException")
-    void obtenerPorPublicId_otroProfesional_lanzaAccesoNoAutorizado() {
+    void getByPublicId_otherProfessional_throwsUnauthorizedAccess() {
         String usuarioMedPubId = "usr-med-1";
-        Usuario usuario = crearUsuario(10L, usuarioMedPubId, "medico@test.com");
-        Profesional profesional = crearProfesional(100L, 10L, "prof-100");
+        User usuario = crearUsuario(10L, usuarioMedPubId, "medico@test.com");
+        Professional profesional = crearProfesional(100L, 10L, "prof-100");
 
-        when(usuarioRepository.buscarPorPublicId(usuarioMedPubId)).thenReturn(Optional.of(usuario));
-        when(profesionalRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.of(profesional));
+        when(userRepository.findByPublicId(usuarioMedPubId)).thenReturn(Optional.of(usuario));
+        when(professionalRepository.findByUserId(10L)).thenReturn(Optional.of(profesional));
 
-        AccesoBreakGlassResponse accesoDeOtro = new AccesoBreakGlassResponse(
+        BreakGlassAccessResponse accesoDeOtro = new BreakGlassAccessResponse(
                 "bg-99",
                 "prof-OTRO",
                 "Dra. Maria Perez",
@@ -249,10 +249,10 @@ class BreakGlassServiceTest {
                 AHORA,
                 true
         );
-        when(breakGlassRepository.buscarPorPublicId("bg-99", AHORA)).thenReturn(Optional.of(accesoDeOtro));
+        when(breakGlassRepository.findByPublicId("bg-99", AHORA)).thenReturn(Optional.of(accesoDeOtro));
 
-        assertThatThrownBy(() -> breakGlassService.obtenerPorPublicId("bg-99", usuarioMedPubId))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+        assertThatThrownBy(() -> breakGlassService.getByPublicId("bg-99", usuarioMedPubId))
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessageContaining("No tiene autorizacion para consultar el acceso break-glass de otro profesional");
     }
 }

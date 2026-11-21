@@ -2,7 +2,7 @@ package com.meditriaje;
 
 import com.meditriaje.config.CorsConfig;
 import com.meditriaje.exception.GlobalExceptionHandler;
-import com.meditriaje.exception.RecursoNoEncontradoException;
+import com.meditriaje.exception.ResourceNotFoundException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -31,13 +31,13 @@ class GlobalExceptionHandlerTest {
     static class StubController {
         @GetMapping("/api/v1/test/not-found")
         public String triggerNotFound() {
-            throw new RecursoNoEncontradoException("Paciente#99");
+            throw new ResourceNotFoundException("Paciente#99");
         }
     }
 
     @Test
     @WithMockUser
-    void cuandoRecursoNoEncontrado_retornaApiErrorJson() throws Exception {
+    void whenResourceNotFound_returnsApiErrorJson() throws Exception {
         mockMvc.perform(get("/api/v1/test/not-found"))
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentTypeCompatibleWith("application/json"))

@@ -134,7 +134,7 @@ test.describe('Auditoría Responsive: Apartados de Administración y Footer', ()
       });
     });
 
-    await page.route('**/api/v1/hospital/census/**', async (route) => {
+    await page.route('**/api/v1/hospital/census*', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -187,8 +187,6 @@ test.describe('Auditoría Responsive: Apartados de Administración y Footer', ()
 
     const routes = [
       '#/admin/dashboard',
-      '#/admin/sites',
-      '#/admin/institutions',
       '#/admin/specialties',
       '#/admin/professionals',
       '#/admin/slots',
@@ -221,8 +219,6 @@ test.describe('Auditoría Responsive: Apartados de Administración y Footer', ()
 
     const routes = [
       '#/admin/dashboard',
-      '#/admin/sites',
-      '#/admin/institutions',
       '#/admin/specialties',
       '#/admin/professionals',
       '#/admin/slots',

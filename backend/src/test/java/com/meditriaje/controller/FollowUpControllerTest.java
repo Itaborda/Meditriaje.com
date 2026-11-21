@@ -2,8 +2,8 @@ package com.meditriaje.controller;
 
 import com.meditriaje.config.CorsConfig;
 import com.meditriaje.config.SecurityConfig;
-import com.meditriaje.dto.followup.CrearSeguimientoRequest;
-import com.meditriaje.dto.followup.SeguimientoResponse;
+import com.meditriaje.dto.followup.CreateFollowUpRequest;
+import com.meditriaje.dto.followup.FollowUpResponse;
 import com.meditriaje.exception.GlobalExceptionHandler;
 import com.meditriaje.security.JwtService;
 import com.meditriaje.service.FollowUpService;
@@ -49,13 +49,13 @@ class FollowUpControllerTest {
 
     @Test
     @DisplayName("POST /api/v1/attentions/{id}/follow-ups - Profesional: 201 Created con cabecera Location")
-    void prescribirSeguimiento_profesional_retorna201() throws Exception {
+    void prescribeFollowUp_professional_returns201() throws Exception {
         String tokenProf = "valid.token.prof";
-        when(jwtService.esValido(tokenProf)).thenReturn(true);
-        when(jwtService.extraerPublicId(tokenProf)).thenReturn("uuid-prof-1");
-        when(jwtService.extraerRoles(tokenProf)).thenReturn(List.of("ROLE_PROFESIONAL"));
+        when(jwtService.isValid(tokenProf)).thenReturn(true);
+        when(jwtService.extractPublicId(tokenProf)).thenReturn("uuid-prof-1");
+        when(jwtService.extractRoles(tokenProf)).thenReturn(List.of("ROLE_PROFESIONAL"));
 
-        SeguimientoResponse resp = new SeguimientoResponse(
+        FollowUpResponse resp = new FollowUpResponse(
                 "seg-uuid-1", "at-1", "pac-1", "Carlos Gomez",
                 "prof-1", "Dra. Laura Perez", "Medicina General",
                 "CONTROL_MEDICO", "Control de presión en 7 días",
@@ -63,7 +63,7 @@ class FollowUpControllerTest {
                 null, null, Instant.now(), Instant.now()
         );
 
-        when(followUpService.prescribirSeguimiento(eq("at-1"), any(CrearSeguimientoRequest.class), eq("uuid-prof-1"), anyString()))
+        when(followUpService.prescribeFollowUp(eq("at-1"), any(CreateFollowUpRequest.class), eq("uuid-prof-1"), anyString()))
                 .thenReturn(resp);
 
         String jsonBody = """
@@ -88,11 +88,11 @@ class FollowUpControllerTest {
 
     @Test
     @DisplayName("POST /api/v1/attentions/{id}/follow-ups - Paciente: 403 Forbidden")
-    void prescribirSeguimiento_paciente_retorna403() throws Exception {
+    void prescribeFollowUp_patient_returns403() throws Exception {
         String tokenPac = "valid.token.pac";
-        when(jwtService.esValido(tokenPac)).thenReturn(true);
-        when(jwtService.extraerPublicId(tokenPac)).thenReturn("uuid-pac-1");
-        when(jwtService.extraerRoles(tokenPac)).thenReturn(List.of("ROLE_PACIENTE"));
+        when(jwtService.isValid(tokenPac)).thenReturn(true);
+        when(jwtService.extractPublicId(tokenPac)).thenReturn("uuid-pac-1");
+        when(jwtService.extractRoles(tokenPac)).thenReturn(List.of("ROLE_PACIENTE"));
 
         String jsonBody = """
                 {
@@ -112,11 +112,11 @@ class FollowUpControllerTest {
 
     @Test
     @DisplayName("POST /api/v1/attentions/{id}/follow-ups - Administrador: 403 Forbidden")
-    void prescribirSeguimiento_admin_retorna403() throws Exception {
+    void prescribeFollowUp_admin_returns403() throws Exception {
         String tokenAdmin = "valid.token.admin";
-        when(jwtService.esValido(tokenAdmin)).thenReturn(true);
-        when(jwtService.extraerPublicId(tokenAdmin)).thenReturn("uuid-admin-1");
-        when(jwtService.extraerRoles(tokenAdmin)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
+        when(jwtService.isValid(tokenAdmin)).thenReturn(true);
+        when(jwtService.extractPublicId(tokenAdmin)).thenReturn("uuid-admin-1");
+        when(jwtService.extractRoles(tokenAdmin)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
 
         String jsonBody = """
                 {
@@ -136,7 +136,7 @@ class FollowUpControllerTest {
 
     @Test
     @DisplayName("POST /api/v1/attentions/{id}/follow-ups - Sin autenticación: 401 Unauthorized")
-    void prescribirSeguimiento_sinAuth_retorna401() throws Exception {
+    void prescribeFollowUp_withoutAuth_returns401() throws Exception {
         String jsonBody = """
                 {
                     "tipo": "CONTROL_MEDICO",
@@ -153,13 +153,13 @@ class FollowUpControllerTest {
 
     @Test
     @DisplayName("GET /api/v1/attentions/{id}/follow-ups - Usuario autenticado: 200 OK")
-    void listarPorAtencion_autenticado_retorna200() throws Exception {
+    void listByAttention_authenticated_returns200() throws Exception {
         String token = "valid.token";
-        when(jwtService.esValido(token)).thenReturn(true);
-        when(jwtService.extraerPublicId(token)).thenReturn("uuid-user-1");
-        when(jwtService.extraerRoles(token)).thenReturn(List.of("ROLE_PROFESIONAL"));
+        when(jwtService.isValid(token)).thenReturn(true);
+        when(jwtService.extractPublicId(token)).thenReturn("uuid-user-1");
+        when(jwtService.extractRoles(token)).thenReturn(List.of("ROLE_PROFESIONAL"));
 
-        when(followUpService.listarPorAtencion(eq("at-1"), eq("uuid-user-1"), any()))
+        when(followUpService.listByAttention(eq("at-1"), eq("uuid-user-1"), any()))
                 .thenReturn(List.of());
 
         mockMvc.perform(get("/api/v1/attentions/at-1/follow-ups")
@@ -169,20 +169,20 @@ class FollowUpControllerTest {
 
     @Test
     @DisplayName("GET /api/v1/follow-ups/{id} - Usuario autenticado: 200 OK")
-    void obtenerPorPublicId_autenticado_retorna200() throws Exception {
+    void getByPublicId_authenticated_returns200() throws Exception {
         String token = "valid.token";
-        when(jwtService.esValido(token)).thenReturn(true);
-        when(jwtService.extraerPublicId(token)).thenReturn("uuid-user-1");
-        when(jwtService.extraerRoles(token)).thenReturn(List.of("ROLE_PACIENTE"));
+        when(jwtService.isValid(token)).thenReturn(true);
+        when(jwtService.extractPublicId(token)).thenReturn("uuid-user-1");
+        when(jwtService.extractRoles(token)).thenReturn(List.of("ROLE_PACIENTE"));
 
-        SeguimientoResponse resp = new SeguimientoResponse(
+        FollowUpResponse resp = new FollowUpResponse(
                 "seg-1", "at-1", "pac-1", "Carlos Gomez",
                 "prof-1", "Dra. Laura Perez", "Medicina General",
                 "CONTROL_MEDICO", "Control de presión",
                 null, "PENDIENTE", null, null, Instant.now(), Instant.now()
         );
 
-        when(followUpService.obtenerPorPublicId(eq("seg-1"), eq("uuid-user-1"), any()))
+        when(followUpService.getByPublicId(eq("seg-1"), eq("uuid-user-1"), any()))
                 .thenReturn(resp);
 
         mockMvc.perform(get("/api/v1/follow-ups/seg-1")
@@ -193,20 +193,20 @@ class FollowUpControllerTest {
 
     @Test
     @DisplayName("PATCH /api/v1/follow-ups/{id}/cancel - Profesional: 200 OK")
-    void cancelarSeguimiento_profesional_retorna200() throws Exception {
+    void cancelFollowUp_professional_returns200() throws Exception {
         String tokenProf = "valid.token.prof";
-        when(jwtService.esValido(tokenProf)).thenReturn(true);
-        when(jwtService.extraerPublicId(tokenProf)).thenReturn("uuid-prof-1");
-        when(jwtService.extraerRoles(tokenProf)).thenReturn(List.of("ROLE_PROFESIONAL"));
+        when(jwtService.isValid(tokenProf)).thenReturn(true);
+        when(jwtService.extractPublicId(tokenProf)).thenReturn("uuid-prof-1");
+        when(jwtService.extractRoles(tokenProf)).thenReturn(List.of("ROLE_PROFESIONAL"));
 
-        SeguimientoResponse cancelado = new SeguimientoResponse(
+        FollowUpResponse cancelado = new FollowUpResponse(
                 "seg-1", "at-1", "pac-1", "Carlos Gomez",
                 "prof-1", "Dra. Laura Perez", "Medicina General",
                 "CONTROL_MEDICO", "Control cancelado",
                 null, "CANCELADO", null, null, Instant.now(), Instant.now()
         );
 
-        when(followUpService.cancelarSeguimiento(eq("seg-1"), eq("uuid-prof-1"), any()))
+        when(followUpService.cancelFollowUp(eq("seg-1"), eq("uuid-prof-1"), any()))
                 .thenReturn(cancelado);
 
         mockMvc.perform(patch("/api/v1/follow-ups/seg-1/cancel")

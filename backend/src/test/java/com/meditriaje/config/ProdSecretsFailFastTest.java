@@ -43,15 +43,14 @@ class ProdSecretsFailFastTest {
             "BREVO_API_KEY"
     })
     @DisplayName("Debe fallar al arrancar en perfil prod si falta cualquier secreto o variable obligatoria")
-    void debeFallarAlArrancarEnProdSiFaltaSecreto(String variableFaltante) {
+    void shouldFailStartupInProdWhenSecretMissing(String variableFaltante) {
         Map<String, Object> props = baseProdProperties();
         props.remove(variableFaltante);
 
         assertThatThrownBy(() -> {
             try (ConfigurableApplicationContext ctx = new SpringApplicationBuilder(MediTriajeApplication.class)
-                    .profiles("prod")
                     .properties(props)
-                    .run()) {
+                    .run("--spring.profiles.active=prod")) {
                 // No debe llegar aquí
             }
         }).satisfies(ex -> {

@@ -13,10 +13,10 @@ public interface EmailTransport {
      * @param cuerpoHtml        Contenido en formato HTML.
      * @return {@link ResultadoEnvio} indicando éxito o detalle del fallo.
      */
-    ResultadoEnvio enviar(String destinatarioEmail, String asunto, String cuerpoHtml);
+    EmailSendResult send(String destinatarioEmail, String asunto, String cuerpoHtml);
 
     /**
      * Identificador del transporte activo ("brevo-api", "smtp", "log").
      */
-    String getNombreTransporte();
+    String getTransportName();
 }

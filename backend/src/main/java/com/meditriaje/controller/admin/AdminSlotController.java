@@ -1,7 +1,7 @@
 package com.meditriaje.controller.admin;
 
-import com.meditriaje.dto.admin.GenerarSlotsRequest;
-import com.meditriaje.dto.admin.GenerarSlotsResponse;
+import com.meditriaje.dto.admin.GenerateSlotsRequest;
+import com.meditriaje.dto.admin.GenerateSlotsResponse;
 import com.meditriaje.dto.admin.SlotResponse;
 import com.meditriaje.dto.common.PaginatedResponse;
 import com.meditriaje.service.SlotGeneratorService;
@@ -42,73 +42,72 @@ public class AdminSlotController {
     }
 
     @PostMapping("/generate")
-    public ResponseEntity<GenerarSlotsResponse> generarSlots(
-            @Valid @RequestBody GenerarSlotsRequest request,
+    public ResponseEntity<GenerateSlotsResponse> generateSlots(
+            @Valid @RequestBody GenerateSlotsRequest request,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String adminPublicId = (String) authentication.getPrincipal();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
-        GenerarSlotsResponse response = slotGeneratorService.generarSlots(request, adminPublicId, ipOrigen);
+        String sourceIp = IpUtil.extractIp(httpRequest);
+        GenerateSlotsResponse response = slotGeneratorService.generateSlots(request, adminPublicId, sourceIp);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @GetMapping
-    public ResponseEntity<PaginatedResponse<SlotResponse>> listar(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @RequestParam(required = false) String profesionalPublicId,
-            @RequestParam(required = false) String sedePublicId,
-            @RequestParam(required = false) String especialidadPublicId,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant fechaDesde,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant fechaHasta,
-            @RequestParam(required = false) String estado
+    public ResponseEntity<PaginatedResponse<SlotResponse>> list(
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size,
+            @RequestParam(value = "profesionalPublicId", required = false) String professionalPublicId,
+            @RequestParam(value = "especialidadPublicId", required = false) String specialtyPublicId,
+            @RequestParam(value = "fechaDesde", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant dateFrom,
+            @RequestParam(value = "fechaHasta", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant dateTo,
+            @RequestParam(value = "estado", required = false) String status
     ) {
-        PaginatedResponse<SlotResponse> response = slotGeneratorService.listar(
-                page, size, profesionalPublicId, sedePublicId, especialidadPublicId, fechaDesde, fechaHasta, estado
+        PaginatedResponse<SlotResponse> response = slotGeneratorService.list(
+                page, size, professionalPublicId, specialtyPublicId, dateFrom, dateTo, status
         );
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/{publicId}")
-    public ResponseEntity<SlotResponse> obtener(@PathVariable String publicId) {
-        SlotResponse response = slotGeneratorService.obtenerPorPublicId(publicId);
+    public ResponseEntity<SlotResponse> getByPublicId(@PathVariable("publicId") String publicId) {
+        SlotResponse response = slotGeneratorService.getByPublicId(publicId);
         return ResponseEntity.ok(response);
     }
 
     @PatchMapping("/{publicId}/block")
-    public ResponseEntity<SlotResponse> bloquear(
-            @PathVariable String publicId,
+    public ResponseEntity<SlotResponse> block(
+            @PathVariable("publicId") String publicId,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String adminPublicId = (String) authentication.getPrincipal();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
-        SlotResponse response = slotGeneratorService.bloquearSlot(publicId, adminPublicId, ipOrigen);
+        String sourceIp = IpUtil.extractIp(httpRequest);
+        SlotResponse response = slotGeneratorService.blockSlot(publicId, adminPublicId, sourceIp);
         return ResponseEntity.ok(response);
     }
 
     @PatchMapping("/{publicId}/unblock")
-    public ResponseEntity<SlotResponse> desbloquear(
-            @PathVariable String publicId,
+    public ResponseEntity<SlotResponse> unblock(
+            @PathVariable("publicId") String publicId,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String adminPublicId = (String) authentication.getPrincipal();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
-        SlotResponse response = slotGeneratorService.desbloquearSlot(publicId, adminPublicId, ipOrigen);
+        String sourceIp = IpUtil.extractIp(httpRequest);
+        SlotResponse response = slotGeneratorService.unblockSlot(publicId, adminPublicId, sourceIp);
         return ResponseEntity.ok(response);
     }
 
     @DeleteMapping("/{publicId}")
-    public ResponseEntity<Void> eliminar(
-            @PathVariable String publicId,
+    public ResponseEntity<Void> delete(
+            @PathVariable("publicId") String publicId,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String adminPublicId = (String) authentication.getPrincipal();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
-        slotGeneratorService.eliminarSlot(publicId, adminPublicId, ipOrigen);
+        String sourceIp = IpUtil.extractIp(httpRequest);
+        slotGeneratorService.deleteSlot(publicId, adminPublicId, sourceIp);
         return ResponseEntity.noContent().build();
     }
 }

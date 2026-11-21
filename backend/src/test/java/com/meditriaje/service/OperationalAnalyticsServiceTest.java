@@ -1,7 +1,7 @@
 package com.meditriaje.service;
 
-import com.meditriaje.dto.emergency.ItemColaUrgenciaResponse;
-import com.meditriaje.dto.hospital.CensoCamasResponse;
+import com.meditriaje.dto.emergency.EmergencyQueueItemResponse;
+import com.meditriaje.dto.hospital.BedCensusResponse;
 import com.meditriaje.dto.operational.*;
 import com.meditriaje.model.*;
 import com.meditriaje.repository.*;
@@ -26,31 +26,31 @@ import static org.mockito.Mockito.*;
 class OperationalAnalyticsServiceTest {
 
     @Mock
-    private AlertaOperativaRepository alertaRepository;
+    private OperationalAlertRepository alertRepository;
 
     @Mock
-    private SeguimientoQrRepository seguimientoQrRepository;
+    private TrackingQrRepository trackingQrRepository;
 
     @Mock
     private HospitalService hospitalService;
 
     @Mock
-    private SedeRepository sedeRepository;
+    private SiteRepository siteRepository;
 
     @Mock
-    private EpisodioAtencionRepository episodioRepository;
+    private CareEpisodeRepository episodeRepository;
 
     @Mock
-    private ValoracionTriajeRepository triajeRepository;
+    private TriageAssessmentRepository triageRepository;
 
     @Mock
-    private IdentidadProvisionalRepository identidadRepository;
+    private ProvisionalIdentityRepository identityRepository;
 
     @Mock
-    private UsuarioRepository usuarioRepository;
+    private UserRepository userRepository;
 
     @Mock
-    private AuditoriaService auditoriaService;
+    private AuditService auditService;
 
     private Clock clock;
     private OperationalAnalyticsService service;
@@ -61,123 +61,123 @@ class OperationalAnalyticsServiceTest {
     void setUp() {
         clock = Clock.fixed(now, ZoneOffset.UTC);
         service = new OperationalAnalyticsService(
-                alertaRepository,
-                seguimientoQrRepository,
+                alertRepository,
+                trackingQrRepository,
                 hospitalService,
-                sedeRepository,
-                episodioRepository,
-                triajeRepository,
-                identidadRepository,
-                usuarioRepository,
-                auditoriaService,
+                siteRepository,
+                episodeRepository,
+                triageRepository,
+                identityRepository,
+                userRepository,
+                auditService,
                 clock
         );
     }
 
     @Test
     @DisplayName("O01/O02: obtenerDashboardHospitalario calcula ocupación, esperas y genera alerta si saturación >= 85%")
-    void obtenerDashboardHospitalario_calculaYGeneraAlerta() {
-        Sede sede = new Sede(1L, 10L, "sede-1", "Sede Central", "Dir", "Valledupar", "ACTIVO");
-        when(sedeRepository.buscarPorPublicId("sede-1")).thenReturn(Optional.of(sede));
+    void getDashboardHospital_calculaAndGeneratesAlert() {
+        Site sede = new Site(1L, 10L, "sede-1", "Sede Central", "Dir", "Valledupar", "ACTIVO");
+        when(siteRepository.getSingleSite()).thenReturn(sede);
 
-        CensoCamasResponse censo = new CensoCamasResponse(
+        BedCensusResponse censo = new BedCensusResponse(
                 "sede-1", "Sede Central", 100, 88, 10, 2, 0, 88.0, List.of()
         );
-        when(hospitalService.obtenerCensoCamas("sede-1")).thenReturn(censo);
+        when(hospitalService.getBedCensus()).thenReturn(censo);
 
-        ItemColaUrgenciaResponse itemCola = new ItemColaUrgenciaResponse(
+        EmergencyQueueItemResponse itemCola = new EmergencyQueueItemResponse(
                 "ep-1", null, "Paciente NN", "NN-001", "sede-1", "Sede Central",
                 "URGENCIA", "EN_VALORACION", "II", "Dolor torácico", 40L, now.minusSeconds(2400), "Dr. Médico"
         );
-        when(episodioRepository.listarColaUrgenciaPorSede(1L, null)).thenReturn(List.of(itemCola));
-        when(alertaRepository.listarPorSede(1L, "ACTIVA")).thenReturn(List.of());
+        when(episodeRepository.listEmergencyQueueBySite(1L, null)).thenReturn(List.of(itemCola));
+        when(alertRepository.listBySite(1L, "ACTIVA")).thenReturn(List.of());
 
-        DashboardHospitalarioResponse resp = service.obtenerDashboardHospitalario("sede-1", "usr-admin", "127.0.0.1");
+        HospitalDashboardResponse resp = service.getHospitalDashboard("usr-admin", "127.0.0.1");
 
         assertNotNull(resp);
-        assertEquals(88.0, resp.tasaOcupacionPorcentaje());
-        assertEquals(88, resp.camasOcupadas());
-        assertEquals(1, resp.episodiosUrgenciasActivos());
-        assertEquals(1L, resp.episodiosPorNivelTriaje().get("II"));
+        assertEquals(88.0, resp.occupancyRatePercentage());
+        assertEquals(88, resp.occupiedBeds());
+        assertEquals(1, resp.activeEmergencyEpisodes());
+        assertEquals(1L, resp.episodesByTriageLevel().get("II"));
 
         // F-03: GET es estrictamente idempotente y no genera alertas como efecto colateral
-        verify(alertaRepository, never()).guardar(any(AlertaOperativa.class));
+        verify(alertRepository, never()).save(any(OperationalAlert.class));
 
         // Proceso desacoplado de evaluación de alertas operativas
-        service.evaluarAlertasAutomaticas(sede, resp.tasaOcupacionPorcentaje(), resp.episodiosPorNivelTriaje(), resp.tiemposPromedioEsperaMinutos());
-        verify(alertaRepository, atLeastOnce()).guardar(any(AlertaOperativa.class));
+        service.evaluateAutomaticAlerts(sede, resp.occupancyRatePercentage(), resp.episodesByTriageLevel(), resp.averageWaitMinutes());
+        verify(alertRepository, atLeastOnce()).save(any(OperationalAlert.class));
     }
 
     @Test
     @DisplayName("O02: reconocerAlerta actualiza estado a RECONOCIDA y audita evento")
-    void reconocerAlerta_exitoso() {
-        AlertaOperativa alerta = new AlertaOperativa(
+    void acknowledgeAlert_success() {
+        OperationalAlert alerta = new OperationalAlert(
                 5L, "alerta-1", 1L, "SATURACION_CAMAS", "CRITICA", "Ocupación al 90%", "ACTIVA", null, null, null, now
         );
-        when(alertaRepository.buscarPorPublicId("alerta-1")).thenReturn(Optional.of(alerta));
+        when(alertRepository.findByPublicId("alerta-1")).thenReturn(Optional.of(alerta));
 
-        Usuario usuario = new Usuario(10L, "usr-admin", "admin@hospital.com", "HASH", "ACTIVO", 0, null, now, false);
-        when(usuarioRepository.buscarPorPublicId("usr-admin")).thenReturn(Optional.of(usuario));
+        User usuario = new User(10L, "usr-admin", "admin@hospital.com", "HASH", "ACTIVO", 0, null, now, false);
+        when(userRepository.findByPublicId("usr-admin")).thenReturn(Optional.of(usuario));
 
-        ReconocerAlertaRequest req = new ReconocerAlertaRequest("Se activó pabellón de expansión");
-        service.reconocerAlerta("alerta-1", req, "usr-admin", "127.0.0.1");
+        AcknowledgeAlertRequest req = new AcknowledgeAlertRequest("Se activó pabellón de expansión");
+        service.acknowledgeAlert("alerta-1", req, "usr-admin", "127.0.0.1");
 
-        verify(alertaRepository).reconocerAlerta(eq(5L), eq(10L), eq(now), eq("Se activó pabellón de expansión"));
-        verify(auditoriaService).auditar(any(EventoAuditoria.class));
+        verify(alertRepository).acknowledgeAlert(eq(5L), eq(10L), eq(now), eq("Se activó pabellón de expansión"));
+        verify(auditService).audit(any(AuditEvent.class));
     }
 
     @Test
     @DisplayName("O03: generarQrSeguimiento genera token QROP seguro sin exponer PHI")
-    void generarQrSeguimiento_creaTokenExitosamente() {
-        EpisodioAtencion ep = new EpisodioAtencion(
+    void generateQrFollowUp_createsTokenExitosamente() {
+        CareEpisode ep = new CareEpisode(
                 50L, "ep-1", null, "URGENCIAS", 1L, "EN_VALORACION", now, null, "Urgencia", now, null
         );
-        when(episodioRepository.buscarPorPublicId("ep-1")).thenReturn(Optional.of(ep));
+        when(episodeRepository.findByPublicId("ep-1")).thenReturn(Optional.of(ep));
 
-        Usuario usuario = new Usuario(20L, "usr-enf", "enf@hospital.com", "HASH", "ACTIVO", 0, null, now, false);
-        when(usuarioRepository.buscarPorPublicId("usr-enf")).thenReturn(Optional.of(usuario));
+        User usuario = new User(20L, "usr-enf", "enf@hospital.com", "HASH", "ACTIVO", 0, null, now, false);
+        when(userRepository.findByPublicId("usr-enf")).thenReturn(Optional.of(usuario));
 
-        when(seguimientoQrRepository.buscarActivoPorEpisodioId(50L)).thenReturn(Optional.empty());
+        when(trackingQrRepository.findActiveByEpisodeId(50L)).thenReturn(Optional.empty());
 
-        SeguimientoIntrahospitalarioQr qrGuardado = new SeguimientoIntrahospitalarioQr(
+        InpatientQrTracking qrGuardado = new InpatientQrTracking(
                 1L, "qr-pub", 50L, "QROP-1234567890", "URGENCIAS / SALA DE OBSERVACION", "ACTIVA", now, now.plusSeconds(86400)
         );
-        when(seguimientoQrRepository.guardar(any(SeguimientoIntrahospitalarioQr.class))).thenReturn(qrGuardado);
-        when(identidadRepository.buscarPorEpisodioId(50L)).thenReturn(Optional.empty());
-        when(triajeRepository.buscarUltimaPorEpisodioId(50L)).thenReturn(Optional.empty());
+        when(trackingQrRepository.save(any(InpatientQrTracking.class))).thenReturn(qrGuardado);
+        when(identityRepository.findByEpisodeId(50L)).thenReturn(Optional.empty());
+        when(triageRepository.findLatestByEpisodeId(50L)).thenReturn(Optional.empty());
 
-        QrSeguimientoResponse resp = service.generarQrSeguimiento("ep-1", "usr-enf", "127.0.0.1");
+        TrackingQrResponse resp = service.generateTrackingQr("ep-1", "usr-enf", "127.0.0.1");
 
         assertNotNull(resp);
-        assertEquals("QROP-1234567890", resp.tokenQr());
-        assertEquals("URGENCIAS / SALA DE OBSERVACION", resp.ubicacionActual());
-        verify(auditoriaService).auditar(any(EventoAuditoria.class));
+        assertEquals("QROP-1234567890", resp.qrToken());
+        assertEquals("URGENCIAS / SALA DE OBSERVACION", resp.currentLocation());
+        verify(auditService).audit(any(AuditEvent.class));
     }
 
     @Test
     @DisplayName("O03: consultarPorTokenQr recupera ubicación sin exponer historial clínico")
-    void consultarPorTokenQr_retornaUbicacionSegura() {
-        SeguimientoIntrahospitalarioQr qr = new SeguimientoIntrahospitalarioQr(
+    void getByTokenQr_returnsLocationSegura() {
+        InpatientQrTracking qr = new InpatientQrTracking(
                 1L, "qr-pub", 50L, "QROP-TEST", "PABELLON SAN ROQUE / CAMA 102", "ACTIVO", now, now.plusSeconds(86400)
         );
-        when(seguimientoQrRepository.buscarPorToken("QROP-TEST")).thenReturn(Optional.of(qr));
+        when(trackingQrRepository.findByToken("QROP-TEST")).thenReturn(Optional.of(qr));
 
-        EpisodioAtencion ep = new EpisodioAtencion(
+        CareEpisode ep = new CareEpisode(
                 50L, "ep-1", null, "HOSPITALIZACION", 1L, "EN_PABELLON", now, null, "Hospitalizado", now, null
         );
-        when(episodioRepository.buscarPorId(50L)).thenReturn(Optional.of(ep));
+        when(episodeRepository.findById(50L)).thenReturn(Optional.of(ep));
 
-        IdentidadProvisional idProv = new IdentidadProvisional(
+        ProvisionalIdentity idProv = new ProvisionalIdentity(
                 1L, "id-prov-uuid", 50L, "NN-20260330-0001", "Físico", 30, "M", "ALERTA", "PENDIENTE", null, null, null, now
         );
-        when(identidadRepository.buscarPorEpisodioId(50L)).thenReturn(Optional.of(idProv));
+        when(identityRepository.findByEpisodeId(50L)).thenReturn(Optional.of(idProv));
 
-        QrSeguimientoResponse resp = service.consultarPorTokenQr("QROP-TEST", "127.0.0.1");
+        TrackingQrResponse resp = service.getByQrToken("QROP-TEST", "127.0.0.1");
 
         assertNotNull(resp);
-        assertEquals("NN-20260330-0001", resp.codigoIdentidadProvisional());
-        assertEquals("PABELLON SAN ROQUE / CAMA 102", resp.ubicacionActual());
-        assertEquals("EN_PABELLON", resp.estadoEpisodio());
-        verify(auditoriaService).auditar(any(EventoAuditoria.class));
+        assertEquals("NN-20260330-0001", resp.provisionalIdentityCode());
+        assertEquals("PABELLON SAN ROQUE / CAMA 102", resp.currentLocation());
+        assertEquals("EN_PABELLON", resp.episodeStatus());
+        verify(auditService).audit(any(AuditEvent.class));
     }
 }

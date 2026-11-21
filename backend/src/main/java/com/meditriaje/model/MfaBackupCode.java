@@ -8,10 +8,10 @@ import java.time.Instant;
  */
 public record MfaBackupCode(
         Long id,
-        Long usuarioId,
+        Long userId,
         String codeHash,
-        boolean usado,
-        Instant usadoAt,
+        boolean used,
+        Instant usedAt,
         Instant createdAt
 ) {
 }

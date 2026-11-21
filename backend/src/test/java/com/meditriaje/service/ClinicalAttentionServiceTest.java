@@ -1,32 +1,32 @@
 package com.meditriaje.service;
 
-import com.meditriaje.dto.clinical.AtencionResponse;
-import com.meditriaje.dto.clinical.CerrarAtencionRequest;
-import com.meditriaje.dto.clinical.CrearEnmiendaRequest;
-import com.meditriaje.dto.clinical.EnmiendaResponse;
-import com.meditriaje.dto.clinical.IniciarAtencionRequest;
-import com.meditriaje.dto.clinical.SignosVitalesDto;
+import com.meditriaje.dto.clinical.ClinicalAttentionResponse;
+import com.meditriaje.dto.clinical.CloseAttentionRequest;
+import com.meditriaje.dto.clinical.CreateAmendmentRequest;
+import com.meditriaje.dto.clinical.AmendmentResponse;
+import com.meditriaje.dto.clinical.StartAttentionRequest;
+import com.meditriaje.dto.clinical.VitalSignsDto;
 import com.meditriaje.dto.common.PaginatedResponse;
-import com.meditriaje.exception.AccesoNoAutorizadoException;
-import com.meditriaje.exception.DatosInvalidosException;
-import com.meditriaje.exception.RecursoNoEncontradoException;
-import com.meditriaje.model.AccionAuditable;
-import com.meditriaje.model.Atencion;
-import com.meditriaje.model.Cita;
-import com.meditriaje.model.DiagnosticoCie10;
-import com.meditriaje.model.DisponibilidadSlot;
-import com.meditriaje.model.EventoAuditoria;
-import com.meditriaje.model.Paciente;
-import com.meditriaje.model.Profesional;
-import com.meditriaje.model.SignoVital;
-import com.meditriaje.model.Usuario;
-import com.meditriaje.repository.AtencionRepository;
-import com.meditriaje.repository.CitaRepository;
-import com.meditriaje.repository.DiagnosticoCie10Repository;
-import com.meditriaje.repository.DisponibilidadSlotRepository;
-import com.meditriaje.repository.PacienteRepository;
-import com.meditriaje.repository.ProfesionalRepository;
-import com.meditriaje.repository.UsuarioRepository;
+import com.meditriaje.exception.UnauthorizedAccessException;
+import com.meditriaje.exception.InvalidDataException;
+import com.meditriaje.exception.ResourceNotFoundException;
+import com.meditriaje.model.AuditableAction;
+import com.meditriaje.model.ClinicalAttention;
+import com.meditriaje.model.Appointment;
+import com.meditriaje.model.Cie10Diagnosis;
+import com.meditriaje.model.AvailabilitySlot;
+import com.meditriaje.model.AuditEvent;
+import com.meditriaje.model.Patient;
+import com.meditriaje.model.Professional;
+import com.meditriaje.model.VitalSign;
+import com.meditriaje.model.User;
+import com.meditriaje.repository.ClinicalAttentionRepository;
+import com.meditriaje.repository.AppointmentRepository;
+import com.meditriaje.repository.Cie10DiagnosisRepository;
+import com.meditriaje.repository.AvailabilitySlotRepository;
+import com.meditriaje.repository.PatientRepository;
+import com.meditriaje.repository.ProfessionalRepository;
+import com.meditriaje.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -62,342 +62,342 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class ClinicalAttentionServiceTest {
 
-    private static final ZoneId ZONE_BOGOTA = ZoneId.of("America/Bogota");
+    private static final ZoneId BOGOTA_ZONE = ZoneId.of("America/Bogota");
     private static final Instant AHORA = Instant.parse("2026-10-03T18:30:00Z");
 
     @Mock
-    private UsuarioRepository usuarioRepository;
+    private UserRepository userRepository;
 
     @Mock
-    private PacienteRepository pacienteRepository;
+    private PatientRepository patientRepository;
 
     @Mock
-    private ProfesionalRepository profesionalRepository;
+    private ProfessionalRepository professionalRepository;
 
     @Mock
-    private CitaRepository citaRepository;
+    private AppointmentRepository appointmentRepository;
 
     @Mock
-    private DisponibilidadSlotRepository disponibilidadSlotRepository;
+    private AvailabilitySlotRepository availabilitySlotRepository;
 
     @Mock
-    private AtencionRepository atencionRepository;
+    private ClinicalAttentionRepository attentionRepository;
 
     @Mock
-    private DiagnosticoCie10Repository diagnosticoCie10Repository;
+    private Cie10DiagnosisRepository cie10DiagnosisRepository;
 
     @Mock
-    private AccesoClinicoService accesoClinicoService;
+    private ClinicalAccessService clinicalAccessService;
 
     @Mock
-    private AuditoriaService auditoriaService;
+    private AuditService auditService;
 
     private ClinicalAttentionService clinicalAttentionService;
 
-    private final Clock clock = Clock.fixed(AHORA, ZONE_BOGOTA);
+    private final Clock clock = Clock.fixed(AHORA, BOGOTA_ZONE);
 
-    private final Usuario usuarioMedico = new Usuario(10L, "usr-med-1", "medico@test.com", "hash", "ACTIVO", 0, null, AHORA, false);
-    private final Profesional profesionalMedico = new Profesional(50L, 10L, "prof-1", 1L, "RM-12345", "Carlos", "Gomez", AHORA, null);
-    private final Cita citaValida = new Cita(100L, "cita-uuid-1", 200L, 300L, null, null, "PROGRAMADA", null, AHORA, null);
-    private final DisponibilidadSlot slotValido = new DisponibilidadSlot(200L, "slot-uuid-1", 50L, 1L, 1L, AHORA, AHORA.plusSeconds(1800), "PRESENCIAL", "OCUPADO");
+    private final User usuarioMedico = new User(10L, "usr-med-1", "medico@test.com", "hash", "ACTIVO", 0, null, AHORA, false);
+    private final Professional profesionalMedico = new Professional(50L, 10L, "prof-1", 1L, "RM-12345", "Carlos", "Gomez", AHORA, null);
+    private final Appointment citaValida = new Appointment(100L, "cita-uuid-1", 200L, 300L, null, null, "PROGRAMADA", null, AHORA, null);
+    private final AvailabilitySlot slotValido = new AvailabilitySlot(200L, "slot-uuid-1", 50L, 1L, 1L, AHORA, AHORA.plusSeconds(1800), "PRESENCIAL", "OCUPADO");
 
     @BeforeEach
     void setUp() {
         clinicalAttentionService = new ClinicalAttentionService(
-                usuarioRepository,
-                pacienteRepository,
-                profesionalRepository,
-                citaRepository,
-                disponibilidadSlotRepository,
-                atencionRepository,
-                diagnosticoCie10Repository,
-                accesoClinicoService,
-                auditoriaService,
+                userRepository,
+                patientRepository,
+                professionalRepository,
+                appointmentRepository,
+                availabilitySlotRepository,
+                attentionRepository,
+                cie10DiagnosisRepository,
+                clinicalAccessService,
+                auditService,
                 clock
         );
     }
 
     @Test
     @DisplayName("iniciarAtencion - éxito: crea atención en estado ABIERTA, mantiene cita en PROGRAMADA y audita (D2)")
-    void iniciarAtencion_exito() {
-        IniciarAtencionRequest request = new IniciarAtencionRequest("cita-uuid-1");
+    void startAttention_success() {
+        StartAttentionRequest request = new StartAttentionRequest("cita-uuid-1");
 
-        when(usuarioRepository.buscarPorPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMedico));
-        when(profesionalRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.of(profesionalMedico));
-        when(citaRepository.buscarEntidadPorPublicId("cita-uuid-1")).thenReturn(Optional.of(citaValida));
-        when(disponibilidadSlotRepository.buscarPorId(200L)).thenReturn(Optional.of(slotValido));
-        when(atencionRepository.existePorCitaId(100L)).thenReturn(false);
-        when(atencionRepository.crear(any(Atencion.class))).thenReturn(1L);
+        when(userRepository.findByPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMedico));
+        when(professionalRepository.findByUserId(10L)).thenReturn(Optional.of(profesionalMedico));
+        when(appointmentRepository.findEntityByPublicId("cita-uuid-1")).thenReturn(Optional.of(citaValida));
+        when(availabilitySlotRepository.findById(200L)).thenReturn(Optional.of(slotValido));
+        when(attentionRepository.existsByAppointmentId(100L)).thenReturn(false);
+        when(attentionRepository.create(any(ClinicalAttention.class))).thenReturn(1L);
 
-        AtencionResponse mockResponse = new AtencionResponse(
+        ClinicalAttentionResponse mockResponse = new ClinicalAttentionResponse(
                 "atencion-uuid-1", "cita-uuid-1", "pac-uuid-1", "Juan Perez",
                 "prof-1", "Carlos Gomez", "Medicina General",
                 "ABIERTA", AHORA, null, null, null, null, null, null, null
         );
-        when(atencionRepository.buscarDetallePorPublicId(any())).thenReturn(Optional.of(mockResponse));
+        when(attentionRepository.findDetailByPublicId(any())).thenReturn(Optional.of(mockResponse));
 
-        AtencionResponse response = clinicalAttentionService.iniciarAtencion(request, "usr-med-1", "127.0.0.1");
+        ClinicalAttentionResponse response = clinicalAttentionService.startAttention(request, "usr-med-1", "127.0.0.1");
 
         assertThat(response).isNotNull();
-        assertThat(response.estado()).isEqualTo("ABIERTA");
+        assertThat(response.status()).isEqualTo("ABIERTA");
 
         // Verifica que la cita NO cambia de estado al iniciar atención (Decisión D2)
-        verify(citaRepository, never()).actualizarEstado(anyLong(), anyString(), any());
+        verify(appointmentRepository, never()).updateStatus(anyLong(), anyString(), any());
 
         // Verifica guardado de atención
-        ArgumentCaptor<Atencion> atencionCaptor = ArgumentCaptor.forClass(Atencion.class);
-        verify(atencionRepository).crear(atencionCaptor.capture());
-        Atencion atencionGuardada = atencionCaptor.getValue();
-        assertThat(atencionGuardada.citaId()).isEqualTo(100L);
-        assertThat(atencionGuardada.pacienteId()).isEqualTo(300L);
-        assertThat(atencionGuardada.profesionalId()).isEqualTo(50L);
-        assertThat(atencionGuardada.estado()).isEqualTo("ABIERTA");
+        ArgumentCaptor<ClinicalAttention> atencionCaptor = ArgumentCaptor.forClass(ClinicalAttention.class);
+        verify(attentionRepository).create(atencionCaptor.capture());
+        ClinicalAttention atencionGuardada = atencionCaptor.getValue();
+        assertThat(atencionGuardada.appointmentId()).isEqualTo(100L);
+        assertThat(atencionGuardada.patientId()).isEqualTo(300L);
+        assertThat(atencionGuardada.professionalId()).isEqualTo(50L);
+        assertThat(atencionGuardada.status()).isEqualTo("ABIERTA");
 
         // Verifica auditoría sin datos clínicos
-        ArgumentCaptor<EventoAuditoria> eventoCaptor = ArgumentCaptor.forClass(EventoAuditoria.class);
-        verify(auditoriaService).auditar(eventoCaptor.capture());
-        assertThat(eventoCaptor.getValue().accion()).isEqualTo(AccionAuditable.CREACION_ATENCION);
-        assertThat(eventoCaptor.getValue().tipoRecurso()).isEqualTo("ATENCION");
+        ArgumentCaptor<AuditEvent> eventoCaptor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).audit(eventoCaptor.capture());
+        assertThat(eventoCaptor.getValue().action()).isEqualTo(AuditableAction.CREACION_ATENCION);
+        assertThat(eventoCaptor.getValue().resourceType()).isEqualTo("ATENCION");
     }
 
     @Test
     @DisplayName("iniciarAtencion - rechaza si el usuario no es profesional asistencial (403)")
-    void iniciarAtencion_rechazaSiUsuarioNoEsProfesional() {
-        IniciarAtencionRequest request = new IniciarAtencionRequest("cita-uuid-1");
-        when(usuarioRepository.buscarPorPublicId("usr-pac-1")).thenReturn(Optional.of(usuarioMedico));
-        when(profesionalRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.empty());
+    void startAttention_rejectsWhenUserNotProfessional() {
+        StartAttentionRequest request = new StartAttentionRequest("cita-uuid-1");
+        when(userRepository.findByPublicId("usr-pac-1")).thenReturn(Optional.of(usuarioMedico));
+        when(professionalRepository.findByUserId(10L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> clinicalAttentionService.iniciarAtencion(request, "usr-pac-1", "127.0.0.1"))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+        assertThatThrownBy(() -> clinicalAttentionService.startAttention(request, "usr-pac-1", "127.0.0.1"))
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessageContaining("Usuario no registrado como profesional asistencial.");
     }
 
     @Test
     @DisplayName("iniciarAtencion - rechaza si el profesional no está asignado a la cita (403)")
-    void iniciarAtencion_rechazaSiProfesionalNoCorrespondeACita() {
-        IniciarAtencionRequest request = new IniciarAtencionRequest("cita-uuid-1");
-        DisponibilidadSlot slotOtroMedico = new DisponibilidadSlot(200L, "slot-uuid-1", 999L, 1L, 1L, AHORA, AHORA.plusSeconds(1800), "PRESENCIAL", "OCUPADO");
+    void startAttention_rejectsWhenProfessionalDoesNotMatchAppointment() {
+        StartAttentionRequest request = new StartAttentionRequest("cita-uuid-1");
+        AvailabilitySlot slotOtroMedico = new AvailabilitySlot(200L, "slot-uuid-1", 999L, 1L, 1L, AHORA, AHORA.plusSeconds(1800), "PRESENCIAL", "OCUPADO");
 
-        when(usuarioRepository.buscarPorPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMedico));
-        when(profesionalRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.of(profesionalMedico));
-        when(citaRepository.buscarEntidadPorPublicId("cita-uuid-1")).thenReturn(Optional.of(citaValida));
-        when(disponibilidadSlotRepository.buscarPorId(200L)).thenReturn(Optional.of(slotOtroMedico));
+        when(userRepository.findByPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMedico));
+        when(professionalRepository.findByUserId(10L)).thenReturn(Optional.of(profesionalMedico));
+        when(appointmentRepository.findEntityByPublicId("cita-uuid-1")).thenReturn(Optional.of(citaValida));
+        when(availabilitySlotRepository.findById(200L)).thenReturn(Optional.of(slotOtroMedico));
 
-        assertThatThrownBy(() -> clinicalAttentionService.iniciarAtencion(request, "usr-med-1", "127.0.0.1"))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+        assertThatThrownBy(() -> clinicalAttentionService.startAttention(request, "usr-med-1", "127.0.0.1"))
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessageContaining("El profesional no esta asignado a esta cita medica.");
     }
 
     @Test
     @DisplayName("iniciarAtencion - rechaza si la cita no está en estado válida (400)")
-    void iniciarAtencion_rechazaSiCitaNoEstaEnEstadoValido() {
-        IniciarAtencionRequest request = new IniciarAtencionRequest("cita-uuid-1");
-        Cita citaCancelada = new Cita(100L, "cita-uuid-1", 200L, 300L, null, null, "CANCELADA", null, AHORA, null);
+    void startAttention_rejectsWhenAppointmentInvalidStatus() {
+        StartAttentionRequest request = new StartAttentionRequest("cita-uuid-1");
+        Appointment citaCancelada = new Appointment(100L, "cita-uuid-1", 200L, 300L, null, null, "CANCELADA", null, AHORA, null);
 
-        when(usuarioRepository.buscarPorPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMedico));
-        when(profesionalRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.of(profesionalMedico));
-        when(citaRepository.buscarEntidadPorPublicId("cita-uuid-1")).thenReturn(Optional.of(citaCancelada));
-        when(disponibilidadSlotRepository.buscarPorId(200L)).thenReturn(Optional.of(slotValido));
+        when(userRepository.findByPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMedico));
+        when(professionalRepository.findByUserId(10L)).thenReturn(Optional.of(profesionalMedico));
+        when(appointmentRepository.findEntityByPublicId("cita-uuid-1")).thenReturn(Optional.of(citaCancelada));
+        when(availabilitySlotRepository.findById(200L)).thenReturn(Optional.of(slotValido));
 
-        assertThatThrownBy(() -> clinicalAttentionService.iniciarAtencion(request, "usr-med-1", "127.0.0.1"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> clinicalAttentionService.startAttention(request, "usr-med-1", "127.0.0.1"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("La cita no se encuentra en un estado valido");
     }
 
     @Test
     @DisplayName("iniciarAtencion - rechaza si ya existe una atención para la cita (400)")
-    void iniciarAtencion_rechazaSiYaExisteAtencionParaCita() {
-        IniciarAtencionRequest request = new IniciarAtencionRequest("cita-uuid-1");
+    void startAttention_rejectsWhenAttentionExistsForAppointment() {
+        StartAttentionRequest request = new StartAttentionRequest("cita-uuid-1");
 
-        when(usuarioRepository.buscarPorPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMedico));
-        when(profesionalRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.of(profesionalMedico));
-        when(citaRepository.buscarEntidadPorPublicId("cita-uuid-1")).thenReturn(Optional.of(citaValida));
-        when(disponibilidadSlotRepository.buscarPorId(200L)).thenReturn(Optional.of(slotValido));
-        when(atencionRepository.existePorCitaId(100L)).thenReturn(true);
+        when(userRepository.findByPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMedico));
+        when(professionalRepository.findByUserId(10L)).thenReturn(Optional.of(profesionalMedico));
+        when(appointmentRepository.findEntityByPublicId("cita-uuid-1")).thenReturn(Optional.of(citaValida));
+        when(availabilitySlotRepository.findById(200L)).thenReturn(Optional.of(slotValido));
+        when(attentionRepository.existsByAppointmentId(100L)).thenReturn(true);
 
-        assertThatThrownBy(() -> clinicalAttentionService.iniciarAtencion(request, "usr-med-1", "127.0.0.1"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> clinicalAttentionService.startAttention(request, "usr-med-1", "127.0.0.1"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("Ya existe una atencion clinica registrada");
     }
 
     @Test
     @DisplayName("cerrarAtencion - éxito con diagnóstico CIE-10 y signos vitales: cierra atención, cita pasa a ATENDIDA y audita")
-    void cerrarAtencion_exito_conSignosVitales() {
+    void closeAttention_success_withSignsVitals() {
         String atencionPublicId = "atencion-uuid-1";
-        SignosVitalesDto signos = new SignosVitalesDto(120, 80, 75, 16, new BigDecimal("36.5"), 98, new BigDecimal("70.5"), new BigDecimal("172.0"));
-        CerrarAtencionRequest request = new CerrarAtencionRequest("J00", "Cefalea y congestion nasal", "Cuadro viral agudo", "Reposo e hidratacion oral", signos);
+        VitalSignsDto signos = new VitalSignsDto(120, 80, 75, 16, new BigDecimal("36.5"), 98, new BigDecimal("70.5"), new BigDecimal("172.0"));
+        CloseAttentionRequest request = new CloseAttentionRequest("J00", "Cefalea y congestion nasal", "Cuadro viral agudo", "Reposo e hidratacion oral", signos);
 
-        Atencion atencionAbierta = new Atencion(1L, atencionPublicId, 100L, 300L, 50L, "ABIERTA");
-        DiagnosticoCie10 cie10 = new DiagnosticoCie10(15L, "J00", "Rinofaringitis aguda (resfriado comun)", "ACTIVO");
-        Cita citaProgramada = new Cita(100L, "cita-uuid-1", 200L, 300L, null, null, "PROGRAMADA", null, AHORA, null);
+        ClinicalAttention atencionAbierta = new ClinicalAttention(1L, atencionPublicId, 100L, 300L, 50L, "ABIERTA");
+        Cie10Diagnosis cie10 = new Cie10Diagnosis(15L, "J00", "Rinofaringitis aguda (resfriado comun)", "ACTIVO");
+        Appointment citaProgramada = new Appointment(100L, "cita-uuid-1", 200L, 300L, null, null, "PROGRAMADA", null, AHORA, null);
 
-        when(usuarioRepository.buscarPorPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMedico));
-        when(profesionalRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.of(profesionalMedico));
-        when(atencionRepository.buscarEntidadPorPublicId(atencionPublicId)).thenReturn(Optional.of(atencionAbierta));
-        when(diagnosticoCie10Repository.buscarPorCodigo("J00")).thenReturn(Optional.of(cie10));
-        when(citaRepository.buscarEntidadPorId(100L)).thenReturn(Optional.of(citaProgramada));
+        when(userRepository.findByPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMedico));
+        when(professionalRepository.findByUserId(10L)).thenReturn(Optional.of(profesionalMedico));
+        when(attentionRepository.findEntityByPublicId(atencionPublicId)).thenReturn(Optional.of(atencionAbierta));
+        when(cie10DiagnosisRepository.findByCode("J00")).thenReturn(Optional.of(cie10));
+        when(appointmentRepository.findEntityById(100L)).thenReturn(Optional.of(citaProgramada));
 
-        AtencionResponse mockResponse = new AtencionResponse(
+        ClinicalAttentionResponse mockResponse = new ClinicalAttentionResponse(
                 atencionPublicId, "cita-uuid-1", "pac-uuid-1", "Juan Perez",
                 "prof-1", "Carlos Gomez", "Medicina General",
                 "CERRADA", AHORA.minusSeconds(1200), AHORA, "J00", "Rinofaringitis aguda (resfriado comun)",
                 "Cefalea y congestion nasal", "Cuadro viral agudo", "Reposo e hidratacion oral", signos
         );
-        when(atencionRepository.buscarDetallePorPublicId(atencionPublicId)).thenReturn(Optional.of(mockResponse));
+        when(attentionRepository.findDetailByPublicId(atencionPublicId)).thenReturn(Optional.of(mockResponse));
 
-        AtencionResponse response = clinicalAttentionService.cerrarAtencion(atencionPublicId, request, "usr-med-1", "127.0.0.1");
+        ClinicalAttentionResponse response = clinicalAttentionService.closeAttention(atencionPublicId, request, "usr-med-1", "127.0.0.1");
 
         assertThat(response).isNotNull();
-        assertThat(response.estado()).isEqualTo("CERRADA");
+        assertThat(response.status()).isEqualTo("CERRADA");
 
         // Verifica inserción de signos vitales
-        ArgumentCaptor<SignoVital> svCaptor = ArgumentCaptor.forClass(SignoVital.class);
-        verify(atencionRepository).guardarSignosVitales(svCaptor.capture());
-        SignoVital sv = svCaptor.getValue();
-        assertThat(sv.atencionId()).isEqualTo(1L);
-        assertThat(sv.presionSistolica()).isEqualTo(120);
-        assertThat(sv.presionDiastolica()).isEqualTo(80);
+        ArgumentCaptor<VitalSign> svCaptor = ArgumentCaptor.forClass(VitalSign.class);
+        verify(attentionRepository).saveVitalSigns(svCaptor.capture());
+        VitalSign sv = svCaptor.getValue();
+        assertThat(sv.attentionId()).isEqualTo(1L);
+        assertThat(sv.systolicPressure()).isEqualTo(120);
+        assertThat(sv.diastolicPressure()).isEqualTo(80);
 
         // Verifica cierre de atención en BD
-        verify(atencionRepository).cerrarAtencion(1L, 15L, "Cefalea y congestion nasal", "Cuadro viral agudo", "Reposo e hidratacion oral", AHORA);
+        verify(attentionRepository).closeAttention(1L, 15L, "Cefalea y congestion nasal", "Cuadro viral agudo", "Reposo e hidratacion oral", AHORA);
 
         // Verifica transición de cita a ATENDIDA desde PROGRAMADA
-        verify(citaRepository).actualizarEstado(100L, "ATENDIDA", null);
+        verify(appointmentRepository).updateStatus(100L, "ATENDIDA", null);
 
         // Verifica auditoría sin datos clínicos
-        ArgumentCaptor<EventoAuditoria> eventoCaptor = ArgumentCaptor.forClass(EventoAuditoria.class);
-        verify(auditoriaService).auditar(eventoCaptor.capture());
-        assertThat(eventoCaptor.getValue().accion()).isEqualTo(AccionAuditable.CIERRE_ATENCION);
-        assertThat(eventoCaptor.getValue().tipoRecurso()).isEqualTo("ATENCION");
-        assertThat(eventoCaptor.getValue().recursoPublicId()).isEqualTo(atencionPublicId);
+        ArgumentCaptor<AuditEvent> eventoCaptor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).audit(eventoCaptor.capture());
+        assertThat(eventoCaptor.getValue().action()).isEqualTo(AuditableAction.CIERRE_ATENCION);
+        assertThat(eventoCaptor.getValue().resourceType()).isEqualTo("ATENCION");
+        assertThat(eventoCaptor.getValue().resourcePublicId()).isEqualTo(atencionPublicId);
     }
 
     @Test
     @DisplayName("cerrarAtencion - éxito con cita legacy en CONFIRMADA: transiciona válidamente a ATENDIDA (D2)")
-    void cerrarAtencion_exito_citaLegacyConfirmada() {
+    void closeAttention_success_appointmentLegacyConfirmed() {
         String atencionPublicId = "atencion-uuid-legacy";
-        CerrarAtencionRequest request = new CerrarAtencionRequest("J00", "Motivo", "Evolucion", "Indicaciones", null);
-        Atencion atencionAbierta = new Atencion(2L, atencionPublicId, 101L, 300L, 50L, "ABIERTA");
-        DiagnosticoCie10 cie10 = new DiagnosticoCie10(15L, "J00", "Rinofaringitis aguda", "ACTIVO");
-        Cita citaConfirmadaLegacy = new Cita(101L, "cita-uuid-legacy", 201L, 300L, null, null, "CONFIRMADA", null, AHORA, null);
+        CloseAttentionRequest request = new CloseAttentionRequest("J00", "Motivo", "Evolucion", "Indicaciones", null);
+        ClinicalAttention atencionAbierta = new ClinicalAttention(2L, atencionPublicId, 101L, 300L, 50L, "ABIERTA");
+        Cie10Diagnosis cie10 = new Cie10Diagnosis(15L, "J00", "Rinofaringitis aguda", "ACTIVO");
+        Appointment citaConfirmadaLegacy = new Appointment(101L, "cita-uuid-legacy", 201L, 300L, null, null, "CONFIRMADA", null, AHORA, null);
 
-        when(usuarioRepository.buscarPorPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMedico));
-        when(profesionalRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.of(profesionalMedico));
-        when(atencionRepository.buscarEntidadPorPublicId(atencionPublicId)).thenReturn(Optional.of(atencionAbierta));
-        when(diagnosticoCie10Repository.buscarPorCodigo("J00")).thenReturn(Optional.of(cie10));
-        when(citaRepository.buscarEntidadPorId(101L)).thenReturn(Optional.of(citaConfirmadaLegacy));
+        when(userRepository.findByPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMedico));
+        when(professionalRepository.findByUserId(10L)).thenReturn(Optional.of(profesionalMedico));
+        when(attentionRepository.findEntityByPublicId(atencionPublicId)).thenReturn(Optional.of(atencionAbierta));
+        when(cie10DiagnosisRepository.findByCode("J00")).thenReturn(Optional.of(cie10));
+        when(appointmentRepository.findEntityById(101L)).thenReturn(Optional.of(citaConfirmadaLegacy));
 
-        AtencionResponse mockResponse = new AtencionResponse(
+        ClinicalAttentionResponse mockResponse = new ClinicalAttentionResponse(
                 atencionPublicId, "cita-uuid-legacy", "pac-uuid-1", "Juan Perez",
                 "prof-1", "Carlos Gomez", "Medicina General",
                 "CERRADA", AHORA.minusSeconds(600), AHORA, "J00", "Rinofaringitis aguda",
                 "Motivo", "Evolucion", "Indicaciones", null
         );
-        when(atencionRepository.buscarDetallePorPublicId(atencionPublicId)).thenReturn(Optional.of(mockResponse));
+        when(attentionRepository.findDetailByPublicId(atencionPublicId)).thenReturn(Optional.of(mockResponse));
 
-        AtencionResponse response = clinicalAttentionService.cerrarAtencion(atencionPublicId, request, "usr-med-1", "127.0.0.1");
+        ClinicalAttentionResponse response = clinicalAttentionService.closeAttention(atencionPublicId, request, "usr-med-1", "127.0.0.1");
 
         assertThat(response).isNotNull();
-        verify(citaRepository).actualizarEstado(101L, "ATENDIDA", null);
+        verify(appointmentRepository).updateStatus(101L, "ATENDIDA", null);
     }
 
     @Test
     @DisplayName("cerrarAtencion - rechaza si la atención ya está CERRADA (inmutabilidad ADR-008)")
-    void cerrarAtencion_rechazaSiAtencionYaEstaCerrada() {
+    void closeAttention_rejectsWhenAttentionAlreadyClosed() {
         String atencionPublicId = "atencion-uuid-cerrada";
-        CerrarAtencionRequest request = new CerrarAtencionRequest("J00", "Motivo", "Evolucion", "Indicaciones", null);
-        Atencion atencionCerrada = new Atencion(1L, atencionPublicId, 100L, 300L, 50L, "CERRADA");
+        CloseAttentionRequest request = new CloseAttentionRequest("J00", "Motivo", "Evolucion", "Indicaciones", null);
+        ClinicalAttention atencionCerrada = new ClinicalAttention(1L, atencionPublicId, 100L, 300L, 50L, "CERRADA");
 
-        when(usuarioRepository.buscarPorPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMedico));
-        when(profesionalRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.of(profesionalMedico));
-        when(atencionRepository.buscarEntidadPorPublicId(atencionPublicId)).thenReturn(Optional.of(atencionCerrada));
+        when(userRepository.findByPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMedico));
+        when(professionalRepository.findByUserId(10L)).thenReturn(Optional.of(profesionalMedico));
+        when(attentionRepository.findEntityByPublicId(atencionPublicId)).thenReturn(Optional.of(atencionCerrada));
 
-        assertThatThrownBy(() -> clinicalAttentionService.cerrarAtencion(atencionPublicId, request, "usr-med-1", "127.0.0.1"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> clinicalAttentionService.closeAttention(atencionPublicId, request, "usr-med-1", "127.0.0.1"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("ya se encuentra CERRADA y es inmutable");
     }
 
     @Test
     @DisplayName("cerrarAtencion - rechaza si el profesional autenticado no es el asignado a la atención (403)")
-    void cerrarAtencion_rechazaSiProfesionalNoEsElAsignado() {
+    void closeAttention_rejectsWhenProfessionalNotAssigned() {
         String atencionPublicId = "atencion-uuid-1";
-        CerrarAtencionRequest request = new CerrarAtencionRequest("J00", "Motivo", "Evolucion", "Indicaciones", null);
-        Atencion atencionOtroMedico = new Atencion(1L, atencionPublicId, 100L, 300L, 999L, "ABIERTA");
+        CloseAttentionRequest request = new CloseAttentionRequest("J00", "Motivo", "Evolucion", "Indicaciones", null);
+        ClinicalAttention atencionOtroMedico = new ClinicalAttention(1L, atencionPublicId, 100L, 300L, 999L, "ABIERTA");
 
-        when(usuarioRepository.buscarPorPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMedico));
-        when(profesionalRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.of(profesionalMedico));
-        when(atencionRepository.buscarEntidadPorPublicId(atencionPublicId)).thenReturn(Optional.of(atencionOtroMedico));
+        when(userRepository.findByPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMedico));
+        when(professionalRepository.findByUserId(10L)).thenReturn(Optional.of(profesionalMedico));
+        when(attentionRepository.findEntityByPublicId(atencionPublicId)).thenReturn(Optional.of(atencionOtroMedico));
 
-        assertThatThrownBy(() -> clinicalAttentionService.cerrarAtencion(atencionPublicId, request, "usr-med-1", "127.0.0.1"))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+        assertThatThrownBy(() -> clinicalAttentionService.closeAttention(atencionPublicId, request, "usr-med-1", "127.0.0.1"))
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessageContaining("No tiene autorizacion para cerrar la atencion de otro profesional.");
     }
 
     @Test
     @DisplayName("cerrarAtencion - rechaza si el código CIE-10 no existe o está inactivo (400)")
-    void cerrarAtencion_rechazaSiDiagnosticoInvalidoOInactivo() {
+    void closeAttention_rejectsWhenDiagnosisInvalidOrInactive() {
         String atencionPublicId = "atencion-uuid-1";
-        CerrarAtencionRequest request = new CerrarAtencionRequest("COD_INEXISTENTE", "Motivo", "Evolucion", "Indicaciones", null);
-        Atencion atencionAbierta = new Atencion(1L, atencionPublicId, 100L, 300L, 50L, "ABIERTA");
+        CloseAttentionRequest request = new CloseAttentionRequest("COD_INEXISTENTE", "Motivo", "Evolucion", "Indicaciones", null);
+        ClinicalAttention atencionAbierta = new ClinicalAttention(1L, atencionPublicId, 100L, 300L, 50L, "ABIERTA");
 
-        when(usuarioRepository.buscarPorPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMedico));
-        when(profesionalRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.of(profesionalMedico));
-        when(atencionRepository.buscarEntidadPorPublicId(atencionPublicId)).thenReturn(Optional.of(atencionAbierta));
-        when(diagnosticoCie10Repository.buscarPorCodigo("COD_INEXISTENTE")).thenReturn(Optional.empty());
+        when(userRepository.findByPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMedico));
+        when(professionalRepository.findByUserId(10L)).thenReturn(Optional.of(profesionalMedico));
+        when(attentionRepository.findEntityByPublicId(atencionPublicId)).thenReturn(Optional.of(atencionAbierta));
+        when(cie10DiagnosisRepository.findByCode("COD_INEXISTENTE")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> clinicalAttentionService.cerrarAtencion(atencionPublicId, request, "usr-med-1", "127.0.0.1"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> clinicalAttentionService.closeAttention(atencionPublicId, request, "usr-med-1", "127.0.0.1"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("Codigo de diagnostico CIE-10 no encontrado");
 
         // Caso inactivo
-        CerrarAtencionRequest reqInactivo = new CerrarAtencionRequest("INACTIVO", "Motivo", "Evolucion", "Indicaciones", null);
-        DiagnosticoCie10 diagInactivo = new DiagnosticoCie10(99L, "INACTIVO", "Inactivo", "INACTIVO");
-        when(diagnosticoCie10Repository.buscarPorCodigo("INACTIVO")).thenReturn(Optional.of(diagInactivo));
+        CloseAttentionRequest reqInactivo = new CloseAttentionRequest("INACTIVO", "Motivo", "Evolucion", "Indicaciones", null);
+        Cie10Diagnosis diagInactivo = new Cie10Diagnosis(99L, "INACTIVO", "Inactivo", "INACTIVO");
+        when(cie10DiagnosisRepository.findByCode("INACTIVO")).thenReturn(Optional.of(diagInactivo));
 
-        assertThatThrownBy(() -> clinicalAttentionService.cerrarAtencion(atencionPublicId, reqInactivo, "usr-med-1", "127.0.0.1"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> clinicalAttentionService.closeAttention(atencionPublicId, reqInactivo, "usr-med-1", "127.0.0.1"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("se encuentra inactivo");
     }
 
     @Test
     @DisplayName("cerrarAtencion - rechaza si presión arterial sistólica es menor o igual a diastólica (400)")
-    void cerrarAtencion_rechazaSiPresionSistolicaMenorOIgualADiastolica() {
+    void closeAttention_rejectsWhenSystolicNotGreaterThanDiastolic() {
         String atencionPublicId = "atencion-uuid-1";
-        SignosVitalesDto signosInvalidos = new SignosVitalesDto(80, 120, null, null, null, null, null, null);
-        CerrarAtencionRequest request = new CerrarAtencionRequest("J00", "Motivo", "Evolucion", "Indicaciones", signosInvalidos);
-        Atencion atencionAbierta = new Atencion(1L, atencionPublicId, 100L, 300L, 50L, "ABIERTA");
-        DiagnosticoCie10 cie10 = new DiagnosticoCie10(15L, "J00", "Rinofaringitis", "ACTIVO");
+        VitalSignsDto signosInvalidos = new VitalSignsDto(80, 120, null, null, null, null, null, null);
+        CloseAttentionRequest request = new CloseAttentionRequest("J00", "Motivo", "Evolucion", "Indicaciones", signosInvalidos);
+        ClinicalAttention atencionAbierta = new ClinicalAttention(1L, atencionPublicId, 100L, 300L, 50L, "ABIERTA");
+        Cie10Diagnosis cie10 = new Cie10Diagnosis(15L, "J00", "Rinofaringitis", "ACTIVO");
 
-        when(usuarioRepository.buscarPorPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMedico));
-        when(profesionalRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.of(profesionalMedico));
-        when(atencionRepository.buscarEntidadPorPublicId(atencionPublicId)).thenReturn(Optional.of(atencionAbierta));
-        when(diagnosticoCie10Repository.buscarPorCodigo("J00")).thenReturn(Optional.of(cie10));
+        when(userRepository.findByPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMedico));
+        when(professionalRepository.findByUserId(10L)).thenReturn(Optional.of(profesionalMedico));
+        when(attentionRepository.findEntityByPublicId(atencionPublicId)).thenReturn(Optional.of(atencionAbierta));
+        when(cie10DiagnosisRepository.findByCode("J00")).thenReturn(Optional.of(cie10));
 
-        assertThatThrownBy(() -> clinicalAttentionService.cerrarAtencion(atencionPublicId, request, "usr-med-1", "127.0.0.1"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> clinicalAttentionService.closeAttention(atencionPublicId, request, "usr-med-1", "127.0.0.1"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("La presion arterial sistolica debe ser estrictamente mayor");
 
-        verify(atencionRepository, never()).guardarSignosVitales(any());
-        verify(atencionRepository, never()).cerrarAtencion(any(), any(), any(), any(), any(), any());
+        verify(attentionRepository, never()).saveVitalSigns(any());
+        verify(attentionRepository, never()).closeAttention(any(), any(), any(), any(), any(), any());
     }
 
     @Test
     @DisplayName("obtenerPorPublicId - valida relación asistencial, audita consulta y retorna detalle")
-    void obtenerPorPublicId_exito() {
+    void getByPublicId_success() {
         String atencionPublicId = "atencion-uuid-1";
-        Atencion atencion = new Atencion(1L, atencionPublicId, 100L, 300L, 50L, "CERRADA");
-        AtencionResponse mockResponse = new AtencionResponse(
+        ClinicalAttention atencion = new ClinicalAttention(1L, atencionPublicId, 100L, 300L, 50L, "CERRADA");
+        ClinicalAttentionResponse mockResponse = new ClinicalAttentionResponse(
                 atencionPublicId, "cita-uuid-1", "pac-uuid-1", "Juan Perez",
                 "prof-1", "Carlos Gomez", "Medicina General",
                 "CERRADA", AHORA.minusSeconds(1000), AHORA, "J00", "Rinofaringitis aguda",
                 "Motivo", "Evolucion", "Indicaciones", null
         );
 
-        when(atencionRepository.buscarEntidadPorPublicId(atencionPublicId)).thenReturn(Optional.of(atencion));
-        when(usuarioRepository.buscarPorPublicId("usr-pac-1")).thenReturn(Optional.of(usuarioMedico));
-        when(atencionRepository.buscarDetallePorPublicId(atencionPublicId)).thenReturn(Optional.of(mockResponse));
+        when(attentionRepository.findEntityByPublicId(atencionPublicId)).thenReturn(Optional.of(atencion));
+        when(userRepository.findByPublicId("usr-pac-1")).thenReturn(Optional.of(usuarioMedico));
+        when(attentionRepository.findDetailByPublicId(atencionPublicId)).thenReturn(Optional.of(mockResponse));
 
-        AtencionResponse response = clinicalAttentionService.obtenerPorPublicId(
+        ClinicalAttentionResponse response = clinicalAttentionService.getByPublicId(
                 atencionPublicId,
                 "usr-pac-1",
                 List.of(new SimpleGrantedAuthority("ROLE_PACIENTE")),
@@ -408,136 +408,136 @@ class ClinicalAttentionServiceTest {
         assertThat(response.publicId()).isEqualTo(atencionPublicId);
 
         // Valida que invocó el servicio centralizado de acceso clínico (ADR-007)
-        verify(accesoClinicoService).validarAccesoHistorialClinico(
+        verify(clinicalAccessService).validateClinicalHistoryAccess(
                 eq("usr-pac-1"),
                 eq(300L),
                 eq(List.of(new SimpleGrantedAuthority("ROLE_PACIENTE")))
         );
 
         // Valida auditoría inmutable de consulta de historia clínica
-        ArgumentCaptor<EventoAuditoria> eventoCaptor = ArgumentCaptor.forClass(EventoAuditoria.class);
-        verify(auditoriaService).auditar(eventoCaptor.capture());
-        assertThat(eventoCaptor.getValue().accion()).isEqualTo(AccionAuditable.CONSULTA_HISTORIA);
-        assertThat(eventoCaptor.getValue().tipoRecurso()).isEqualTo("ATENCION");
-        assertThat(eventoCaptor.getValue().recursoPublicId()).isEqualTo(atencionPublicId);
+        ArgumentCaptor<AuditEvent> eventoCaptor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).audit(eventoCaptor.capture());
+        assertThat(eventoCaptor.getValue().action()).isEqualTo(AuditableAction.CONSULTA_HISTORIA);
+        assertThat(eventoCaptor.getValue().resourceType()).isEqualTo("ATENCION");
+        assertThat(eventoCaptor.getValue().resourcePublicId()).isEqualTo(atencionPublicId);
     }
 
     @Test
     @DisplayName("crearEnmienda - éxito con el mismo profesional autor: registra enmienda inmutable y audita")
-    void crearEnmienda_exito_mismoProfesionalAutor() {
+    void createAmendment_success_sameAuthorProfessional() {
         String atencionPublicId = "atencion-uuid-1";
-        CrearEnmiendaRequest request = new CrearEnmiendaRequest("Aclaracion de dosis", "Se precisa que la dosis es cada 12 horas.");
-        Atencion atencionCerrada = new Atencion(1L, atencionPublicId, 100L, 300L, 50L, "CERRADA");
+        CreateAmendmentRequest request = new CreateAmendmentRequest("Aclaracion de dosis", "Se precisa que la dosis es cada 12 horas.");
+        ClinicalAttention atencionCerrada = new ClinicalAttention(1L, atencionPublicId, 100L, 300L, 50L, "CERRADA");
 
-        when(usuarioRepository.buscarPorPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMedico));
-        when(profesionalRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.of(profesionalMedico));
-        when(atencionRepository.buscarEntidadPorPublicId(atencionPublicId)).thenReturn(Optional.of(atencionCerrada));
-        when(atencionRepository.crearEnmienda(eq(1L), eq(50L), eq("Aclaracion de dosis"), anyString(), eq(AHORA))).thenReturn(10L);
+        when(userRepository.findByPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMedico));
+        when(professionalRepository.findByUserId(10L)).thenReturn(Optional.of(profesionalMedico));
+        when(attentionRepository.findEntityByPublicId(atencionPublicId)).thenReturn(Optional.of(atencionCerrada));
+        when(attentionRepository.createAmendment(eq(1L), eq(50L), eq("Aclaracion de dosis"), anyString(), eq(AHORA))).thenReturn(10L);
 
-        EnmiendaResponse response = clinicalAttentionService.crearEnmienda(atencionPublicId, request, "usr-med-1", "127.0.0.1");
+        AmendmentResponse response = clinicalAttentionService.createAmendment(atencionPublicId, request, "usr-med-1", "127.0.0.1");
 
         assertThat(response).isNotNull();
-        assertThat(response.profesionalPublicId()).isEqualTo("prof-1");
-        assertThat(response.motivo()).isEqualTo("Aclaracion de dosis");
-        assertThat(response.contenido()).isEqualTo("Se precisa que la dosis es cada 12 horas.");
-        assertThat(response.fechaEnmienda()).isEqualTo(AHORA);
+        assertThat(response.professionalPublicId()).isEqualTo("prof-1");
+        assertThat(response.reason()).isEqualTo("Aclaracion de dosis");
+        assertThat(response.content()).isEqualTo("Se precisa que la dosis es cada 12 horas.");
+        assertThat(response.amendedAt()).isEqualTo(AHORA);
 
         // Verifica guardado
-        verify(atencionRepository).crearEnmienda(1L, 50L, "Aclaracion de dosis", "Se precisa que la dosis es cada 12 horas.", AHORA);
+        verify(attentionRepository).createAmendment(1L, 50L, "Aclaracion de dosis", "Se precisa que la dosis es cada 12 horas.", AHORA);
 
         // Verifica auditoría inmutable
-        ArgumentCaptor<EventoAuditoria> eventoCaptor = ArgumentCaptor.forClass(EventoAuditoria.class);
-        verify(auditoriaService).auditar(eventoCaptor.capture());
-        assertThat(eventoCaptor.getValue().accion()).isEqualTo(AccionAuditable.ENMIENDA_ATENCION);
-        assertThat(eventoCaptor.getValue().tipoRecurso()).isEqualTo("ATENCION");
-        assertThat(eventoCaptor.getValue().recursoPublicId()).isEqualTo(atencionPublicId);
+        ArgumentCaptor<AuditEvent> eventoCaptor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).audit(eventoCaptor.capture());
+        assertThat(eventoCaptor.getValue().action()).isEqualTo(AuditableAction.ENMIENDA_ATENCION);
+        assertThat(eventoCaptor.getValue().resourceType()).isEqualTo("ATENCION");
+        assertThat(eventoCaptor.getValue().resourcePublicId()).isEqualTo(atencionPublicId);
     }
 
     @Test
     @DisplayName("crearEnmienda - éxito con otro profesional que tiene relación asistencial activa")
-    void crearEnmienda_exito_otroProfesionalConRelacionAsistencial() {
+    void createAmendment_success_otherProfessionalWithRelationshipCare() {
         String atencionPublicId = "atencion-uuid-1";
-        CrearEnmiendaRequest request = new CrearEnmiendaRequest("Seguimiento", "Paciente evaluado en control posterior.");
-        Atencion atencionCerrada = new Atencion(1L, atencionPublicId, 100L, 300L, 999L, "CERRADA"); // Otro médico fue el autor
+        CreateAmendmentRequest request = new CreateAmendmentRequest("Seguimiento", "Paciente evaluado en control posterior.");
+        ClinicalAttention atencionCerrada = new ClinicalAttention(1L, atencionPublicId, 100L, 300L, 999L, "CERRADA"); // Otro médico fue el autor
 
-        when(usuarioRepository.buscarPorPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMedico));
-        when(profesionalRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.of(profesionalMedico));
-        when(atencionRepository.buscarEntidadPorPublicId(atencionPublicId)).thenReturn(Optional.of(atencionCerrada));
-        when(atencionRepository.crearEnmienda(eq(1L), eq(50L), anyString(), anyString(), eq(AHORA))).thenReturn(11L);
+        when(userRepository.findByPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMedico));
+        when(professionalRepository.findByUserId(10L)).thenReturn(Optional.of(profesionalMedico));
+        when(attentionRepository.findEntityByPublicId(atencionPublicId)).thenReturn(Optional.of(atencionCerrada));
+        when(attentionRepository.createAmendment(eq(1L), eq(50L), anyString(), anyString(), eq(AHORA))).thenReturn(11L);
 
-        EnmiendaResponse response = clinicalAttentionService.crearEnmienda(atencionPublicId, request, "usr-med-1", "127.0.0.1");
+        AmendmentResponse response = clinicalAttentionService.createAmendment(atencionPublicId, request, "usr-med-1", "127.0.0.1");
 
         assertThat(response).isNotNull();
         // Verifica que se validó la relación asistencial del nuevo médico con el paciente
-        verify(accesoClinicoService).validarRelacionAsistencial(50L, 300L);
-        verify(atencionRepository).crearEnmienda(1L, 50L, "Seguimiento", "Paciente evaluado en control posterior.", AHORA);
+        verify(clinicalAccessService).validateCareRelationship(50L, 300L);
+        verify(attentionRepository).createAmendment(1L, 50L, "Seguimiento", "Paciente evaluado en control posterior.", AHORA);
     }
 
     @Test
     @DisplayName("crearEnmienda - rechaza si la atención está ABIERTA (inmutabilidad ADR-008)")
-    void crearEnmienda_rechazaSiAtencionEstaAbierta() {
+    void createAmendment_rejectsWhenAttentionIsOpen() {
         String atencionPublicId = "atencion-uuid-1";
-        CrearEnmiendaRequest request = new CrearEnmiendaRequest("Aclaracion", "Contenido");
-        Atencion atencionAbierta = new Atencion(1L, atencionPublicId, 100L, 300L, 50L, "ABIERTA");
+        CreateAmendmentRequest request = new CreateAmendmentRequest("Aclaracion", "Contenido");
+        ClinicalAttention atencionAbierta = new ClinicalAttention(1L, atencionPublicId, 100L, 300L, 50L, "ABIERTA");
 
-        when(usuarioRepository.buscarPorPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMedico));
-        when(profesionalRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.of(profesionalMedico));
-        when(atencionRepository.buscarEntidadPorPublicId(atencionPublicId)).thenReturn(Optional.of(atencionAbierta));
+        when(userRepository.findByPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMedico));
+        when(professionalRepository.findByUserId(10L)).thenReturn(Optional.of(profesionalMedico));
+        when(attentionRepository.findEntityByPublicId(atencionPublicId)).thenReturn(Optional.of(atencionAbierta));
 
-        assertThatThrownBy(() -> clinicalAttentionService.crearEnmienda(atencionPublicId, request, "usr-med-1", "127.0.0.1"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> clinicalAttentionService.createAmendment(atencionPublicId, request, "usr-med-1", "127.0.0.1"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("Solo es posible registrar enmiendas sobre atenciones clinicas CERRADAS.");
 
-        verify(atencionRepository, never()).crearEnmienda(any(), any(), any(), any(), any());
+        verify(attentionRepository, never()).createAmendment(any(), any(), any(), any(), any());
     }
 
     @Test
     @DisplayName("crearEnmienda - rechaza si el usuario autenticado no es profesional asistencial (403)")
-    void crearEnmienda_rechazaSiUsuarioNoEsProfesional() {
+    void createAmendment_rejectsWhenUserNotProfessional() {
         String atencionPublicId = "atencion-uuid-1";
-        CrearEnmiendaRequest request = new CrearEnmiendaRequest("Aclaracion", "Contenido");
+        CreateAmendmentRequest request = new CreateAmendmentRequest("Aclaracion", "Contenido");
 
-        when(usuarioRepository.buscarPorPublicId("usr-pac-1")).thenReturn(Optional.of(usuarioMedico));
-        when(profesionalRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.empty());
+        when(userRepository.findByPublicId("usr-pac-1")).thenReturn(Optional.of(usuarioMedico));
+        when(professionalRepository.findByUserId(10L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> clinicalAttentionService.crearEnmienda(atencionPublicId, request, "usr-pac-1", "127.0.0.1"))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+        assertThatThrownBy(() -> clinicalAttentionService.createAmendment(atencionPublicId, request, "usr-pac-1", "127.0.0.1"))
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessageContaining("Usuario no registrado como profesional asistencial.");
     }
 
     @Test
     @DisplayName("crearEnmienda - rechaza si el profesional ajeno no tiene relación asistencial activa (403)")
-    void crearEnmienda_rechazaSiOtroProfesionalNoTieneRelacionAsistencial() {
+    void createAmendment_rejectsWhenOtherProfessionalHasNotCareRelationship() {
         String atencionPublicId = "atencion-uuid-1";
-        CrearEnmiendaRequest request = new CrearEnmiendaRequest("Aclaracion", "Contenido");
-        Atencion atencionCerrada = new Atencion(1L, atencionPublicId, 100L, 300L, 999L, "CERRADA");
+        CreateAmendmentRequest request = new CreateAmendmentRequest("Aclaracion", "Contenido");
+        ClinicalAttention atencionCerrada = new ClinicalAttention(1L, atencionPublicId, 100L, 300L, 999L, "CERRADA");
 
-        when(usuarioRepository.buscarPorPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMedico));
-        when(profesionalRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.of(profesionalMedico));
-        when(atencionRepository.buscarEntidadPorPublicId(atencionPublicId)).thenReturn(Optional.of(atencionCerrada));
+        when(userRepository.findByPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMedico));
+        when(professionalRepository.findByUserId(10L)).thenReturn(Optional.of(profesionalMedico));
+        when(attentionRepository.findEntityByPublicId(atencionPublicId)).thenReturn(Optional.of(atencionCerrada));
 
-        org.mockito.Mockito.doThrow(new AccesoNoAutorizadoException("El profesional no cuenta con una relacion asistencial activa con el paciente."))
-                .when(accesoClinicoService).validarRelacionAsistencial(50L, 300L);
+        org.mockito.Mockito.doThrow(new UnauthorizedAccessException("El profesional no cuenta con una relacion asistencial activa con el paciente."))
+                .when(clinicalAccessService).validateCareRelationship(50L, 300L);
 
-        assertThatThrownBy(() -> clinicalAttentionService.crearEnmienda(atencionPublicId, request, "usr-med-1", "127.0.0.1"))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+        assertThatThrownBy(() -> clinicalAttentionService.createAmendment(atencionPublicId, request, "usr-med-1", "127.0.0.1"))
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessageContaining("El profesional no cuenta con una relacion asistencial activa");
 
-        verify(atencionRepository, never()).crearEnmienda(any(), any(), any(), any(), any());
+        verify(attentionRepository, never()).createAmendment(any(), any(), any(), any(), any());
     }
 
     @Test
     @DisplayName("obtenerMiHistoriaClinica - éxito: paciente consulta su propio historial, retorna paginado y audita")
-    void obtenerMiHistoriaClinica_exito() {
+    void getMyHistoryClinical_success() {
         String usuarioPublicId = "usr-pac-1";
         Long usuarioId = 20L;
         Long pacienteId = 300L;
         String pacientePublicId = "pac-uuid-1";
 
-        Usuario usuarioPaciente = new Usuario(usuarioId, usuarioPublicId, "paciente@test.com", "hash", "ACTIVO", 0, null, AHORA, false);
-        Paciente paciente = new Paciente(pacienteId, usuarioId, pacientePublicId, "CC", "10101010", "Maria", "Lopez", java.time.LocalDate.of(1995, 5, 20), "3001234567");
+        User usuarioPaciente = new User(usuarioId, usuarioPublicId, "paciente@test.com", "hash", "ACTIVO", 0, null, AHORA, false);
+        Patient paciente = new Patient(pacienteId, usuarioId, pacientePublicId, "CC", "10101010", "Maria", "Lopez", java.time.LocalDate.of(1995, 5, 20), "3001234567");
 
-        AtencionResponse atencion = new AtencionResponse(
+        ClinicalAttentionResponse atencion = new ClinicalAttentionResponse(
                 "atencion-uuid-1",
                 "cita-uuid-1",
                 pacientePublicId,
@@ -556,12 +556,12 @@ class ClinicalAttentionServiceTest {
                 null
         );
 
-        when(usuarioRepository.buscarPorPublicId(usuarioPublicId)).thenReturn(Optional.of(usuarioPaciente));
-        when(pacienteRepository.buscarPorUsuarioId(usuarioId)).thenReturn(Optional.of(paciente));
-        when(atencionRepository.listarHistoriaPaciente(pacienteId, 0, 10)).thenReturn(List.of(atencion));
-        when(atencionRepository.contarHistoriaPaciente(pacienteId)).thenReturn(1);
+        when(userRepository.findByPublicId(usuarioPublicId)).thenReturn(Optional.of(usuarioPaciente));
+        when(patientRepository.findByUserId(usuarioId)).thenReturn(Optional.of(paciente));
+        when(attentionRepository.listPatientHistory(pacienteId, 0, 10)).thenReturn(List.of(atencion));
+        when(attentionRepository.countPatientHistory(pacienteId)).thenReturn(1);
 
-        PaginatedResponse<AtencionResponse> respuesta = clinicalAttentionService.obtenerMiHistoriaClinica(usuarioPublicId, 0, 10, "192.168.1.50");
+        PaginatedResponse<ClinicalAttentionResponse> respuesta = clinicalAttentionService.getMyClinicalHistory(usuarioPublicId, 0, 10, "192.168.1.50");
 
         assertThat(respuesta).isNotNull();
         assertThat(respuesta.content()).hasSize(1);
@@ -570,68 +570,68 @@ class ClinicalAttentionServiceTest {
         assertThat(respuesta.page()).isEqualTo(0);
         assertThat(respuesta.size()).isEqualTo(10);
 
-        ArgumentCaptor<EventoAuditoria> captorAuditoria = ArgumentCaptor.forClass(EventoAuditoria.class);
-        verify(auditoriaService).auditar(captorAuditoria.capture());
-        EventoAuditoria evento = captorAuditoria.getValue();
-        assertThat(evento.usuarioId()).isEqualTo(usuarioId);
-        assertThat(evento.accion()).isEqualTo(AccionAuditable.CONSULTA_HISTORIA);
-        assertThat(evento.tipoRecurso()).isEqualTo("HISTORIA_CLINICA");
-        assertThat(evento.recursoPublicId()).isEqualTo(pacientePublicId);
-        assertThat(evento.ipOrigen()).isEqualTo("192.168.1.50");
+        ArgumentCaptor<AuditEvent> captorAuditoria = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).audit(captorAuditoria.capture());
+        AuditEvent evento = captorAuditoria.getValue();
+        assertThat(evento.userId()).isEqualTo(usuarioId);
+        assertThat(evento.action()).isEqualTo(AuditableAction.CONSULTA_HISTORIA);
+        assertThat(evento.resourceType()).isEqualTo("HISTORIA_CLINICA");
+        assertThat(evento.resourcePublicId()).isEqualTo(pacientePublicId);
+        assertThat(evento.sourceIp()).isEqualTo("192.168.1.50");
     }
 
     @Test
     @DisplayName("obtenerMiHistoriaClinica - rechaza si usuario no está registrado como paciente (403)")
-    void obtenerMiHistoriaClinica_rechazaSiUsuarioNoEsPaciente() {
+    void getMyHistoryClinical_rejectsWhenUserNotPatient() {
         String usuarioPublicId = "usr-med-1";
-        when(usuarioRepository.buscarPorPublicId(usuarioPublicId)).thenReturn(Optional.of(usuarioMedico));
-        when(pacienteRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.empty());
+        when(userRepository.findByPublicId(usuarioPublicId)).thenReturn(Optional.of(usuarioMedico));
+        when(patientRepository.findByUserId(10L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> clinicalAttentionService.obtenerMiHistoriaClinica(usuarioPublicId, 0, 10, "127.0.0.1"))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+        assertThatThrownBy(() -> clinicalAttentionService.getMyClinicalHistory(usuarioPublicId, 0, 10, "127.0.0.1"))
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessageContaining("Usuario no registrado como paciente.");
 
-        verify(atencionRepository, never()).listarHistoriaPaciente(any(), eq(0), eq(10));
+        verify(attentionRepository, never()).listPatientHistory(any(), eq(0), eq(10));
     }
 
     @Test
     @DisplayName("obtenerMiHistoriaClinica - rechaza si usuario autenticado no existe en BD (404)")
-    void obtenerMiHistoriaClinica_rechazaSiUsuarioNoExiste() {
+    void getMyHistoryClinical_rejectsWhenUserNotFound() {
         String usuarioPublicId = "usr-inexistente";
-        when(usuarioRepository.buscarPorPublicId(usuarioPublicId)).thenReturn(Optional.empty());
+        when(userRepository.findByPublicId(usuarioPublicId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> clinicalAttentionService.obtenerMiHistoriaClinica(usuarioPublicId, 0, 10, "127.0.0.1"))
-                .isInstanceOf(RecursoNoEncontradoException.class)
+        assertThatThrownBy(() -> clinicalAttentionService.getMyClinicalHistory(usuarioPublicId, 0, 10, "127.0.0.1"))
+                .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("Usuario autenticado no encontrado.");
     }
 
     @Test
     @DisplayName("obtenerHistoriaClinicaPaciente - médico autorizado por relación o break-glass consulta historia y audita")
-    void obtenerHistoriaClinicaPaciente_exito() {
+    void getHistoryClinicalPatient_success() {
         String pacientePublicId = "pac-100";
         String usuarioMedPublicId = "usr-med-1";
         Long pacienteId = 300L;
-        Paciente paciente = new Paciente(
+        Patient paciente = new Patient(
                 pacienteId, 30L, pacientePublicId, "CC", "12345678", "Carlos", "Sanchez",
                 LocalDate.of(1985, 5, 20), "3001234567", AHORA, AHORA
         );
 
-        when(usuarioRepository.buscarPorPublicId(usuarioMedPublicId)).thenReturn(Optional.of(usuarioMedico));
-        when(pacienteRepository.buscarPorPublicId(pacientePublicId)).thenReturn(Optional.of(paciente));
+        when(userRepository.findByPublicId(usuarioMedPublicId)).thenReturn(Optional.of(usuarioMedico));
+        when(patientRepository.findByPublicId(pacientePublicId)).thenReturn(Optional.of(paciente));
 
-        AtencionResponse atencion = new AtencionResponse(
+        ClinicalAttentionResponse atencion = new ClinicalAttentionResponse(
                 "atn-uuid-1", "cita-uuid-1", pacientePublicId, "Carlos Sanchez",
                 "prof-1", "Carlos Gomez", "Medicina General",
                 "CERRADA", AHORA.minusSeconds(1000), AHORA, "J00", "Rinofaringitis aguda",
                 "Motivo", "Evolucion", "Indicaciones", null
         );
 
-        when(atencionRepository.listarHistoriaPaciente(pacienteId, 0, 10)).thenReturn(List.of(atencion));
-        when(atencionRepository.contarHistoriaPaciente(pacienteId)).thenReturn(1);
+        when(attentionRepository.listPatientHistory(pacienteId, 0, 10)).thenReturn(List.of(atencion));
+        when(attentionRepository.countPatientHistory(pacienteId)).thenReturn(1);
 
         List<SimpleGrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_PROFESIONAL"));
 
-        PaginatedResponse<AtencionResponse> response = clinicalAttentionService.obtenerHistoriaClinicaPaciente(
+        PaginatedResponse<ClinicalAttentionResponse> response = clinicalAttentionService.getPatientClinicalHistory(
                 pacientePublicId,
                 usuarioMedPublicId,
                 authorities,
@@ -646,32 +646,32 @@ class ClinicalAttentionServiceTest {
         assertThat(response.content().get(0).publicId()).isEqualTo("atn-uuid-1");
 
         // Verifica autorización centralizada (ADR-007, ADR-017)
-        verify(accesoClinicoService).validarAccesoHistorialClinico(usuarioMedPublicId, pacientePublicId, authorities);
+        verify(clinicalAccessService).validateClinicalHistoryAccess(usuarioMedPublicId, pacientePublicId, authorities);
 
         // Verifica auditoría
-        ArgumentCaptor<EventoAuditoria> captorAuditoria = ArgumentCaptor.forClass(EventoAuditoria.class);
-        verify(auditoriaService).auditar(captorAuditoria.capture());
-        EventoAuditoria evento = captorAuditoria.getValue();
-        assertThat(evento.accion()).isEqualTo(AccionAuditable.CONSULTA_HISTORIA);
-        assertThat(evento.tipoRecurso()).isEqualTo("HISTORIA_CLINICA");
-        assertThat(evento.recursoPublicId()).isEqualTo(pacientePublicId);
+        ArgumentCaptor<AuditEvent> captorAuditoria = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).audit(captorAuditoria.capture());
+        AuditEvent evento = captorAuditoria.getValue();
+        assertThat(evento.action()).isEqualTo(AuditableAction.CONSULTA_HISTORIA);
+        assertThat(evento.resourceType()).isEqualTo("HISTORIA_CLINICA");
+        assertThat(evento.resourcePublicId()).isEqualTo(pacientePublicId);
     }
 
     @Test
     @DisplayName("obtenerHistoriaClinicaPaciente - rechaza si acceso clínico no autoriza al médico")
-    void obtenerHistoriaClinicaPaciente_sinAutorizacion_lanzaExcepcion() {
+    void getHistoryClinicalPatient_withoutAuth_throwsException() {
         String pacientePublicId = "pac-100";
         String usuarioMedPublicId = "usr-med-1";
         List<SimpleGrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_PROFESIONAL"));
 
-        org.mockito.Mockito.doThrow(new AccesoNoAutorizadoException("No existe una relacion asistencial activa con el paciente."))
-                .when(accesoClinicoService).validarAccesoHistorialClinico(usuarioMedPublicId, pacientePublicId, authorities);
+        org.mockito.Mockito.doThrow(new UnauthorizedAccessException("No existe una relacion asistencial activa con el paciente."))
+                .when(clinicalAccessService).validateClinicalHistoryAccess(usuarioMedPublicId, pacientePublicId, authorities);
 
-        assertThatThrownBy(() -> clinicalAttentionService.obtenerHistoriaClinicaPaciente(
+        assertThatThrownBy(() -> clinicalAttentionService.getPatientClinicalHistory(
                 pacientePublicId, usuarioMedPublicId, authorities, 0, 10, "127.0.0.1"
-        )).isInstanceOf(AccesoNoAutorizadoException.class)
+        )).isInstanceOf(UnauthorizedAccessException.class)
           .hasMessageContaining("No existe una relacion asistencial activa");
 
-        verify(atencionRepository, never()).listarHistoriaPaciente(any(), anyInt(), anyInt());
+        verify(attentionRepository, never()).listPatientHistory(any(), anyInt(), anyInt());
     }
 }

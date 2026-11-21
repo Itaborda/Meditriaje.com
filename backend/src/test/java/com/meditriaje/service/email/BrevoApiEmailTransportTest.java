@@ -43,7 +43,7 @@ class BrevoApiEmailTransportTest {
 
     @Test
     @DisplayName("201 Creado: envío exitoso vía Brevo API retorna ResultadoEnvio exitoso")
-    void debeEnviarExitosamenteCon201() {
+    void shouldSendSuccessfullyWith201() {
         AtomicInteger requestsReceived = new AtomicInteger(0);
 
         server.createContext("/v3/smtp/email", exchange -> {
@@ -73,20 +73,20 @@ class BrevoApiEmailTransportTest {
                 objectMapper
         );
 
-        ResultadoEnvio resultado = transport.enviar(
+        EmailSendResult resultado = transport.send(
                 "paciente@ejemplo.com",
                 "Confirmación de cita",
                 "<p>Estimado paciente, su cita está programada.</p>"
         );
 
-        assertThat(resultado.exito()).isTrue();
-        assertThat(resultado.codigo()).isEqualTo("OK");
+        assertThat(resultado.success()).isTrue();
+        assertThat(resultado.code()).isEqualTo("OK");
         assertThat(requestsReceived.get()).isEqualTo(1);
     }
 
     @Test
     @DisplayName("400 Bad Request: remitente no verificado devuelve error BREVO_400 sin reintento")
-    void debeManejarError400RemitenteNoVerificado() {
+    void shouldHandle400UnverifiedSender() {
         AtomicInteger requestsReceived = new AtomicInteger(0);
 
         server.createContext("/v3/smtp/email", exchange -> {
@@ -108,22 +108,22 @@ class BrevoApiEmailTransportTest {
                 objectMapper
         );
 
-        ResultadoEnvio resultado = transport.enviar(
+        EmailSendResult resultado = transport.send(
                 "usuario@ejemplo.com",
                 "Asunto Test",
                 "<p>Contenido</p>"
         );
 
-        assertThat(resultado.exito()).isFalse();
-        assertThat(resultado.codigo()).isEqualTo("BREVO_400");
-        assertThat(resultado.mensaje()).contains("Sender domain not verified");
+        assertThat(resultado.success()).isFalse();
+        assertThat(resultado.code()).isEqualTo("BREVO_400");
+        assertThat(resultado.message()).contains("Sender domain not verified");
         // No debe reintentar errores 4xx
         assertThat(requestsReceived.get()).isEqualTo(1);
     }
 
     @Test
     @DisplayName("401 Unauthorized: clave inválida devuelve error BREVO_401 sin reintentos")
-    void debeManejarError401ClaveInvalida() {
+    void shouldHandle401InvalidKey() {
         AtomicInteger requestsReceived = new AtomicInteger(0);
 
         server.createContext("/v3/smtp/email", exchange -> {
@@ -145,16 +145,16 @@ class BrevoApiEmailTransportTest {
                 objectMapper
         );
 
-        ResultadoEnvio resultado = transport.enviar("usuario@ejemplo.com", "Asunto Test", "<p>Contenido</p>");
+        EmailSendResult resultado = transport.send("usuario@ejemplo.com", "Asunto Test", "<p>Contenido</p>");
 
-        assertThat(resultado.exito()).isFalse();
-        assertThat(resultado.codigo()).isEqualTo("BREVO_401");
+        assertThat(resultado.success()).isFalse();
+        assertThat(resultado.code()).isEqualTo("BREVO_401");
         assertThat(requestsReceived.get()).isEqualTo(1);
     }
 
     @Test
     @DisplayName("429 Too Many Requests: límite de tasa / cuota devuelve error BREVO_429 sin reintentos")
-    void debeManejarError429CuotaExcedida() {
+    void shouldHandle429QuotaExceeded() {
         AtomicInteger requestsReceived = new AtomicInteger(0);
 
         server.createContext("/v3/smtp/email", exchange -> {
@@ -176,16 +176,16 @@ class BrevoApiEmailTransportTest {
                 objectMapper
         );
 
-        ResultadoEnvio resultado = transport.enviar("usuario@ejemplo.com", "Asunto Test", "<p>Contenido</p>");
+        EmailSendResult resultado = transport.send("usuario@ejemplo.com", "Asunto Test", "<p>Contenido</p>");
 
-        assertThat(resultado.exito()).isFalse();
-        assertThat(resultado.codigo()).isEqualTo("BREVO_429");
+        assertThat(resultado.success()).isFalse();
+        assertThat(resultado.code()).isEqualTo("BREVO_429");
         assertThat(requestsReceived.get()).isEqualTo(1);
     }
 
     @Test
     @DisplayName("500 Server Error: reintenta exactamente 1 vez y retorna BREVO_5XX si persiste")
-    void debeReintentarUnaVezAnte5xx() {
+    void shouldRetryOnceOn5Xx() {
         AtomicInteger requestsReceived = new AtomicInteger(0);
 
         server.createContext("/v3/smtp/email", exchange -> {
@@ -207,17 +207,17 @@ class BrevoApiEmailTransportTest {
                 objectMapper
         );
 
-        ResultadoEnvio resultado = transport.enviar("usuario@ejemplo.com", "Asunto Test", "<p>Contenido</p>");
+        EmailSendResult resultado = transport.send("usuario@ejemplo.com", "Asunto Test", "<p>Contenido</p>");
 
-        assertThat(resultado.exito()).isFalse();
-        assertThat(resultado.codigo()).isEqualTo("BREVO_5XX");
+        assertThat(resultado.success()).isFalse();
+        assertThat(resultado.code()).isEqualTo("BREVO_5XX");
         // Exactamente 2 peticiones: Intento 1 + Reintento 1
         assertThat(requestsReceived.get()).isEqualTo(2);
     }
 
     @Test
     @DisplayName("500 transitorio: tiene éxito en el reintento")
-    void debeTenerExitoEnReintentoTras500Transitorio() {
+    void shouldSucceedOnRetryAfterTransient500() {
         AtomicInteger requestsReceived = new AtomicInteger(0);
 
         server.createContext("/v3/smtp/email", exchange -> {
@@ -248,10 +248,10 @@ class BrevoApiEmailTransportTest {
                 objectMapper
         );
 
-        ResultadoEnvio resultado = transport.enviar("usuario@ejemplo.com", "Asunto Test", "<p>Contenido</p>");
+        EmailSendResult resultado = transport.send("usuario@ejemplo.com", "Asunto Test", "<p>Contenido</p>");
 
-        assertThat(resultado.exito()).isTrue();
-        assertThat(resultado.codigo()).isEqualTo("OK");
+        assertThat(resultado.success()).isTrue();
+        assertThat(resultado.code()).isEqualTo("OK");
         assertThat(requestsReceived.get()).isEqualTo(2);
     }
 
@@ -277,16 +277,16 @@ class BrevoApiEmailTransportTest {
                 objectMapper
         );
 
-        ResultadoEnvio resultado = transport.enviar("usuario@ejemplo.com", "Asunto Test", "<p>Contenido</p>");
+        EmailSendResult resultado = transport.send("usuario@ejemplo.com", "Asunto Test", "<p>Contenido</p>");
 
-        assertThat(resultado.exito()).isFalse();
-        assertThat(resultado.mensaje()).doesNotContain(testApiKey);
-        assertThat(resultado.mensaje()).contains("[REDACTED_API_KEY]");
+        assertThat(resultado.success()).isFalse();
+        assertThat(resultado.message()).doesNotContain(testApiKey);
+        assertThat(resultado.message()).contains("[REDACTED_API_KEY]");
     }
 
     @Test
     @DisplayName("Si BREVO_API_KEY no está configurada, falla rápido con código BREVO_CONFIG_ERROR")
-    void debeFallarSiApiKeyVacia() {
+    void shouldFailWhenApiKeyEmpty() {
         BrevoApiEmailTransport transport = new BrevoApiEmailTransport(
                 serverUrl,
                 "",
@@ -296,8 +296,8 @@ class BrevoApiEmailTransportTest {
                 objectMapper
         );
 
-        ResultadoEnvio resultado = transport.enviar("usuario@ejemplo.com", "Asunto", "<p>Html</p>");
-        assertThat(resultado.exito()).isFalse();
-        assertThat(resultado.codigo()).isEqualTo("BREVO_CONFIG_ERROR");
+        EmailSendResult resultado = transport.send("usuario@ejemplo.com", "Asunto", "<p>Html</p>");
+        assertThat(resultado.success()).isFalse();
+        assertThat(resultado.code()).isEqualTo("BREVO_CONFIG_ERROR");
     }
 }

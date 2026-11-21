@@ -48,7 +48,7 @@ class EmailServiceTest {
 
     @Test
     @DisplayName("Debe renderizar la plantilla HTML y registrar el correo en el buffer con resultado exitoso")
-    void debeEnviarCorreoRecuperacionConPlantillaHtml() {
+    void shouldSendRecoveryEmailWithHtmlTemplate() {
         when(javaMailSender.createMimeMessage()).thenReturn(new MimeMessage(Session.getInstance(new Properties())));
 
         String email = "paciente.test@ejemplo.com";
@@ -56,18 +56,18 @@ class EmailServiceTest {
         String codigo = "654321";
         int minutosExpiracion = 15;
 
-        ResultadoEnvio resultado = emailService.enviarCodigoRecuperacion(email, nombre, codigo, minutosExpiracion);
+        EmailSendResult resultado = emailService.sendRecoveryCode(email, nombre, codigo, minutosExpiracion);
 
-        assertThat(resultado.exito()).isTrue();
-        assertThat(resultado.codigo()).isEqualTo("OK");
+        assertThat(resultado.success()).isTrue();
+        assertThat(resultado.code()).isEqualTo("OK");
 
-        Optional<CorreoEnviado> enviadoOpt = emailService.obtenerUltimoCorreoEnviado();
+        Optional<SentEmail> enviadoOpt = emailService.getLastSentEmail();
         assertThat(enviadoOpt).isPresent();
 
-        CorreoEnviado enviado = enviadoOpt.get();
-        assertThat(enviado.destinatario()).isEqualTo(email);
-        assertThat(enviado.asunto()).contains("Código de recuperación");
-        assertThat(enviado.cuerpoHtml())
+        SentEmail enviado = enviadoOpt.get();
+        assertThat(enviado.recipient()).isEqualTo(email);
+        assertThat(enviado.subject()).contains("Código de recuperación");
+        assertThat(enviado.htmlBody())
                 .contains("Hola, Carlos Mendoza:")
                 .contains("654321")
                 .contains("15 minutos")
@@ -79,7 +79,7 @@ class EmailServiceTest {
 
     @Test
     @DisplayName("Debe despachar correo de bienvenida con credenciales iniciales para profesionales")
-    void debeEnviarCredencialesInicialesHtml() {
+    void shouldSendInitialCredentialsHtml() {
         when(javaMailSender.createMimeMessage()).thenReturn(new MimeMessage(Session.getInstance(new Properties())));
 
         String email = "medico.experto@hospital.com.co";
@@ -87,18 +87,18 @@ class EmailServiceTest {
         String rol = "Profesional Asistencial (Medicina General)";
         String passwordTemporal = "Temp$Pass1234!";
 
-        ResultadoEnvio resultado = emailService.enviarCredencialesIniciales(email, nombre, rol, passwordTemporal);
+        EmailSendResult resultado = emailService.sendInitialCredentials(email, nombre, rol, passwordTemporal);
 
-        assertThat(resultado.exito()).isTrue();
-        assertThat(resultado.codigo()).isEqualTo("OK");
+        assertThat(resultado.success()).isTrue();
+        assertThat(resultado.code()).isEqualTo("OK");
 
-        Optional<CorreoEnviado> enviadoOpt = emailService.obtenerUltimoCorreoEnviado();
+        Optional<SentEmail> enviadoOpt = emailService.getLastSentEmail();
         assertThat(enviadoOpt).isPresent();
 
-        CorreoEnviado enviado = enviadoOpt.get();
-        assertThat(enviado.destinatario()).isEqualTo(email);
-        assertThat(enviado.asunto()).contains("credenciales de acceso institucional");
-        assertThat(enviado.cuerpoHtml())
+        SentEmail enviado = enviadoOpt.get();
+        assertThat(enviado.recipient()).isEqualTo(email);
+        assertThat(enviado.subject()).contains("credenciales de acceso institucional");
+        assertThat(enviado.htmlBody())
                 .contains("Dra. Sofía Restrepo")
                 .contains("Profesional Asistencial (Medicina General)")
                 .contains("medico.experto@hospital.com.co")
@@ -111,67 +111,67 @@ class EmailServiceTest {
 
     @Test
     @DisplayName("Resiliencia: si el servidor SMTP falla, retorna ResultadoEnvio fallido visible sin lanzar excepción")
-    void resilienciaAnteFalloSmtp() {
+    void resilienceOnSmtpFailure() {
         when(javaMailSender.createMimeMessage()).thenReturn(new MimeMessage(Session.getInstance(new Properties())));
         doThrow(new MailSendException("Error conectando con Brevo SMTP"))
                 .when(javaMailSender).send(any(MimeMessage.class));
 
-        ResultadoEnvio resultado = emailService.enviarCredencialesIniciales("medico@test.com", "Dr. Pérez", "Médico", "Pass#12345");
+        EmailSendResult resultado = emailService.sendInitialCredentials("medico@test.com", "Dr. Pérez", "Médico", "Pass#12345");
 
-        assertThat(resultado.exito()).isFalse();
-        assertThat(resultado.codigo()).isEqualTo("SMTP_ERROR");
-        assertThat(resultado.mensaje()).contains("Error conectando con Brevo SMTP");
+        assertThat(resultado.success()).isFalse();
+        assertThat(resultado.code()).isEqualTo("SMTP_ERROR");
+        assertThat(resultado.message()).contains("Error conectando con Brevo SMTP");
 
-        Optional<CorreoEnviado> enviadoOpt = emailService.obtenerUltimoCorreoEnviado();
+        Optional<SentEmail> enviadoOpt = emailService.getLastSentEmail();
         assertThat(enviadoOpt).isPresent();
-        assertThat(enviadoOpt.get().destinatario()).isEqualTo("medico@test.com");
+        assertThat(enviadoOpt.get().recipient()).isEqualTo("medico@test.com");
     }
 
     @Test
     @DisplayName("Debe usar 'Usuario' por defecto si el nombre es nulo o vacío")
-    void debeUsarNombrePorDefecto() {
+    void shouldUseDefaultName() {
         when(javaMailSender.createMimeMessage()).thenReturn(new MimeMessage(Session.getInstance(new Properties())));
 
-        ResultadoEnvio resultado = emailService.enviarCodigoRecuperacion("user@ejemplo.com", "   ", "123456", 15);
-        assertThat(resultado.exito()).isTrue();
+        EmailSendResult resultado = emailService.sendRecoveryCode("user@ejemplo.com", "   ", "123456", 15);
+        assertThat(resultado.success()).isTrue();
 
-        Optional<CorreoEnviado> enviadoOpt = emailService.obtenerUltimoCorreoEnviado();
+        Optional<SentEmail> enviadoOpt = emailService.getLastSentEmail();
         assertThat(enviadoOpt).isPresent();
-        assertThat(enviadoOpt.get().cuerpoHtml()).contains("Hola, Usuario:");
+        assertThat(enviadoOpt.get().htmlBody()).contains("Hola, Usuario:");
     }
 
     @Test
     @DisplayName("enviarCorreoHtml almacena el correo renderizado en el buffer")
-    void debeEnviarCorreoHtmlGenerico() {
+    void shouldSendGenericHtmlEmail() {
         when(javaMailSender.createMimeMessage()).thenReturn(new MimeMessage(Session.getInstance(new Properties())));
 
         String email = "paciente@example.com";
         String asunto = "Prueba de notificación";
         String cuerpo = "<html><body>Hola</body></html>";
 
-        ResultadoEnvio resultado = emailService.enviarCorreoHtml(email, asunto, cuerpo);
-        assertThat(resultado.exito()).isTrue();
+        EmailSendResult resultado = emailService.sendHtmlEmail(email, asunto, cuerpo);
+        assertThat(resultado.success()).isTrue();
 
-        Optional<CorreoEnviado> enviadoOpt = emailService.obtenerUltimoCorreoEnviado();
+        Optional<SentEmail> enviadoOpt = emailService.getLastSentEmail();
         assertThat(enviadoOpt).isPresent();
-        assertThat(enviadoOpt.get().destinatario()).isEqualTo(email);
-        assertThat(enviadoOpt.get().asunto()).isEqualTo(asunto);
-        assertThat(enviadoOpt.get().cuerpoHtml()).isEqualTo(cuerpo);
+        assertThat(enviadoOpt.get().recipient()).isEqualTo(email);
+        assertThat(enviadoOpt.get().subject()).isEqualTo(asunto);
+        assertThat(enviadoOpt.get().htmlBody()).isEqualTo(cuerpo);
     }
 
     @Test
     @DisplayName("Las plantillas HTML de confirmación, cancelación y resumen cargan correctamente")
-    void plantillasHtml_carganCorrectamente() {
-        String htmlConfirmacion = templateService.renderizar("templates/email/confirmacion-cita.html", java.util.Map.of("pacienteNombre", "Ana"));
+    void templatesHtml_carganCorrectly() {
+        String htmlConfirmacion = templateService.render("templates/email/confirmacion-cita.html", java.util.Map.of("pacienteNombre", "Ana"));
         assertThat(htmlConfirmacion).contains("Ana").contains("Confirmación de Cita Médica");
 
-        String htmlCancelacion = templateService.renderizar("templates/email/cancelacion-cita.html", java.util.Map.of("pacienteNombre", "Ana"));
+        String htmlCancelacion = templateService.render("templates/email/cancelacion-cita.html", java.util.Map.of("pacienteNombre", "Ana"));
         assertThat(htmlCancelacion).contains("Ana").contains("Cancelación de Cita Médica");
 
-        String htmlResumen = templateService.renderizar("templates/email/resumen-atencion-seguimiento.html", java.util.Map.of("pacienteNombre", "Ana"));
+        String htmlResumen = templateService.render("templates/email/resumen-atencion-seguimiento.html", java.util.Map.of("pacienteNombre", "Ana"));
         assertThat(htmlResumen).contains("Ana").contains("Resumen de Atención");
 
-        String htmlBienvenida = templateService.renderizar("templates/email/bienvenida-credenciales.html", java.util.Map.of(
+        String htmlBienvenida = templateService.render("templates/email/bienvenida-credenciales.html", java.util.Map.of(
                 "nombre", "Dr. Mario",
                 "rol", "Pediatra",
                 "email", "mario@hospital.com",
@@ -183,7 +183,7 @@ class EmailServiceTest {
 
     @Test
     @DisplayName("Garantía de privacidad: Ninguna plantilla de correo contiene variables ni terminología clínica sensible")
-    void plantillasHtml_noContienenVariablesNiTerminologiaClinica() throws Exception {
+    void templatesHtml_notContienenVariablesNorTerminologiaClinical() throws Exception {
         List<String> plantillas = List.of(
                 "templates/email/bienvenida-credenciales.html",
                 "templates/email/cancelacion-cita.html",

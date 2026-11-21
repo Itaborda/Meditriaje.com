@@ -4,14 +4,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.meditriaje.config.CorsConfig;
 import com.meditriaje.config.SecurityConfig;
 import com.meditriaje.controller.admin.AdminProfessionalController;
-import com.meditriaje.dto.admin.ActualizarProfesionalRequest;
-import com.meditriaje.dto.admin.CrearProfesionalRequest;
-import com.meditriaje.dto.admin.CrearProfesionalResponse;
-import com.meditriaje.dto.admin.ProfesionalResponse;
+import com.meditriaje.dto.admin.UpdateProfessionalRequest;
+import com.meditriaje.dto.admin.CreateProfessionalRequest;
+import com.meditriaje.dto.admin.CreateProfessionalResponse;
+import com.meditriaje.dto.admin.ProfessionalResponse;
 import com.meditriaje.dto.common.PaginatedResponse;
-import com.meditriaje.exception.DatosInvalidosException;
+import com.meditriaje.exception.InvalidDataException;
 import com.meditriaje.exception.GlobalExceptionHandler;
-import com.meditriaje.exception.RecursoNoEncontradoException;
+import com.meditriaje.exception.ResourceNotFoundException;
 import com.meditriaje.security.JwtService;
 import com.meditriaje.service.AdminProfessionalService;
 import jakarta.servlet.http.Cookie;
@@ -64,16 +64,16 @@ class AdminProfessionalControllerTest {
 
     @BeforeEach
     void setUpTokens() {
-        when(jwtService.esValido(TOKEN_ADMIN)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_ADMIN)).thenReturn(ADMIN_UUID);
-        when(jwtService.extraerRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
+        when(jwtService.isValid(TOKEN_ADMIN)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_ADMIN)).thenReturn(ADMIN_UUID);
+        when(jwtService.extractRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
 
-        when(jwtService.esValido(TOKEN_PACIENTE)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_PACIENTE)).thenReturn("paciente-uuid-1");
-        when(jwtService.extraerRoles(TOKEN_PACIENTE)).thenReturn(List.of("ROLE_PACIENTE"));
+        when(jwtService.isValid(TOKEN_PACIENTE)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_PACIENTE)).thenReturn("paciente-uuid-1");
+        when(jwtService.extractRoles(TOKEN_PACIENTE)).thenReturn(List.of("ROLE_PACIENTE"));
 
-        when(jwtService.esValido(TOKEN_PROFESIONAL)).thenReturn(true);
-        when(jwtService.extraerRoles(TOKEN_PROFESIONAL)).thenReturn(List.of("ROLE_PROFESIONAL"));
+        when(jwtService.isValid(TOKEN_PROFESIONAL)).thenReturn(true);
+        when(jwtService.extractRoles(TOKEN_PROFESIONAL)).thenReturn(List.of("ROLE_PROFESIONAL"));
     }
 
     // =========================================================================
@@ -88,7 +88,7 @@ class AdminProfessionalControllerTest {
     }
 
     @Test
-    void getProfessionals_conRolPaciente_retorna403Forbidden() throws Exception {
+    void getProfessionals_withPatientRole_returns403Forbidden() throws Exception {
         mockMvc.perform(get("/api/v1/admin/professionals")
                         .cookie(new Cookie("access_token", TOKEN_PACIENTE)))
                 .andExpect(status().isForbidden())
@@ -96,8 +96,8 @@ class AdminProfessionalControllerTest {
     }
 
     @Test
-    void postProfessionals_conRolProfesional_retorna403Forbidden() throws Exception {
-        CrearProfesionalRequest req = new CrearProfesionalRequest(
+    void postProfessionals_withProfessionalRole_returns403Forbidden() throws Exception {
+        CreateProfessionalRequest req = new CreateProfessionalRequest(
                 "RM-12345", "Carlos", "Perez", "carlos@hospital.com", "esp-1"
         );
         mockMvc.perform(post("/api/v1/admin/professionals")
@@ -114,17 +114,17 @@ class AdminProfessionalControllerTest {
     // =========================================================================
 
     @Test
-    void postProfessionals_conRolAdmin_retorna201CreatedConPasswordTemporal() throws Exception {
-        CrearProfesionalRequest req = new CrearProfesionalRequest(
+    void postProfessionals_withAdminRole_returns201CreatedWithPasswordTemporary() throws Exception {
+        CreateProfessionalRequest req = new CreateProfessionalRequest(
                 "RM-12345", "Carlos", "Perez", "carlos@hospital.com", "esp-med-int"
         );
-        CrearProfesionalResponse resp = new CrearProfesionalResponse(
+        CreateProfessionalResponse resp = new CreateProfessionalResponse(
                 "prof-uuid-1", "user-uuid-1", "RM-12345", "Carlos", "Perez",
                 "carlos@hospital.com", "esp-med-int", "Medicina Interna",
                 "Temporal123*#", true, Instant.now()
         );
 
-        when(professionalService.altaProfesional(any(), eq(ADMIN_UUID), anyString())).thenReturn(resp);
+        when(professionalService.registerProfessional(any(), eq(ADMIN_UUID), anyString())).thenReturn(resp);
 
         mockMvc.perform(post("/api/v1/admin/professionals")
                         .cookie(new Cookie("access_token", TOKEN_ADMIN))
@@ -139,8 +139,8 @@ class AdminProfessionalControllerTest {
     }
 
     @Test
-    void postProfessionals_datosInvalidos_retorna400BadRequest() throws Exception {
-        CrearProfesionalRequest reqInvalido = new CrearProfesionalRequest("", "", "", "no-es-email", "");
+    void postProfessionals_invalidData_returns400BadRequest() throws Exception {
+        CreateProfessionalRequest reqInvalido = new CreateProfessionalRequest("", "", "", "no-es-email", "");
 
         mockMvc.perform(post("/api/v1/admin/professionals")
                         .cookie(new Cookie("access_token", TOKEN_ADMIN))
@@ -152,12 +152,12 @@ class AdminProfessionalControllerTest {
     }
 
     @Test
-    void postProfessionals_registroMedicoDuplicado_retorna400BadRequest() throws Exception {
-        CrearProfesionalRequest req = new CrearProfesionalRequest(
+    void postProfessionals_duplicateMedicalLicense_returns400BadRequest() throws Exception {
+        CreateProfessionalRequest req = new CreateProfessionalRequest(
                 "RM-12345", "Carlos", "Perez", "carlos@hospital.com", "esp-med-int"
         );
-        when(professionalService.altaProfesional(any(), eq(ADMIN_UUID), anyString()))
-                .thenThrow(new DatosInvalidosException("El registro medico ya se encuentra registrado."));
+        when(professionalService.registerProfessional(any(), eq(ADMIN_UUID), anyString()))
+                .thenThrow(new InvalidDataException("El registro medico ya se encuentra registrado."));
 
         mockMvc.perform(post("/api/v1/admin/professionals")
                         .cookie(new Cookie("access_token", TOKEN_ADMIN))
@@ -170,14 +170,14 @@ class AdminProfessionalControllerTest {
     }
 
     @Test
-    void getProfessionals_conRolAdmin_retorna200YPaginado() throws Exception {
-        ProfesionalResponse prof = new ProfesionalResponse(
+    void getProfessionals_withAdminRole_returns200AndPaginated() throws Exception {
+        ProfessionalResponse prof = new ProfessionalResponse(
                 "prof-uuid-1", "user-uuid-1", "RM-12345", "Carlos", "Perez",
                 "carlos@hospital.com", "esp-med-int", "Medicina Interna", "ACTIVO", false, Instant.now()
         );
-        PaginatedResponse<ProfesionalResponse> pag = PaginatedResponse.of(List.of(prof), 0, 10, 1L);
+        PaginatedResponse<ProfessionalResponse> pag = PaginatedResponse.of(List.of(prof), 0, 10, 1L);
 
-        when(professionalService.listar(0, 10, null, null)).thenReturn(pag);
+        when(professionalService.list(0, 10, null, null)).thenReturn(pag);
 
         mockMvc.perform(get("/api/v1/admin/professionals")
                         .cookie(new Cookie("access_token", TOKEN_ADMIN)))
@@ -190,8 +190,8 @@ class AdminProfessionalControllerTest {
 
     @Test
     void getProfessionalByPublicId_inexistente_retorna404NotFound() throws Exception {
-        when(professionalService.obtenerPorPublicId("prof-no-existe"))
-                .thenThrow(new RecursoNoEncontradoException("Profesional no encontrado: prof-no-existe"));
+        when(professionalService.getByPublicId("prof-no-existe"))
+                .thenThrow(new ResourceNotFoundException("Profesional no encontrado: prof-no-existe"));
 
         mockMvc.perform(get("/api/v1/admin/professionals/prof-no-existe")
                         .cookie(new Cookie("access_token", TOKEN_ADMIN)))
@@ -200,14 +200,14 @@ class AdminProfessionalControllerTest {
     }
 
     @Test
-    void putProfessional_conRolAdmin_retorna200OK() throws Exception {
-        ActualizarProfesionalRequest req = new ActualizarProfesionalRequest("Carlos Alberto", "Perez Gomez", "esp-ped");
-        ProfesionalResponse resp = new ProfesionalResponse(
+    void putProfessional_withAdminRole_returns200OK() throws Exception {
+        UpdateProfessionalRequest req = new UpdateProfessionalRequest("Carlos Alberto", "Perez Gomez", "esp-ped");
+        ProfessionalResponse resp = new ProfessionalResponse(
                 "prof-uuid-1", "user-uuid-1", "RM-12345", "Carlos Alberto", "Perez Gomez",
                 "carlos@hospital.com", "esp-ped", "Pediatría", "ACTIVO", false, Instant.now()
         );
 
-        when(professionalService.actualizarProfesional(eq("prof-uuid-1"), any(), eq(ADMIN_UUID), anyString()))
+        when(professionalService.updateProfessional(eq("prof-uuid-1"), any(), eq(ADMIN_UUID), anyString()))
                 .thenReturn(resp);
 
         mockMvc.perform(put("/api/v1/admin/professionals/prof-uuid-1")
@@ -222,12 +222,12 @@ class AdminProfessionalControllerTest {
     }
 
     @Test
-    void patchDeactivateProfessional_conRolAdmin_retorna200OK() throws Exception {
-        ProfesionalResponse resp = new ProfesionalResponse(
+    void patchDeactivateProfessional_withAdminRole_returns200OK() throws Exception {
+        ProfessionalResponse resp = new ProfessionalResponse(
                 "prof-uuid-1", "user-uuid-1", "RM-12345", "Carlos", "Perez",
                 "carlos@hospital.com", "esp-med-int", "Medicina Interna", "INACTIVO", false, Instant.now()
         );
-        when(professionalService.cambiarEstado(eq("prof-uuid-1"), eq("INACTIVO"), eq(ADMIN_UUID), anyString()))
+        when(professionalService.changeStatus(eq("prof-uuid-1"), eq("INACTIVO"), eq(ADMIN_UUID), anyString()))
                 .thenReturn(resp);
 
         mockMvc.perform(patch("/api/v1/admin/professionals/prof-uuid-1/deactivate")
@@ -238,12 +238,12 @@ class AdminProfessionalControllerTest {
     }
 
     @Test
-    void patchActivateProfessional_conRolAdmin_retorna200OK() throws Exception {
-        ProfesionalResponse resp = new ProfesionalResponse(
+    void patchActivateProfessional_withAdminRole_returns200OK() throws Exception {
+        ProfessionalResponse resp = new ProfessionalResponse(
                 "prof-uuid-1", "user-uuid-1", "RM-12345", "Carlos", "Perez",
                 "carlos@hospital.com", "esp-med-int", "Medicina Interna", "ACTIVO", false, Instant.now()
         );
-        when(professionalService.cambiarEstado(eq("prof-uuid-1"), eq("ACTIVO"), eq(ADMIN_UUID), anyString()))
+        when(professionalService.changeStatus(eq("prof-uuid-1"), eq("ACTIVO"), eq(ADMIN_UUID), anyString()))
                 .thenReturn(resp);
 
         mockMvc.perform(patch("/api/v1/admin/professionals/prof-uuid-1/activate")

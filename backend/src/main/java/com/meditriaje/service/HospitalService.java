@@ -1,9 +1,9 @@
 package com.meditriaje.service;
 
 import com.meditriaje.dto.hospital.*;
-import com.meditriaje.exception.AccesoNoAutorizadoException;
-import com.meditriaje.exception.ConflictoOperacionException;
-import com.meditriaje.exception.RecursoNoEncontradoException;
+import com.meditriaje.exception.UnauthorizedAccessException;
+import com.meditriaje.exception.OperationConflictException;
+import com.meditriaje.exception.ResourceNotFoundException;
 import com.meditriaje.model.*;
 import com.meditriaje.repository.*;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -23,47 +23,47 @@ import java.util.stream.Collectors;
 @Service
 public class HospitalService {
 
-    private final AreaHospitalariaRepository areaRepository;
-    private final HabitacionSalaRepository habitacionRepository;
-    private final CamaHospitalariaRepository camaRepository;
-    private final OcupacionCamaRepository ocupacionRepository;
-    private final MovimientoPacienteRepository movimientoRepository;
-    private final ProcedimientoHospitalarioRepository procedimientoRepository;
-    private final EgresoHospitalarioRepository egresoRepository;
-    private final EpisodioAtencionRepository episodioRepository;
-    private final SedeRepository sedeRepository;
-    private final UsuarioRepository usuarioRepository;
-    private final ProfesionalRepository profesionalRepository;
-    private final AuditoriaService auditoriaService;
+    private final HospitalAreaRepository areaRepository;
+    private final HospitalRoomRepository roomRepository;
+    private final HospitalBedRepository bedRepository;
+    private final BedOccupancyRepository occupancyRepository;
+    private final PatientMovementRepository movementRepository;
+    private final HospitalProcedureRepository procedureRepository;
+    private final HospitalDischargeRepository dischargeRepository;
+    private final CareEpisodeRepository episodeRepository;
+    private final SiteRepository siteRepository;
+    private final UserRepository userRepository;
+    private final ProfessionalRepository professionalRepository;
+    private final AuditService auditService;
     private final Clock clock;
 
     public HospitalService(
-            AreaHospitalariaRepository areaRepository,
-            HabitacionSalaRepository habitacionRepository,
-            CamaHospitalariaRepository camaRepository,
-            OcupacionCamaRepository ocupacionRepository,
-            MovimientoPacienteRepository movimientoRepository,
-            ProcedimientoHospitalarioRepository procedimientoRepository,
-            EgresoHospitalarioRepository egresoRepository,
-            EpisodioAtencionRepository episodioRepository,
-            SedeRepository sedeRepository,
-            UsuarioRepository usuarioRepository,
-            ProfesionalRepository profesionalRepository,
-            AuditoriaService auditoriaService,
+            HospitalAreaRepository areaRepository,
+            HospitalRoomRepository roomRepository,
+            HospitalBedRepository bedRepository,
+            BedOccupancyRepository occupancyRepository,
+            PatientMovementRepository movementRepository,
+            HospitalProcedureRepository procedureRepository,
+            HospitalDischargeRepository dischargeRepository,
+            CareEpisodeRepository episodeRepository,
+            SiteRepository siteRepository,
+            UserRepository userRepository,
+            ProfessionalRepository professionalRepository,
+            AuditService auditService,
             Clock clock
     ) {
         this.areaRepository = Objects.requireNonNull(areaRepository);
-        this.habitacionRepository = Objects.requireNonNull(habitacionRepository);
-        this.camaRepository = Objects.requireNonNull(camaRepository);
-        this.ocupacionRepository = Objects.requireNonNull(ocupacionRepository);
-        this.movimientoRepository = Objects.requireNonNull(movimientoRepository);
-        this.procedimientoRepository = Objects.requireNonNull(procedimientoRepository);
-        this.egresoRepository = Objects.requireNonNull(egresoRepository);
-        this.episodioRepository = Objects.requireNonNull(episodioRepository);
-        this.sedeRepository = Objects.requireNonNull(sedeRepository);
-        this.usuarioRepository = Objects.requireNonNull(usuarioRepository);
-        this.profesionalRepository = Objects.requireNonNull(profesionalRepository);
-        this.auditoriaService = Objects.requireNonNull(auditoriaService);
+        this.roomRepository = Objects.requireNonNull(roomRepository);
+        this.bedRepository = Objects.requireNonNull(bedRepository);
+        this.occupancyRepository = Objects.requireNonNull(occupancyRepository);
+        this.movementRepository = Objects.requireNonNull(movementRepository);
+        this.procedureRepository = Objects.requireNonNull(procedureRepository);
+        this.dischargeRepository = Objects.requireNonNull(dischargeRepository);
+        this.episodeRepository = Objects.requireNonNull(episodeRepository);
+        this.siteRepository = Objects.requireNonNull(siteRepository);
+        this.userRepository = Objects.requireNonNull(userRepository);
+        this.professionalRepository = Objects.requireNonNull(professionalRepository);
+        this.auditService = Objects.requireNonNull(auditService);
         this.clock = Objects.requireNonNull(clock);
     }
 
@@ -71,62 +71,62 @@ public class HospitalService {
      * Asigna una cama disponible a un episodio hospitalario o de urgencias (H01, H02).
      */
     @Transactional
-    public CamaDetalleResponse asignarCama(
+    public BedDetailResponse assignBed(
             String episodePublicId,
-            AsignarCamaRequest request,
+            AssignBedRequest request,
             String usuarioAutenticadoPublicId,
             String ipOrigen
     ) {
         Objects.requireNonNull(request, "request no puede ser nulo");
-        EpisodioAtencion episodio = episodioRepository.buscarPorPublicId(episodePublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Episodio no encontrado: " + episodePublicId));
+        CareEpisode episodio = episodeRepository.findByPublicId(episodePublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Episodio no encontrado: " + episodePublicId));
 
-        if ("EGRESADO".equals(episodio.estado()) || "CANCELADO".equals(episodio.estado())) {
-            throw new ConflictoOperacionException("No es posible asignar cama a un episodio cerrado o egresado.");
+        if ("EGRESADO".equals(episodio.status()) || "CANCELADO".equals(episodio.status())) {
+            throw new OperationConflictException("No es posible asignar cama a un episodio cerrado o egresado.");
         }
 
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario autenticado no encontrado."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario autenticado no encontrado."));
 
-        CamaHospitalaria cama = camaRepository.buscarPorPublicId(request.camaPublicId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Cama no encontrada: " + request.camaPublicId()));
+        HospitalBed cama = bedRepository.findByPublicId(request.bedPublicId())
+                .orElseThrow(() -> new ResourceNotFoundException("Cama no encontrada: " + request.bedPublicId()));
 
-        if (!"DISPONIBLE".equals(cama.estado())) {
-            throw new ConflictoOperacionException("La cama seleccionada no está disponible (Estado actual: " + cama.estado() + ").");
+        if (!"DISPONIBLE".equals(cama.status())) {
+            throw new OperationConflictException("La cama seleccionada no está disponible (Estado actual: " + cama.status() + ").");
         }
 
-        HabitacionSala habDestino = habitacionRepository.buscarPorId(cama.habitacionId())
+        HospitalRoom habDestino = roomRepository.findById(cama.roomId())
                 .orElseThrow(() -> new IllegalStateException("Habitación de destino no encontrada"));
 
-        AreaHospitalaria areaDestino = areaRepository.buscarPorId(habDestino.areaId())
+        HospitalArea areaDestino = areaRepository.findById(habDestino.areaId())
                 .orElseThrow(() -> new IllegalStateException("Área de destino no encontrada"));
 
-        if (!Objects.equals(areaDestino.sedeId(), episodio.sedeId())) {
-            throw new ConflictoOperacionException("La cama seleccionada pertenece a una sede diferente a la del episodio.");
+        if (!Objects.equals(areaDestino.siteId(), episodio.siteId())) {
+            throw new OperationConflictException("La cama seleccionada pertenece a una sede diferente a la del episodio.");
         }
 
         // Reserva atómica compare-and-set: DISPONIBLE -> OCUPADA (O-03)
-        boolean reservada = camaRepository.reservarCamaSiDisponible(cama.id());
+        boolean reservada = bedRepository.reserveBedIfAvailable(cama.id());
         if (!reservada) {
-            throw new ConflictoOperacionException("Conflicto de concurrencia: La cama seleccionada ya no está disponible.");
+            throw new OperationConflictException("Conflicto de concurrencia: La cama seleccionada ya no está disponible.");
         }
 
         Instant ahora = Instant.now(clock);
 
         // Si el episodio ya tenía otra cama asignada, se finaliza la anterior y se traslada
-        Optional<OcupacionCama> ocupacionPrevia = ocupacionRepository.buscarActivaPorEpisodioId(episodio.id());
+        Optional<BedOccupancy> ocupacionPrevia = occupancyRepository.findActiveByEpisodeId(episodio.id());
         Long areaOrigenId = null;
         Long camaOrigenId = null;
 
         if (ocupacionPrevia.isPresent()) {
-            OcupacionCama prev = ocupacionPrevia.get();
-            ocupacionRepository.finalizarOcupacion(prev.id(), ahora);
-            camaRepository.actualizarEstado(prev.camaId(), "LIMPIEZA");
-            camaOrigenId = prev.camaId();
+            BedOccupancy prev = ocupacionPrevia.get();
+            occupancyRepository.finishOccupancy(prev.id(), ahora);
+            bedRepository.updateStatus(prev.bedId(), "LIMPIEZA");
+            camaOrigenId = prev.bedId();
 
-            CamaHospitalaria camaPrev = camaRepository.buscarPorId(prev.camaId()).orElse(null);
+            HospitalBed camaPrev = bedRepository.findById(prev.bedId()).orElse(null);
             if (camaPrev != null) {
-                HabitacionSala habPrev = habitacionRepository.buscarPorId(camaPrev.habitacionId()).orElse(null);
+                HospitalRoom habPrev = roomRepository.findById(camaPrev.roomId()).orElse(null);
                 if (habPrev != null) {
                     areaOrigenId = habPrev.areaId();
                 }
@@ -135,7 +135,7 @@ public class HospitalService {
 
         // Crear nueva ocupación protegida por índice único condicional
         String ocupacionPubId = UUID.randomUUID().toString();
-        OcupacionCama nuevaOcupacion = new OcupacionCama(
+        BedOccupancy nuevaOcupacion = new BedOccupancy(
                 null,
                 ocupacionPubId,
                 episodio.id(),
@@ -144,20 +144,20 @@ public class HospitalService {
                 null,
                 "ACTIVA",
                 usuario.id(),
-                request.motivoAsignacion(),
+                request.assignmentReason(),
                 ahora
         );
         try {
-            ocupacionRepository.guardar(nuevaOcupacion);
-        } catch (DataIntegrityViolationException ex) {
+            occupancyRepository.save(nuevaOcupacion);
+        } catch (DataIntegrityViolationException | OperationConflictException ex) {
             // Revertir la reserva de la cama si la base de datos detecta ocupación concurrente
-            camaRepository.actualizarEstado(cama.id(), "DISPONIBLE");
-            throw new ConflictoOperacionException("Conflicto de concurrencia: La cama o el episodio ya tienen una ocupación activa.");
+            bedRepository.updateStatus(cama.id(), "DISPONIBLE");
+            throw new OperationConflictException("Conflicto de concurrencia: La cama o el episodio ya tienen una ocupación activa.");
         }
 
         // Registrar movimiento intrahospitalario
         String movPubId = UUID.randomUUID().toString();
-        MovimientoPaciente movimiento = new MovimientoPaciente(
+        PatientMovement movimiento = new PatientMovement(
                 null,
                 movPubId,
                 episodio.id(),
@@ -166,27 +166,27 @@ public class HospitalService {
                 camaOrigenId,
                 cama.id(),
                 ahora,
-                request.motivoAsignacion() != null ? request.motivoAsignacion() : "Asignación de cama inicial",
+                request.assignmentReason() != null ? request.assignmentReason() : "Asignación de cama inicial",
                 usuario.id(),
                 ahora
         );
-        movimientoRepository.guardar(movimiento);
+        movementRepository.save(movimiento);
 
         // Actualizar estado del episodio si aplica
-        if ("REGISTRADO".equals(episodio.estado()) || "EN_TRIAJE".equals(episodio.estado())) {
-            episodioRepository.actualizarEstado(episodio.id(), "OBSERVACION");
+        if ("REGISTRADO".equals(episodio.status()) || "EN_TRIAJE".equals(episodio.status())) {
+            episodeRepository.updateStatus(episodio.id(), "OBSERVACION");
         }
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.ASIGNACION_CAMA_REGISTRADA,
+                AuditableAction.ASIGNACION_CAMA_REGISTRADA,
                 "CAMA_HOSPITALARIA",
                 cama.publicId(),
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
-        return camaRepository.buscarDetallePorPublicId(cama.publicId())
+        return bedRepository.findDetailByPublicId(cama.publicId())
                 .orElseThrow(() -> new IllegalStateException("Error al recuperar detalle de cama asignada"));
     }
 
@@ -194,57 +194,57 @@ public class HospitalService {
      * Traslada longitudinalmente a un paciente entre camas y áreas hospitalarias (H03).
      */
     @Transactional
-    public MovimientoResponse trasladarPaciente(
+    public MovementResponse transferPatient(
             String episodePublicId,
-            TrasladarPacienteRequest request,
+            TransferPatientRequest request,
             String usuarioAutenticadoPublicId,
             String ipOrigen
     ) {
         Objects.requireNonNull(request, "request no puede ser nulo");
-        EpisodioAtencion episodio = episodioRepository.buscarPorPublicId(episodePublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Episodio no encontrado: " + episodePublicId));
+        CareEpisode episodio = episodeRepository.findByPublicId(episodePublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Episodio no encontrado: " + episodePublicId));
 
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario autenticado no encontrado."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario autenticado no encontrado."));
 
-        OcupacionCama ocupacionActual = ocupacionRepository.buscarActivaPorEpisodioId(episodio.id())
-                .orElseThrow(() -> new ConflictoOperacionException("El paciente no tiene una cama activa para trasladar."));
+        BedOccupancy ocupacionActual = occupancyRepository.findActiveByEpisodeId(episodio.id())
+                .orElseThrow(() -> new OperationConflictException("El paciente no tiene una cama activa para trasladar."));
 
-        CamaHospitalaria camaDestino = camaRepository.buscarPorPublicId(request.camaDestinoPublicId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Cama destino no encontrada: " + request.camaDestinoPublicId()));
+        HospitalBed camaDestino = bedRepository.findByPublicId(request.destinationBedPublicId())
+                .orElseThrow(() -> new ResourceNotFoundException("Cama destino no encontrada: " + request.destinationBedPublicId()));
 
-        if (camaDestino.id().equals(ocupacionActual.camaId())) {
-            throw new ConflictoOperacionException("La cama de destino es idéntica a la cama de origen.");
+        if (camaDestino.id().equals(ocupacionActual.bedId())) {
+            throw new OperationConflictException("La cama de destino es idéntica a la cama de origen.");
         }
 
-        if (!"DISPONIBLE".equals(camaDestino.estado())) {
-            throw new ConflictoOperacionException("La cama de destino no está disponible (Estado: " + camaDestino.estado() + ").");
+        if (!"DISPONIBLE".equals(camaDestino.status())) {
+            throw new OperationConflictException("La cama de destino no está disponible (Estado: " + camaDestino.status() + ").");
         }
 
-        HabitacionSala habDestino = habitacionRepository.buscarPorId(camaDestino.habitacionId())
+        HospitalRoom habDestino = roomRepository.findById(camaDestino.roomId())
                 .orElseThrow(() -> new IllegalStateException("Habitación destino no encontrada"));
 
-        AreaHospitalaria areaDestino = areaRepository.buscarPorId(habDestino.areaId())
+        HospitalArea areaDestino = areaRepository.findById(habDestino.areaId())
                 .orElseThrow(() -> new IllegalStateException("Área de destino no encontrada"));
 
-        if (!Objects.equals(areaDestino.sedeId(), episodio.sedeId())) {
-            throw new ConflictoOperacionException("La cama de destino pertenece a una sede diferente a la del episodio.");
+        if (!Objects.equals(areaDestino.siteId(), episodio.siteId())) {
+            throw new OperationConflictException("La cama de destino pertenece a una sede diferente a la del episodio.");
         }
 
         // Reserva atómica compare-and-set: DISPONIBLE -> OCUPADA sobre cama destino (O-03)
-        boolean reservada = camaRepository.reservarCamaSiDisponible(camaDestino.id());
+        boolean reservada = bedRepository.reserveBedIfAvailable(camaDestino.id());
         if (!reservada) {
-            throw new ConflictoOperacionException("La cama de destino ya no está disponible (conflicto de concurrencia).");
+            throw new OperationConflictException("La cama de destino ya no está disponible (conflicto de concurrencia).");
         }
 
         Instant ahora = Instant.now(clock);
 
         // Finalizar ocupación previa y pasar cama a LIMPIEZA
-        ocupacionRepository.finalizarOcupacion(ocupacionActual.id(), ahora);
-        camaRepository.actualizarEstado(ocupacionActual.camaId(), "LIMPIEZA");
+        occupancyRepository.finishOccupancy(ocupacionActual.id(), ahora);
+        bedRepository.updateStatus(ocupacionActual.bedId(), "LIMPIEZA");
 
         // Crear nueva ocupación
-        OcupacionCama nuevaOcupacion = new OcupacionCama(
+        BedOccupancy nuevaOcupacion = new BedOccupancy(
                 null,
                 UUID.randomUUID().toString(),
                 episodio.id(),
@@ -253,25 +253,25 @@ public class HospitalService {
                 null,
                 "ACTIVA",
                 usuario.id(),
-                request.motivoTraslado(),
+                request.transferReason(),
                 ahora
         );
         try {
-            ocupacionRepository.guardar(nuevaOcupacion);
-        } catch (DataIntegrityViolationException ex) {
-            camaRepository.actualizarEstado(camaDestino.id(), "DISPONIBLE");
-            throw new ConflictoOperacionException("Conflicto de concurrencia: La cama de destino o el episodio ya cuentan con ocupación activa.");
+            occupancyRepository.save(nuevaOcupacion);
+        } catch (DataIntegrityViolationException | OperationConflictException ex) {
+            bedRepository.updateStatus(camaDestino.id(), "DISPONIBLE");
+            throw new OperationConflictException("Conflicto de concurrencia: La cama de destino o el episodio ya cuentan con ocupación activa.");
         }
 
         // Obtener áreas de origen y destino
-        CamaHospitalaria camaOrigen = camaRepository.buscarPorId(ocupacionActual.camaId()).orElse(null);
-        HabitacionSala habOrigen = camaOrigen != null ? habitacionRepository.buscarPorId(camaOrigen.habitacionId()).orElse(null) : null;
+        HospitalBed camaOrigen = bedRepository.findById(ocupacionActual.bedId()).orElse(null);
+        HospitalRoom habOrigen = camaOrigen != null ? roomRepository.findById(camaOrigen.roomId()).orElse(null) : null;
 
         Long areaOrigenId = habOrigen != null ? habOrigen.areaId() : null;
         Long areaDestinoId = habDestino.areaId();
 
         String movPubId = UUID.randomUUID().toString();
-        MovimientoPaciente mov = new MovimientoPaciente(
+        PatientMovement mov = new PatientMovement(
                 null,
                 movPubId,
                 episodio.id(),
@@ -280,34 +280,34 @@ public class HospitalService {
                 camaOrigen != null ? camaOrigen.id() : null,
                 camaDestino.id(),
                 ahora,
-                request.motivoTraslado(),
+                request.transferReason(),
                 usuario.id(),
                 ahora
         );
-        movimientoRepository.guardar(mov);
+        movementRepository.save(mov);
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.MOVIMIENTO_PACIENTE_REGISTRADO,
+                AuditableAction.MOVIMIENTO_PACIENTE_REGISTRADO,
                 "MOVIMIENTO_PACIENTE",
                 movPubId,
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
-        List<MovimientoResponse> lista = movimientoRepository.listarPorEpisodioId(episodio.id());
+        List<MovementResponse> lista = movementRepository.listByEpisodeId(episodio.id());
         return lista.stream()
                 .filter(m -> m.publicId().equals(movPubId))
                 .findFirst()
-                .orElse(new MovimientoResponse(
+                .orElse(new MovementResponse(
                         movPubId,
                         episodio.publicId(),
                         habOrigen != null ? "Área Previa" : "Ingreso",
                         "Área Destino",
-                        camaOrigen != null ? camaOrigen.codigo() : "—",
-                        camaDestino.codigo(),
+                        camaOrigen != null ? camaOrigen.code() : "—",
+                        camaDestino.code(),
                         ahora,
-                        request.motivoTraslado(),
+                        request.transferReason(),
                         usuario.email()
                 ));
     }
@@ -316,33 +316,33 @@ public class HospitalService {
      * Actualiza el estado operativo de una cama (ej. de LIMPIEZA a DISPONIBLE) (H01).
      */
     @Transactional
-    public void cambiarEstadoCama(
+    public void changeBedStatus(
             String camaPublicId,
             String nuevoEstado,
             String usuarioAutenticadoPublicId,
             String ipOrigen
     ) {
-        CamaHospitalaria cama = camaRepository.buscarPorPublicId(camaPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Cama no encontrada: " + camaPublicId));
+        HospitalBed cama = bedRepository.findByPublicId(camaPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cama no encontrada: " + camaPublicId));
 
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
 
-        if ("OCUPADA".equals(cama.estado()) && !"OCUPADA".equals(nuevoEstado)) {
-            Optional<OcupacionCama> act = ocupacionRepository.buscarActivaPorCamaId(cama.id());
+        if ("OCUPADA".equals(cama.status()) && !"OCUPADA".equals(nuevoEstado)) {
+            Optional<BedOccupancy> act = occupancyRepository.findActiveByBedId(cama.id());
             if (act.isPresent()) {
-                throw new ConflictoOperacionException("No se puede cambiar el estado de una cama con un paciente activo asignado.");
+                throw new OperationConflictException("No se puede cambiar el estado de una cama con un paciente activo asignado.");
             }
         }
 
-        camaRepository.actualizarEstado(cama.id(), nuevoEstado);
+        bedRepository.updateStatus(cama.id(), nuevoEstado);
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.ESTADO_CAMA_ACTUALIZADO,
+                AuditableAction.ESTADO_CAMA_ACTUALIZADO,
                 "CAMA_HOSPITALARIA",
                 cama.publicId(),
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
     }
@@ -351,73 +351,73 @@ public class HospitalService {
      * Registra un procedimiento clínico, acto quirúrgico o internación en quirófano (H04).
      */
     @Transactional
-    public ProcedimientoResponse registrarProcedimiento(
+    public ProcedureResponse registerProcedure(
             String episodePublicId,
-            RegistrarProcedimientoRequest request,
+            RegisterProcedureRequest request,
             String usuarioAutenticadoPublicId,
             String ipOrigen
     ) {
         Objects.requireNonNull(request, "request no puede ser nulo");
-        EpisodioAtencion episodio = episodioRepository.buscarPorPublicId(episodePublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Episodio no encontrado: " + episodePublicId));
+        CareEpisode episodio = episodeRepository.findByPublicId(episodePublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Episodio no encontrado: " + episodePublicId));
 
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario autenticado no encontrado."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario autenticado no encontrado."));
 
-        Profesional profesional = profesionalRepository.buscarPorPublicId(request.profesionalPublicId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Profesional quirúrgico no encontrado: " + request.profesionalPublicId()));
+        Professional profesional = professionalRepository.findByPublicId(request.professionalPublicId())
+                .orElseThrow(() -> new ResourceNotFoundException("Profesional quirúrgico no encontrado: " + request.professionalPublicId()));
 
         Long salaId = null;
-        if (request.salaPublicId() != null && !request.salaPublicId().isBlank()) {
-            HabitacionSala sala = habitacionRepository.buscarPorPublicId(request.salaPublicId())
-                    .orElseThrow(() -> new RecursoNoEncontradoException("Sala/Quirófano no encontrado: " + request.salaPublicId()));
+        if (request.roomPublicId() != null && !request.roomPublicId().isBlank()) {
+            HospitalRoom sala = roomRepository.findByPublicId(request.roomPublicId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Sala/Quirófano no encontrado: " + request.roomPublicId()));
             salaId = sala.id();
         }
 
         Instant ahora = Instant.now(clock);
         String procPubId = UUID.randomUUID().toString();
-        ProcedimientoHospitalario proc = new ProcedimientoHospitalario(
+        HospitalProcedure proc = new HospitalProcedure(
                 null,
                 procPubId,
                 episodio.id(),
-                request.tipoProcedimiento(),
-                request.descripcion(),
+                request.procedureType(),
+                request.description(),
                 profesional.id(),
                 salaId,
                 "PROGRAMADO",
                 ahora,
                 null,
-                request.observaciones(),
+                request.notes(),
                 ahora
         );
-        procedimientoRepository.guardar(proc);
+        procedureRepository.save(proc);
 
-        episodioRepository.actualizarEstado(episodio.id(), "QUIROFANO");
+        episodeRepository.updateStatus(episodio.id(), "QUIROFANO");
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.PROCEDIMIENTO_HOSPITALARIO_REGISTRADO,
+                AuditableAction.PROCEDIMIENTO_HOSPITALARIO_REGISTRADO,
                 "PROCEDIMIENTO_HOSPITALARIO",
                 procPubId,
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
-        List<ProcedimientoResponse> list = procedimientoRepository.listarPorEpisodioId(episodio.id());
+        List<ProcedureResponse> list = procedureRepository.listByEpisodeId(episodio.id());
         return list.stream()
                 .filter(p -> p.publicId().equals(procPubId))
                 .findFirst()
-                .orElse(new ProcedimientoResponse(
+                .orElse(new ProcedureResponse(
                         procPubId,
                         episodio.publicId(),
-                        request.tipoProcedimiento(),
-                        request.descripcion(),
-                        profesional.nombres() + " " + profesional.apellidos(),
+                        request.procedureType(),
+                        request.description(),
+                        profesional.firstNames() + " " + profesional.lastNames(),
                         "Quirófano",
                         "PROGRAMADO",
                         ahora,
                         null,
-                        request.observaciones(),
+                        request.notes(),
                         ahora
                 ));
     }
@@ -426,36 +426,36 @@ public class HospitalService {
      * Transiciona el estado de un procedimiento quirúrgico (H04).
      */
     @Transactional
-    public void actualizarEstadoProcedimiento(
+    public void updateProcedureStatus(
             String procedimientoPublicId,
-            ActualizarEstadoProcedimientoRequest request,
+            UpdateProcedureStatusRequest request,
             String usuarioAutenticadoPublicId,
             String ipOrigen
     ) {
         Objects.requireNonNull(request, "request no puede ser nulo");
-        ProcedimientoHospitalario proc = procedimientoRepository.buscarPorPublicId(procedimientoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Procedimiento no encontrado: " + procedimientoPublicId));
+        HospitalProcedure proc = procedureRepository.findByPublicId(procedimientoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Procedimiento no encontrado: " + procedimientoPublicId));
 
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
 
         Instant ahora = Instant.now(clock);
-        Instant finAt = ("FINALIZADO".equals(request.nuevoEstado()) || "CANCELADO".equals(request.nuevoEstado())) ? ahora : null;
+        Instant finAt = ("FINALIZADO".equals(request.newStatus()) || "CANCELADO".equals(request.newStatus())) ? ahora : null;
 
-        procedimientoRepository.actualizarEstado(proc.id(), request.nuevoEstado(), finAt, request.observaciones());
+        procedureRepository.updateStatus(proc.id(), request.newStatus(), finAt, request.notes());
 
-        if ("RECUPERACION".equals(request.nuevoEstado())) {
-            episodioRepository.actualizarEstado(proc.episodioId(), "RECUPERACION");
-        } else if ("FINALIZADO".equals(request.nuevoEstado())) {
-            episodioRepository.actualizarEstado(proc.episodioId(), "HOSPITALIZADO");
+        if ("RECUPERACION".equals(request.newStatus())) {
+            episodeRepository.updateStatus(proc.episodeId(), "RECUPERACION");
+        } else if ("FINALIZADO".equals(request.newStatus())) {
+            episodeRepository.updateStatus(proc.episodeId(), "HOSPITALIZADO");
         }
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.PROCEDIMIENTO_ESTADO_ACTUALIZADO,
+                AuditableAction.PROCEDIMIENTO_ESTADO_ACTUALIZADO,
                 "PROCEDIMIENTO_HOSPITALARIO",
                 proc.publicId(),
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
     }
@@ -464,9 +464,9 @@ public class HospitalService {
      * Registra el egreso médico definitivo y libera la cama hospitalaria (H05).
      */
     @Transactional
-    public void registrarEgresoHospitalario(
+    public void registerHospitalDischarge(
             String episodePublicId,
-            RegistrarEgresoRequest request,
+            RegisterDischargeRequest request,
             String usuarioAutenticadoPublicId,
             Collection<? extends GrantedAuthority> authorities,
             String ipOrigen
@@ -477,66 +477,66 @@ public class HospitalService {
                 : Set.of();
 
         if (!roles.contains("ROLE_PROFESIONAL")) {
-            throw new AccesoNoAutorizadoException("Solo profesionales médicos pueden emitir órdenes de egreso y alta hospitalaria.");
+            throw new UnauthorizedAccessException("Solo profesionales médicos pueden emitir órdenes de egreso y alta hospitalaria.");
         }
 
-        EpisodioAtencion episodio = episodioRepository.buscarPorPublicId(episodePublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Episodio no encontrado: " + episodePublicId));
+        CareEpisode episodio = episodeRepository.findByPublicId(episodePublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Episodio no encontrado: " + episodePublicId));
 
-        if ("EGRESADO".equals(episodio.estado())) {
-            throw new ConflictoOperacionException("El episodio ya fue egresado previamente.");
+        if ("EGRESADO".equals(episodio.status())) {
+            throw new OperationConflictException("El episodio ya fue egresado previamente.");
         }
 
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
 
-        Profesional medico = profesionalRepository.buscarPorUsuarioId(usuario.id())
-                .orElseThrow(() -> new AccesoNoAutorizadoException("Usuario no registrado como profesional médico."));
+        Professional medico = professionalRepository.findByUserId(usuario.id())
+                .orElseThrow(() -> new UnauthorizedAccessException("Usuario no registrado como profesional médico."));
 
         Instant ahora = Instant.now(clock);
 
         // Si el paciente tiene cama activa asignada, se finaliza ocupación y se pasa a LIMPIEZA
-        Optional<OcupacionCama> ocupacionActiva = ocupacionRepository.buscarActivaPorEpisodioId(episodio.id());
+        Optional<BedOccupancy> ocupacionActiva = occupancyRepository.findActiveByEpisodeId(episodio.id());
         if (ocupacionActiva.isPresent()) {
-            OcupacionCama oc = ocupacionActiva.get();
-            ocupacionRepository.finalizarOcupacion(oc.id(), ahora);
-            camaRepository.actualizarEstado(oc.camaId(), "LIMPIEZA");
+            BedOccupancy oc = ocupacionActiva.get();
+            occupancyRepository.finishOccupancy(oc.id(), ahora);
+            bedRepository.updateStatus(oc.bedId(), "LIMPIEZA");
         }
 
         // Guardar Egreso Hospitalario
         String egresoPubId = UUID.randomUUID().toString();
-        EgresoHospitalario egreso = new EgresoHospitalario(
+        HospitalDischarge egreso = new HospitalDischarge(
                 null,
                 egresoPubId,
                 episodio.id(),
                 medico.id(),
                 ahora,
-                request.tipoDestino(),
-                request.diagnosticoEgreso(),
-                request.epicrisisResumen(),
-                request.planManejo(),
+                request.destinationType(),
+                request.dischargeDiagnosis(),
+                request.epicrisisSummary(),
+                request.managementPlan(),
                 ahora
         );
-        egresoRepository.guardar(egreso);
+        dischargeRepository.save(egreso);
 
         // Actualizar estado del episodio a EGRESADO
-        episodioRepository.cerrarEpisodio(episodio.id(), ahora);
+        episodeRepository.closeEpisode(episodio.id(), ahora);
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.EGRESO_HOSPITALARIO_REGISTRADO,
+                AuditableAction.EGRESO_HOSPITALARIO_REGISTRADO,
                 "EGRESO_HOSPITALARIO",
                 egresoPubId,
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.EPISODIO_CERRADO,
+                AuditableAction.EPISODIO_CERRADO,
                 "EPISODIO_ATENCION",
                 episodio.publicId(),
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
     }
@@ -545,39 +545,39 @@ public class HospitalService {
      * Centro de Control Hospitalario: censo de camas e indicadores de ocupación en tiempo real (H06).
      * No expone contenido clínico privado a perfiles administrativos.
      */
-    public CensoCamasResponse obtenerCensoCamas(String sedePublicId) {
-        Sede sede = sedeRepository.buscarPorPublicId(sedePublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Sede no encontrada: " + sedePublicId));
+    public BedCensusResponse getBedCensus() {
+        // Hospital único: el censo siempre corresponde a la única sede.
+        Site sede = siteRepository.getSingleSite();
 
-        List<CamaDetalleResponse> camas = camaRepository.listarDetallePorSedeId(sede.id());
+        List<BedDetailResponse> camas = bedRepository.listDetailsBySiteId(sede.id());
         int total = camas.size();
-        int ocupadas = (int) camas.stream().filter(c -> "OCUPADA".equals(c.estado())).count();
-        int disponibles = (int) camas.stream().filter(c -> "DISPONIBLE".equals(c.estado())).count();
-        int limpieza = (int) camas.stream().filter(c -> "LIMPIEZA".equals(c.estado())).count();
-        int mantenimiento = (int) camas.stream().filter(c -> "MANTENIMIENTO".equals(c.estado()) || "INACTIVA".equals(c.estado())).count();
+        int ocupadas = (int) camas.stream().filter(c -> "OCUPADA".equals(c.status())).count();
+        int disponibles = (int) camas.stream().filter(c -> "DISPONIBLE".equals(c.status())).count();
+        int limpieza = (int) camas.stream().filter(c -> "LIMPIEZA".equals(c.status())).count();
+        int mantenimiento = (int) camas.stream().filter(c -> "MANTENIMIENTO".equals(c.status()) || "INACTIVA".equals(c.status())).count();
 
         double tasaOcupacion = total > 0 ? (double) ocupadas / total * 100.0 : 0.0;
 
-        List<AreaHospitalaria> areas = areaRepository.listarPorSedeId(sede.id());
-        List<CensoCamasResponse.AreaCensoItem> areasCenso = areas.stream().map(a -> {
-            List<CamaDetalleResponse> camasArea = camas.stream().filter(c -> a.nombre().equals(c.areaNombre())).toList();
+        List<HospitalArea> areas = areaRepository.listBySiteId(sede.id());
+        List<BedCensusResponse.AreaCensusItem> areasCenso = areas.stream().map(a -> {
+            List<BedDetailResponse> camasArea = camas.stream().filter(c -> a.name().equals(c.areaName())).toList();
             int totArea = camasArea.size();
-            int ocuArea = (int) camasArea.stream().filter(c -> "OCUPADA".equals(c.estado())).count();
-            int dispArea = (int) camasArea.stream().filter(c -> "DISPONIBLE".equals(c.estado())).count();
-            return new CensoCamasResponse.AreaCensoItem(
+            int ocuArea = (int) camasArea.stream().filter(c -> "OCUPADA".equals(c.status())).count();
+            int dispArea = (int) camasArea.stream().filter(c -> "DISPONIBLE".equals(c.status())).count();
+            return new BedCensusResponse.AreaCensusItem(
                     a.publicId(),
-                    a.codigo(),
-                    a.nombre(),
-                    a.tipo(),
+                    a.code(),
+                    a.name(),
+                    a.type(),
                     totArea,
                     ocuArea,
                     dispArea
             );
         }).toList();
 
-        return new CensoCamasResponse(
+        return new BedCensusResponse(
                 sede.publicId(),
-                sede.nombre(),
+                sede.name(),
                 total,
                 ocupadas,
                 disponibles,
@@ -588,42 +588,40 @@ public class HospitalService {
         );
     }
 
-    public List<CamaDetalleResponse> listarCamasDetalle(String sedePublicId) {
-        return listarCamasDetalle(sedePublicId, false);
+    public List<BedDetailResponse> listBedDetails() {
+        return listBedDetails(false);
     }
 
-    public List<CamaDetalleResponse> listarCamasDetalle(String sedePublicId, boolean anonimizarPaciente) {
-        Sede sede = sedeRepository.buscarPorPublicId(sedePublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Sede no encontrada: " + sedePublicId));
-        List<CamaDetalleResponse> camas = camaRepository.listarDetallePorSedeId(sede.id());
+    public List<BedDetailResponse> listBedDetails(boolean anonimizarPaciente) {
+        List<BedDetailResponse> camas = bedRepository.listDetailsBySiteId(siteRepository.getSingleSiteId());
         if (anonimizarPaciente) {
-            return camas.stream().map(c -> new CamaDetalleResponse(
+            return camas.stream().map(c -> new BedDetailResponse(
                     c.publicId(),
-                    c.habitacionPublicId(),
-                    c.habitacionCodigo(),
+                    c.roomPublicId(),
+                    c.roomCode(),
                     c.areaPublicId(),
-                    c.areaNombre(),
-                    c.sedePublicId(),
-                    c.sedeNombre(),
-                    c.codigo(),
-                    c.estado(),
+                    c.areaName(),
+                    c.sitePublicId(),
+                    c.siteName(),
+                    c.code(),
+                    c.status(),
                     null, // episodioPublicId anonimizado para admin (S-02)
                     null, // pacienteNombre anonimizado para admin (S-02)
-                    c.ocupacionPublicId()
+                    c.occupancyPublicId()
             )).toList();
         }
         return camas;
     }
 
-    public List<MovimientoResponse> listarMovimientosEpisodio(String episodePublicId) {
-        EpisodioAtencion episodio = episodioRepository.buscarPorPublicId(episodePublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Episodio no encontrado: " + episodePublicId));
-        return movimientoRepository.listarPorEpisodioId(episodio.id());
+    public List<MovementResponse> listEpisodeMovements(String episodePublicId) {
+        CareEpisode episodio = episodeRepository.findByPublicId(episodePublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Episodio no encontrado: " + episodePublicId));
+        return movementRepository.listByEpisodeId(episodio.id());
     }
 
-    public List<ProcedimientoResponse> listarProcedimientosEpisodio(String episodePublicId) {
-        EpisodioAtencion episodio = episodioRepository.buscarPorPublicId(episodePublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Episodio no encontrado: " + episodePublicId));
-        return procedimientoRepository.listarPorEpisodioId(episodio.id());
+    public List<ProcedureResponse> listEpisodeProcedures(String episodePublicId) {
+        CareEpisode episodio = episodeRepository.findByPublicId(episodePublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Episodio no encontrado: " + episodePublicId));
+        return procedureRepository.listByEpisodeId(episodio.id());
     }
 }

@@ -1,7 +1,7 @@
 package com.meditriaje.controller;
 
-import com.meditriaje.dto.followup.CrearSeguimientoRequest;
-import com.meditriaje.dto.followup.SeguimientoResponse;
+import com.meditriaje.dto.followup.CreateFollowUpRequest;
+import com.meditriaje.dto.followup.FollowUpResponse;
 import com.meditriaje.service.FollowUpService;
 import com.meditriaje.util.IpUtil;
 import jakarta.servlet.http.HttpServletRequest;
@@ -42,20 +42,20 @@ public class FollowUpController {
      */
     @PostMapping("/attentions/{atencionPublicId}/follow-ups")
     @PreAuthorize("hasAuthority('ROLE_PROFESIONAL')")
-    public ResponseEntity<SeguimientoResponse> prescribirSeguimiento(
-            @PathVariable String atencionPublicId,
-            @Valid @RequestBody CrearSeguimientoRequest request,
+    public ResponseEntity<FollowUpResponse> prescribeFollowUp(
+            @PathVariable("atencionPublicId") String attentionPublicId,
+            @Valid @RequestBody CreateFollowUpRequest request,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String usuarioPublicId = authentication.getName();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
+        String sourceIp = IpUtil.extractIp(httpRequest);
 
-        SeguimientoResponse response = followUpService.prescribirSeguimiento(
-                atencionPublicId,
+        FollowUpResponse response = followUpService.prescribeFollowUp(
+                attentionPublicId,
                 request,
                 usuarioPublicId,
-                ipOrigen
+                sourceIp
         );
 
         URI location = URI.create("/api/v1/follow-ups/" + response.publicId());
@@ -68,15 +68,15 @@ public class FollowUpController {
      */
     @GetMapping("/attentions/{atencionPublicId}/follow-ups")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<List<SeguimientoResponse>> listarPorAtencion(
-            @PathVariable String atencionPublicId,
+    public ResponseEntity<List<FollowUpResponse>> listByAttention(
+            @PathVariable("atencionPublicId") String attentionPublicId,
             Authentication authentication
     ) {
         String usuarioPublicId = authentication.getName();
         Collection<? extends GrantedAuthority> authorities = authentication.getAuthorities();
 
-        List<SeguimientoResponse> lista = followUpService.listarPorAtencion(
-                atencionPublicId,
+        List<FollowUpResponse> lista = followUpService.listByAttention(
+                attentionPublicId,
                 usuarioPublicId,
                 authorities
         );
@@ -90,14 +90,14 @@ public class FollowUpController {
      */
     @GetMapping("/follow-ups/{publicId}")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<SeguimientoResponse> obtenerPorPublicId(
-            @PathVariable String publicId,
+    public ResponseEntity<FollowUpResponse> getByPublicId(
+            @PathVariable("publicId") String publicId,
             Authentication authentication
     ) {
         String usuarioPublicId = authentication.getName();
         Collection<? extends GrantedAuthority> authorities = authentication.getAuthorities();
 
-        SeguimientoResponse response = followUpService.obtenerPorPublicId(
+        FollowUpResponse response = followUpService.getByPublicId(
                 publicId,
                 usuarioPublicId,
                 authorities
@@ -112,14 +112,14 @@ public class FollowUpController {
      */
     @PatchMapping("/follow-ups/{publicId}/cancel")
     @PreAuthorize("hasAuthority('ROLE_PROFESIONAL')")
-    public ResponseEntity<SeguimientoResponse> cancelarSeguimiento(
-            @PathVariable String publicId,
+    public ResponseEntity<FollowUpResponse> cancelFollowUp(
+            @PathVariable("publicId") String publicId,
             Authentication authentication
     ) {
         String usuarioPublicId = authentication.getName();
         Collection<? extends GrantedAuthority> authorities = authentication.getAuthorities();
 
-        SeguimientoResponse response = followUpService.cancelarSeguimiento(
+        FollowUpResponse response = followUpService.cancelFollowUp(
                 publicId,
                 usuarioPublicId,
                 authorities

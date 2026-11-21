@@ -28,21 +28,21 @@ public class SmtpEmailTransport implements EmailTransport {
     }
 
     @Override
-    public String getNombreTransporte() {
+    public String getTransportName() {
         return "smtp";
     }
 
     @Override
-    public ResultadoEnvio enviar(String destinatarioEmail, String asunto, String cuerpoHtml) {
+    public EmailSendResult send(String destinatarioEmail, String asunto, String cuerpoHtml) {
         Objects.requireNonNull(destinatarioEmail, "destinatarioEmail no puede ser nulo");
         Objects.requireNonNull(asunto, "asunto no puede ser nulo");
         Objects.requireNonNull(cuerpoHtml, "cuerpoHtml no puede ser nulo");
 
-        String emailEnmascarado = EmailUtil.enmascararEmail(destinatarioEmail);
+        String emailEnmascarado = EmailUtil.maskEmail(destinatarioEmail);
 
         if (javaMailSender == null) {
             log.error("Fallo al enviar correo vía SMTP: JavaMailSender no configurado. Destinatario=[{}]", emailEnmascarado);
-            return ResultadoEnvio.fallido("SMTP_CONFIG_ERROR", "Servidor SMTP no configurado en la plataforma.");
+            return EmailSendResult.failed("SMTP_CONFIG_ERROR", "Servidor SMTP no configurado en la plataforma.");
         }
 
         try {
@@ -55,11 +55,11 @@ public class SmtpEmailTransport implements EmailTransport {
 
             javaMailSender.send(mimeMessage);
             log.info("Correo despachado exitosamente vía SMTP hacia [{}] con asunto [{}]", emailEnmascarado, asunto);
-            return ResultadoEnvio.exitoso();
+            return EmailSendResult.succeeded();
         } catch (Exception ex) {
-            String sanitizedMsg = EmailUtil.sanitizarMensajeError(ex.getMessage(), null);
+            String sanitizedMsg = EmailUtil.sanitizeErrorMessage(ex.getMessage(), null);
             log.warn("Error al despachar correo vía SMTP hacia [{}]: {}", emailEnmascarado, sanitizedMsg);
-            return ResultadoEnvio.fallido("SMTP_ERROR", sanitizedMsg);
+            return EmailSendResult.failed("SMTP_ERROR", sanitizedMsg);
         }
     }
 }

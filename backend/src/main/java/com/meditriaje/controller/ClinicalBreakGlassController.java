@@ -1,7 +1,7 @@
 package com.meditriaje.controller;
 
-import com.meditriaje.dto.clinical.AccesoBreakGlassResponse;
-import com.meditriaje.dto.clinical.ActivarBreakGlassRequest;
+import com.meditriaje.dto.clinical.BreakGlassAccessResponse;
+import com.meditriaje.dto.clinical.ActivateBreakGlassRequest;
 import com.meditriaje.service.BreakGlassService;
 import com.meditriaje.util.IpUtil;
 import jakarta.servlet.http.HttpServletRequest;
@@ -40,15 +40,15 @@ public class ClinicalBreakGlassController {
      * Exige motivo de justificación de al menos 20 caracteres y otorga 24 horas de vigencia.
      */
     @PostMapping
-    public ResponseEntity<AccesoBreakGlassResponse> activarBreakGlass(
-            @Valid @RequestBody ActivarBreakGlassRequest request,
+    public ResponseEntity<BreakGlassAccessResponse> activateBreakGlass(
+            @Valid @RequestBody ActivateBreakGlassRequest request,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String usuarioPublicId = authentication.getName();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
+        String sourceIp = IpUtil.extractIp(httpRequest);
 
-        AccesoBreakGlassResponse response = breakGlassService.activarBreakGlass(request, usuarioPublicId, ipOrigen);
+        BreakGlassAccessResponse response = breakGlassService.activateBreakGlass(request, usuarioPublicId, sourceIp);
         URI location = URI.create("/api/v1/clinical/break-glass/" + response.publicId());
 
         return ResponseEntity.created(location).body(response);
@@ -58,9 +58,9 @@ public class ClinicalBreakGlassController {
      * Consulta el listado de autorizaciones Break-Glass actualmente activas (no expiradas) para el profesional autenticado.
      */
     @GetMapping("/active")
-    public ResponseEntity<List<AccesoBreakGlassResponse>> listarMisAccesosActivos(Authentication authentication) {
+    public ResponseEntity<List<BreakGlassAccessResponse>> listMyActiveAccesses(Authentication authentication) {
         String usuarioPublicId = authentication.getName();
-        List<AccesoBreakGlassResponse> accesos = breakGlassService.listarMisAccesosActivos(usuarioPublicId);
+        List<BreakGlassAccessResponse> accesos = breakGlassService.listMyActiveAccesses(usuarioPublicId);
         return ResponseEntity.ok(accesos);
     }
 
@@ -68,12 +68,12 @@ public class ClinicalBreakGlassController {
      * Consulta el detalle de una autorización Break-Glass específica por su identificador público.
      */
     @GetMapping("/{publicId}")
-    public ResponseEntity<AccesoBreakGlassResponse> obtenerPorPublicId(
-            @PathVariable String publicId,
+    public ResponseEntity<BreakGlassAccessResponse> getByPublicId(
+            @PathVariable("publicId") String publicId,
             Authentication authentication
     ) {
         String usuarioPublicId = authentication.getName();
-        AccesoBreakGlassResponse response = breakGlassService.obtenerPorPublicId(publicId, usuarioPublicId);
+        BreakGlassAccessResponse response = breakGlassService.getByPublicId(publicId, usuarioPublicId);
         return ResponseEntity.ok(response);
     }
 }

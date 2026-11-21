@@ -1,8 +1,8 @@
 package com.meditriaje.service;
 
 import com.meditriaje.dto.affiliation.*;
-import com.meditriaje.exception.ConflictoOperacionException;
-import com.meditriaje.exception.RecursoNoEncontradoException;
+import com.meditriaje.exception.OperationConflictException;
+import com.meditriaje.exception.ResourceNotFoundException;
 import com.meditriaje.model.*;
 import com.meditriaje.repository.*;
 import org.apache.poi.ss.usermodel.Row;
@@ -34,31 +34,31 @@ import static org.mockito.Mockito.*;
 class AffiliationServiceTest {
 
     @Mock
-    private EntidadEpsRepository epsRepository;
+    private EpsEntityRepository epsRepository;
 
     @Mock
-    private AfiliacionPacienteRepository afiliacionRepository;
+    private PatientAffiliationRepository affiliationRepository;
 
     @Mock
-    private LoteImportacionEpsRepository loteRepository;
+    private EpsImportBatchRepository batchRepository;
 
     @Mock
-    private AusenciaMedicaRepository ausenciaRepository;
+    private MedicalAbsenceRepository absenceRepository;
 
     @Mock
-    private RepresentacionLegalRepository representacionRepository;
+    private LegalRepresentationRepository representationRepository;
 
     @Mock
-    private PacienteRepository pacienteRepository;
+    private PatientRepository patientRepository;
 
     @Mock
-    private ProfesionalRepository profesionalRepository;
+    private ProfessionalRepository professionalRepository;
 
     @Mock
-    private UsuarioRepository usuarioRepository;
+    private UserRepository userRepository;
 
     @Mock
-    private AuditoriaService auditoriaService;
+    private AuditService auditService;
 
     private Clock clock;
     private AffiliationService service;
@@ -70,14 +70,14 @@ class AffiliationServiceTest {
         clock = Clock.fixed(now, ZoneOffset.UTC);
         service = new AffiliationService(
                 epsRepository,
-                afiliacionRepository,
-                loteRepository,
-                ausenciaRepository,
-                representacionRepository,
-                pacienteRepository,
-                profesionalRepository,
-                usuarioRepository,
-                auditoriaService,
+                affiliationRepository,
+                batchRepository,
+                absenceRepository,
+                representationRepository,
+                patientRepository,
+                professionalRepository,
+                userRepository,
+                auditService,
                 clock
         );
     }
@@ -119,202 +119,202 @@ class AffiliationServiceTest {
 
     @Test
     @DisplayName("A02/A03: procesarArchivoExcelPreview valida filas, sanitiza fórmulas y retorna preview en staging")
-    void procesarArchivoExcelPreview_validaYSanitizaExitosamente() throws IOException {
+    void previewExcelImport_validAndSanitizaExitosamente() throws IOException {
         byte[] excel = crearExcelPrueba();
 
-        EntidadEps eps = new EntidadEps(1L, "eps-uuid", "EPS001", "Nueva EPS", "900123456", "CONTRIBUTIVO", "ACTIVA", now);
-        when(epsRepository.buscarPorPublicId("eps-uuid")).thenReturn(Optional.of(eps));
+        EpsEntity eps = new EpsEntity(1L, "eps-uuid", "EPS001", "Nueva EPS", "900123456", "CONTRIBUTIVO", "ACTIVA", now);
+        when(epsRepository.findByPublicId("eps-uuid")).thenReturn(Optional.of(eps));
 
-        Usuario usuario = new Usuario(10L, "usr-admin", "admin@hospital.com", "HASH", "ACTIVO", 0, null, now, false);
-        when(usuarioRepository.buscarPorPublicId("usr-admin")).thenReturn(Optional.of(usuario));
+        User usuario = new User(10L, "usr-admin", "admin@hospital.com", "HASH", "ACTIVO", 0, null, now, false);
+        when(userRepository.findByPublicId("usr-admin")).thenReturn(Optional.of(usuario));
 
-        LoteImportacionEps loteGuardado = new LoteImportacionEps(
+        EpsImportBatch loteGuardado = new EpsImportBatch(
                 100L, "lote-uuid", "test.xlsx", "hash", 1L, 2, 1, 1, "PREVIEW", 10L, now, null
         );
-        when(loteRepository.guardarLote(any(LoteImportacionEps.class))).thenReturn(loteGuardado);
+        when(batchRepository.saveBatch(any(EpsImportBatch.class))).thenReturn(loteGuardado);
 
-        DetalleImportacionEps d1 = new DetalleImportacionEps(
+        EpsImportDetail d1 = new EpsImportDetail(
                 1L, 100L, 1, "CC", "1065123456", "'=CMD|' /C calc'!A0", "Perez", "CONTRIBUTIVO", "COTIZANTE", "VALIDA", null
         );
-        when(loteRepository.listarDetalles(100L, 20)).thenReturn(List.of(d1));
+        when(batchRepository.listDetails(100L, 20)).thenReturn(List.of(d1));
 
-        LotePreviewResponse resp = service.procesarArchivoExcelPreview(
+        BatchPreviewResponse resp = service.previewExcelImport(
                 excel, "test.xlsx", "eps-uuid", "usr-admin", "127.0.0.1"
         );
 
         assertNotNull(resp);
-        assertEquals(2, resp.totalFilas());
-        assertEquals(1, resp.filasValidas());
-        assertEquals(1, resp.filasFallidas());
-        assertEquals("PREVIEW", resp.estado());
+        assertEquals(2, resp.totalRows());
+        assertEquals(1, resp.validRows());
+        assertEquals(1, resp.failedRows());
+        assertEquals("PREVIEW", resp.status());
 
         // Verificar que las filas de staging enviadas a guardar incluyen sanitización
         @SuppressWarnings("unchecked")
-        ArgumentCaptor<List<DetalleImportacionEps>> captor = ArgumentCaptor.forClass(List.class);
-        verify(loteRepository).guardarDetallesBatch(eq(100L), captor.capture());
-        List<DetalleImportacionEps> filasGuardadas = captor.getValue();
+        ArgumentCaptor<List<EpsImportDetail>> captor = ArgumentCaptor.forClass(List.class);
+        verify(batchRepository).saveBatchDetails(eq(100L), captor.capture());
+        List<EpsImportDetail> filasGuardadas = captor.getValue();
         assertEquals(2, filasGuardadas.size());
 
-        DetalleImportacionEps f1 = filasGuardadas.get(0);
-        assertEquals("VALIDO", f1.estadoFila());
-        assertTrue(f1.nombres().startsWith("'="), "La celda con fórmula debe comenzar con apóstrofe");
+        EpsImportDetail f1 = filasGuardadas.get(0);
+        assertEquals("VALIDO", f1.rowStatus());
+        assertTrue(f1.firstNames().startsWith("'="), "La celda con fórmula debe comenzar con apóstrofe");
 
-        DetalleImportacionEps f2 = filasGuardadas.get(1);
-        assertEquals("ERROR", f2.estadoFila());
-        assertNotNull(f2.errorMotivo());
+        EpsImportDetail f2 = filasGuardadas.get(1);
+        assertEquals("ERROR", f2.rowStatus());
+        assertNotNull(f2.errorReason());
     }
 
     @Test
     @DisplayName("A04: commitLote en modo ATOMIC_ALL falla si hay filas con error")
-    void commitLote_modoAtomicAll_fallaSiHayErrores() {
-        LoteImportacionEps lote = new LoteImportacionEps(
+    void commitBatch_modeAtomicAll_failsWhenExistsErrors() {
+        EpsImportBatch lote = new EpsImportBatch(
                 100L, "lote-uuid", "test.xlsx", "hash", 1L, 2, 1, 1, "PREVIEW", 10L, now, null
         );
-        when(loteRepository.buscarPorPublicId("lote-uuid")).thenReturn(Optional.of(lote));
+        when(batchRepository.findByPublicId("lote-uuid")).thenReturn(Optional.of(lote));
 
-        Usuario usuario = new Usuario(10L, "usr-admin", "admin@hospital.com", "HASH", "ACTIVO", 0, null, now, false);
-        when(usuarioRepository.buscarPorPublicId("usr-admin")).thenReturn(Optional.of(usuario));
+        User usuario = new User(10L, "usr-admin", "admin@hospital.com", "HASH", "ACTIVO", 0, null, now, false);
+        when(userRepository.findByPublicId("usr-admin")).thenReturn(Optional.of(usuario));
 
-        CommitLoteRequest req = new CommitLoteRequest("ATOMIC_ALL");
+        CommitBatchRequest req = new CommitBatchRequest("ATOMIC_ALL");
 
-        ConflictoOperacionException ex = assertThrows(ConflictoOperacionException.class, () ->
-                service.commitLote("lote-uuid", req, "usr-admin", "127.0.0.1")
+        OperationConflictException ex = assertThrows(OperationConflictException.class, () ->
+                service.commitBatch("lote-uuid", req, "usr-admin", "127.0.0.1")
         );
         assertTrue(ex.getMessage().contains("filas con error"));
     }
 
     @Test
     @DisplayName("A04: commitLote en modo VALID_ROWS aplica registros válidos e ignora errores")
-    void commitLote_modoValidRows_aplicaExitosamente() {
-        LoteImportacionEps lote = new LoteImportacionEps(
+    void commitBatch_modeValidRows_appliesExitosamente() {
+        EpsImportBatch lote = new EpsImportBatch(
                 100L, "lote-uuid", "test.xlsx", "hash", 1L, 2, 1, 1, "PREVIEW", 10L, now, null
         );
-        when(loteRepository.buscarPorPublicId("lote-uuid")).thenReturn(Optional.of(lote));
+        when(batchRepository.findByPublicId("lote-uuid")).thenReturn(Optional.of(lote));
 
-        Usuario usuario = new Usuario(10L, "usr-admin", "admin@hospital.com", "HASH", "ACTIVO", 0, null, now, false);
-        when(usuarioRepository.buscarPorPublicId("usr-admin")).thenReturn(Optional.of(usuario));
+        User usuario = new User(10L, "usr-admin", "admin@hospital.com", "HASH", "ACTIVO", 0, null, now, false);
+        when(userRepository.findByPublicId("usr-admin")).thenReturn(Optional.of(usuario));
 
-        DetalleImportacionEps d1 = new DetalleImportacionEps(
+        EpsImportDetail d1 = new EpsImportDetail(
                 1L, 100L, 1, "CC", "1065123456", "Juan", "Perez", "CONTRIBUTIVO", "COTIZANTE", "VALIDA", null
         );
-        when(loteRepository.listarFilasValidas(100L)).thenReturn(List.of(d1));
-        when(afiliacionRepository.buscarPorDocumento("CC", "1065123456")).thenReturn(Optional.empty());
+        when(batchRepository.listValidRows(100L)).thenReturn(List.of(d1));
+        when(affiliationRepository.findByDocument("CC", "1065123456")).thenReturn(Optional.empty());
 
-        CommitLoteRequest req = new CommitLoteRequest("VALID_ROWS");
-        service.commitLote("lote-uuid", req, "usr-admin", "127.0.0.1");
+        CommitBatchRequest req = new CommitBatchRequest("VALID_ROWS");
+        service.commitBatch("lote-uuid", req, "usr-admin", "127.0.0.1");
 
-        verify(afiliacionRepository).guardar(any(AfiliacionPaciente.class));
-        verify(loteRepository).cambiarEstadoLote(eq(100L), eq("PROCESADO"), any(Instant.class));
-        verify(auditoriaService).auditar(any(EventoAuditoria.class));
+        verify(affiliationRepository).save(any(PatientAffiliation.class));
+        verify(batchRepository).changeBatchStatus(eq(100L), eq("PROCESADO"), any(Instant.class));
+        verify(auditService).audit(any(AuditEvent.class));
     }
 
     @Test
     @DisplayName("A05: consultarAfiliacion no bloquea ni falla si el paciente no tiene EPS activa")
-    void consultarAfiliacion_noBloqueanteSiNoExiste() {
-        Usuario usuario = new Usuario(20L, "usr-enf", "enf@hospital.com", "HASH", "ACTIVO", 0, null, now, false);
-        when(usuarioRepository.buscarPorPublicId("usr-enf")).thenReturn(Optional.of(usuario));
-        when(afiliacionRepository.buscarDetallePorDocumento("CC", "99999999")).thenReturn(Optional.empty());
+    void getAffiliation_notBloqueanteWhenNotExists() {
+        User usuario = new User(20L, "usr-enf", "enf@hospital.com", "HASH", "ACTIVO", 0, null, now, false);
+        when(userRepository.findByPublicId("usr-enf")).thenReturn(Optional.of(usuario));
+        when(affiliationRepository.findDetailByDocument("CC", "99999999")).thenReturn(Optional.empty());
 
-        AfiliacionResponse resp = service.consultarAfiliacion("CC", "99999999", "usr-enf", "127.0.0.1");
+        AffiliationResponse resp = service.getAffiliation("CC", "99999999", "usr-enf", "127.0.0.1");
 
         assertNotNull(resp);
-        assertEquals("NO_ASEGURADO", resp.regimen());
-        assertEquals("NO_AFILIADO", resp.estado());
-        verify(auditoriaService).auditar(any(EventoAuditoria.class));
+        assertEquals("NO_ASEGURADO", resp.regime());
+        assertEquals("NO_AFILIADO", resp.status());
+        verify(auditService).audit(any(AuditEvent.class));
     }
 
     @Test
     @DisplayName("C02: registrarAusenciaMedica rechaza si fechaFin es antes de fechaInicio")
-    void registrarAusencia_fechasInconsistentes_lanzaConflicto() {
-        RegistrarAusenciaRequest req = new RegistrarAusenciaRequest(
+    void registerAbsence_datesInconsistent_throwsConflict() {
+        RegisterAbsenceRequest req = new RegisterAbsenceRequest(
                 "prof-uuid",
                 now.plusSeconds(3600),
                 now,
                 "Vacaciones"
         );
 
-        assertThrows(ConflictoOperacionException.class, () ->
-                service.registrarAusenciaMedica(req, "usr-admin", "127.0.0.1")
+        assertThrows(OperationConflictException.class, () ->
+                service.registerMedicalAbsence(req, "usr-admin", "127.0.0.1")
         );
     }
 
     @Test
     @DisplayName("C02: registrarAusenciaMedica rechaza si existe traslape horario")
-    void registrarAusencia_traslape_lanzaConflicto() {
-        RegistrarAusenciaRequest req = new RegistrarAusenciaRequest(
+    void registerAbsence_overlap_throwsConflict() {
+        RegisterAbsenceRequest req = new RegisterAbsenceRequest(
                 "prof-uuid",
                 now,
                 now.plusSeconds(7200),
                 "Congreso Médico"
         );
 
-        Usuario usuario = new Usuario(10L, "usr-admin", "admin@hospital.com", "HASH", "ACTIVO", 0, null, now, false);
-        when(usuarioRepository.buscarPorPublicId("usr-admin")).thenReturn(Optional.of(usuario));
+        User usuario = new User(10L, "usr-admin", "admin@hospital.com", "HASH", "ACTIVO", 0, null, now, false);
+        when(userRepository.findByPublicId("usr-admin")).thenReturn(Optional.of(usuario));
 
-        Profesional prof = new Profesional(
+        Professional prof = new Professional(
                 5L, 50L, "prof-uuid", 1L, "CC", "12345", "RM-1", "Carlos", "Mendoza", "300123", now, now
         );
-        when(profesionalRepository.buscarPorPublicId("prof-uuid")).thenReturn(Optional.of(prof));
-        when(ausenciaRepository.existeTraslapeAusencia(eq(5L), any(Instant.class), any(Instant.class))).thenReturn(true);
+        when(professionalRepository.findByPublicId("prof-uuid")).thenReturn(Optional.of(prof));
+        when(absenceRepository.existsAbsenceOverlap(eq(5L), any(Instant.class), any(Instant.class))).thenReturn(true);
 
-        assertThrows(ConflictoOperacionException.class, () ->
-                service.registrarAusenciaMedica(req, "usr-admin", "127.0.0.1")
+        assertThrows(OperationConflictException.class, () ->
+                service.registerMedicalAbsence(req, "usr-admin", "127.0.0.1")
         );
     }
 
     @Test
     @DisplayName("C03: registrarRepresentacionLegal rechaza si el menor y el tutor son la misma persona")
-    void registrarRepresentacion_mismoPaciente_lanzaConflicto() {
-        RepresentacionLegalRequest req = new RepresentacionLegalRequest(
+    void registerRepresentation_samePatient_throwsConflict() {
+        LegalRepresentationRequest req = new LegalRepresentationRequest(
                 "pac-1", "pac-1", "MADRE", "REGISTRO_CIVIL"
         );
 
-        Usuario usuario = new Usuario(10L, "usr-pac", "pac@hospital.com", "HASH", "ACTIVO", 0, null, now, false);
-        when(usuarioRepository.buscarPorPublicId("usr-pac")).thenReturn(Optional.of(usuario));
+        User usuario = new User(10L, "usr-pac", "pac@hospital.com", "HASH", "ACTIVO", 0, null, now, false);
+        when(userRepository.findByPublicId("usr-pac")).thenReturn(Optional.of(usuario));
 
-        Paciente pac = new Paciente(
+        Patient pac = new Patient(
                 1L, 10L, "pac-1", "CC", "1065000", "Ana", "Torres", LocalDate.of(1990, 1, 1), "300", now, now
         );
-        when(pacienteRepository.buscarPorPublicId("pac-1")).thenReturn(Optional.of(pac));
+        when(patientRepository.findByPublicId("pac-1")).thenReturn(Optional.of(pac));
 
-        assertThrows(ConflictoOperacionException.class, () ->
-                service.registrarRepresentacionLegal(req, "usr-pac", "127.0.0.1")
+        assertThrows(OperationConflictException.class, () ->
+                service.registerLegalRepresentation(req, "usr-pac", "127.0.0.1")
         );
     }
 
     @Test
     @DisplayName("C03: registrarRepresentacionLegal guarda tutoría exitosamente")
-    void registrarRepresentacion_exitoso() {
-        RepresentacionLegalRequest req = new RepresentacionLegalRequest(
+    void registerRepresentation_success() {
+        LegalRepresentationRequest req = new LegalRepresentationRequest(
                 "pac-menor", "pac-madre", "MADRE", "REGISTRO_CIVIL_FOLIO_123"
         );
 
-        Usuario usuario = new Usuario(10L, "usr-pac", "pac@hospital.com", "HASH", "ACTIVO", 0, null, now, false);
-        when(usuarioRepository.buscarPorPublicId("usr-pac")).thenReturn(Optional.of(usuario));
+        User usuario = new User(10L, "usr-pac", "pac@hospital.com", "HASH", "ACTIVO", 0, null, now, false);
+        when(userRepository.findByPublicId("usr-pac")).thenReturn(Optional.of(usuario));
 
-        Paciente menor = new Paciente(
+        Patient menor = new Patient(
                 1L, 101L, "pac-menor", "RC", "1065111", "Lucas", "Torres", LocalDate.of(2020, 1, 1), "300", now, now
         );
-        Paciente madre = new Paciente(
+        Patient madre = new Patient(
                 2L, 10L, "pac-madre", "CC", "1065222", "Ana", "Torres", LocalDate.of(1990, 1, 1), "300", now, now
         );
-        when(pacienteRepository.buscarPorPublicId("pac-menor")).thenReturn(Optional.of(menor));
-        when(pacienteRepository.buscarPorPublicId("pac-madre")).thenReturn(Optional.of(madre));
+        when(patientRepository.findByPublicId("pac-menor")).thenReturn(Optional.of(menor));
+        when(patientRepository.findByPublicId("pac-madre")).thenReturn(Optional.of(madre));
 
-        RepresentacionLegalResponse resp = service.registrarRepresentacionLegal(req, "usr-pac", "127.0.0.1");
+        LegalRepresentationResponse resp = service.registerLegalRepresentation(req, "usr-pac", "127.0.0.1");
 
         assertNotNull(resp);
-        assertEquals("pac-menor", resp.menorPublicId());
-        assertEquals("pac-madre", resp.representantePublicId());
-        assertEquals("MADRE", resp.parentesco());
-        verify(representacionRepository).guardar(any(RepresentacionLegal.class));
-        verify(auditoriaService).auditar(any(EventoAuditoria.class));
+        assertEquals("pac-menor", resp.minorPublicId());
+        assertEquals("pac-madre", resp.representativePublicId());
+        assertEquals("MADRE", resp.relationship());
+        verify(representationRepository).save(any(LegalRepresentation.class));
+        verify(auditService).audit(any(AuditEvent.class));
     }
 
     @Test
     @DisplayName("A02: generarPlantillaExcel produce un archivo XLSX válido con hojas y columnas requeridas")
-    void generarPlantillaExcel_valida() throws Exception {
-        byte[] bytes = service.generarPlantillaExcel();
+    void generateExcelTemplate_valid() throws Exception {
+        byte[] bytes = service.generateExcelTemplate();
         assertNotNull(bytes);
         assertTrue(bytes.length > 1000);
 

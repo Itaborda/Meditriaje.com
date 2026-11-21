@@ -12,7 +12,7 @@ public final class IpUtil {
     /**
      * Extrae la dirección IP cliente considerando proxies inversos (ej. Render, Vercel).
      */
-    public static String extraerIp(HttpServletRequest request) {
+    public static String extractIp(HttpServletRequest request) {
         if (request == null) {
             return "127.0.0.1";
         }

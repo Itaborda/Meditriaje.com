@@ -80,13 +80,6 @@ function getNavigationConfig() {
       ]
     });
     sections.push({
-      title: 'Infraestructura',
-      items: [
-        { label: 'Instituciones', href: '#/admin/institutions', icon: 'hospital' },
-        { label: 'Sedes Hospitalarias', href: '#/admin/sites', icon: 'map-pin' }
-      ]
-    });
-    sections.push({
       title: 'Cuerpo Médico y Citas',
       items: [
         { label: 'Especialidades', href: '#/admin/specialties', icon: 'stethoscope' },

@@ -56,21 +56,21 @@ class HospitalControllerTest {
 
     @BeforeEach
     void setUp() {
-        when(jwtService.esValido(TOKEN_ENFERMERIA)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_ENFERMERIA)).thenReturn("usr-enf-uuid");
-        when(jwtService.extraerRoles(TOKEN_ENFERMERIA)).thenReturn(List.of("ROLE_ENFERMERIA"));
+        when(jwtService.isValid(TOKEN_ENFERMERIA)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_ENFERMERIA)).thenReturn("usr-enf-uuid");
+        when(jwtService.extractRoles(TOKEN_ENFERMERIA)).thenReturn(List.of("ROLE_ENFERMERIA"));
 
-        when(jwtService.esValido(TOKEN_PROFESIONAL)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_PROFESIONAL)).thenReturn("usr-prof-uuid");
-        when(jwtService.extraerRoles(TOKEN_PROFESIONAL)).thenReturn(List.of("ROLE_PROFESIONAL"));
+        when(jwtService.isValid(TOKEN_PROFESIONAL)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_PROFESIONAL)).thenReturn("usr-prof-uuid");
+        when(jwtService.extractRoles(TOKEN_PROFESIONAL)).thenReturn(List.of("ROLE_PROFESIONAL"));
 
-        when(jwtService.esValido(TOKEN_PACIENTE)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_PACIENTE)).thenReturn("usr-pac-uuid");
-        when(jwtService.extraerRoles(TOKEN_PACIENTE)).thenReturn(List.of("ROLE_PACIENTE"));
+        when(jwtService.isValid(TOKEN_PACIENTE)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_PACIENTE)).thenReturn("usr-pac-uuid");
+        when(jwtService.extractRoles(TOKEN_PACIENTE)).thenReturn(List.of("ROLE_PACIENTE"));
 
-        when(jwtService.esValido(TOKEN_ADMIN)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_ADMIN)).thenReturn("usr-admin-uuid");
-        when(jwtService.extraerRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
+        when(jwtService.isValid(TOKEN_ADMIN)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_ADMIN)).thenReturn("usr-admin-uuid");
+        when(jwtService.extractRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
     }
 
     private Cookie cookie(String token) {
@@ -79,8 +79,8 @@ class HospitalControllerTest {
 
     @Test
     @DisplayName("SEC01: Petición anónima a asignación de cama retorna 401 Unauthorized")
-    void asignarCama_sinSesion_retorna401() throws Exception {
-        AsignarCamaRequest req = new AsignarCamaRequest("cama-pub", "Obs");
+    void assignBed_withoutSession_returns401() throws Exception {
+        AssignBedRequest req = new AssignBedRequest("cama-pub", "Obs");
 
         mockMvc.perform(post("/api/v1/hospital/episodes/ep-1/beds/assign")
                         .header("X-Requested-With", "XMLHttpRequest")
@@ -91,8 +91,8 @@ class HospitalControllerTest {
 
     @Test
     @DisplayName("SEC02: Paciente intentando asignar cama retorna 403 Forbidden")
-    void asignarCama_paciente_retorna403() throws Exception {
-        AsignarCamaRequest req = new AsignarCamaRequest("cama-pub", "Obs");
+    void assignBed_patient_returns403() throws Exception {
+        AssignBedRequest req = new AssignBedRequest("cama-pub", "Obs");
 
         mockMvc.perform(post("/api/v1/hospital/episodes/ep-1/beds/assign")
                         .cookie(cookie(TOKEN_PACIENTE))
@@ -104,14 +104,14 @@ class HospitalControllerTest {
 
     @Test
     @DisplayName("H01/H02: Enfermería asignando cama disponible retorna 201 Created")
-    void asignarCama_enfermeria_retorna201() throws Exception {
-        AsignarCamaRequest req = new AsignarCamaRequest("cama-pub", "Asignación inicial");
-        CamaDetalleResponse resp = new CamaDetalleResponse(
+    void assignBed_nursing_returns201() throws Exception {
+        AssignBedRequest req = new AssignBedRequest("cama-pub", "Asignación inicial");
+        BedDetailResponse resp = new BedDetailResponse(
                 "cama-pub", "hab-pub", "H1", "area-pub", "Urgencias",
                 "sede-pub", "Hospital", "CAMA-01", "OCUPADA", "ep-1", "Carlos", "oc-1"
         );
 
-        when(hospitalService.asignarCama(eq("ep-1"), any(), anyString(), anyString())).thenReturn(resp);
+        when(hospitalService.assignBed(eq("ep-1"), any(), anyString(), anyString())).thenReturn(resp);
 
         mockMvc.perform(post("/api/v1/hospital/episodes/ep-1/beds/assign")
                         .cookie(cookie(TOKEN_ENFERMERIA))
@@ -125,14 +125,14 @@ class HospitalControllerTest {
 
     @Test
     @DisplayName("H03: Profesional trasladando paciente retorna 200 OK con movimiento")
-    void trasladarPaciente_profesional_retorna200() throws Exception {
-        TrasladarPacienteRequest req = new TrasladarPacienteRequest("cama-dest-pub", "Pasa a UCI");
-        MovimientoResponse mov = new MovimientoResponse(
+    void transferPatient_professional_returns200() throws Exception {
+        TransferPatientRequest req = new TransferPatientRequest("cama-dest-pub", "Pasa a UCI");
+        MovementResponse mov = new MovementResponse(
                 "mov-pub", "ep-1", "Urgencias", "UCI", "CAMA-01", "CAMA-02",
                 Instant.now(), "Pasa a UCI", "medico@hospital.com"
         );
 
-        when(hospitalService.trasladarPaciente(eq("ep-1"), any(), anyString(), anyString())).thenReturn(mov);
+        when(hospitalService.transferPatient(eq("ep-1"), any(), anyString(), anyString())).thenReturn(mov);
 
         mockMvc.perform(post("/api/v1/hospital/episodes/ep-1/beds/transfer")
                         .cookie(cookie(TOKEN_PROFESIONAL))
@@ -146,8 +146,8 @@ class HospitalControllerTest {
 
     @Test
     @DisplayName("H05: Enfermería intentando egreso médico definitivo retorna 403 Forbidden")
-    void registrarEgreso_enfermeria_retorna403() throws Exception {
-        RegistrarEgresoRequest req = new RegistrarEgresoRequest("ALTA_DOMICILIO", "Diag", "Epicrisis", "Plan");
+    void registerDischarge_nursing_returns403() throws Exception {
+        RegisterDischargeRequest req = new RegisterDischargeRequest("ALTA_DOMICILIO", "Diag", "Epicrisis", "Plan");
 
         mockMvc.perform(post("/api/v1/hospital/episodes/ep-1/discharge")
                         .cookie(cookie(TOKEN_ENFERMERIA))
@@ -159,8 +159,8 @@ class HospitalControllerTest {
 
     @Test
     @DisplayName("H05: Profesional médico registrando alta hospitalaria retorna 204 No Content")
-    void registrarEgreso_profesional_retorna204() throws Exception {
-        RegistrarEgresoRequest req = new RegistrarEgresoRequest("ALTA_DOMICILIO", "Diag", "Epicrisis", "Plan");
+    void registerDischarge_professional_returns204() throws Exception {
+        RegisterDischargeRequest req = new RegisterDischargeRequest("ALTA_DOMICILIO", "Diag", "Epicrisis", "Plan");
 
         mockMvc.perform(post("/api/v1/hospital/episodes/ep-1/discharge")
                         .cookie(cookie(TOKEN_PROFESIONAL))
@@ -172,11 +172,11 @@ class HospitalControllerTest {
 
     @Test
     @DisplayName("H06: Consulta de censo de camas por administrador retorna 200 OK con métricas")
-    void obtenerCensoCamas_admin_retorna200() throws Exception {
-        CensoCamasResponse censo = new CensoCamasResponse("sede-pub", "Hospital Central", 20, 15, 3, 1, 1, 75.0, List.of());
-        when(hospitalService.obtenerCensoCamas("sede-pub")).thenReturn(censo);
+    void getCensusBeds_admin_returns200() throws Exception {
+        BedCensusResponse censo = new BedCensusResponse("sede-pub", "Hospital Central", 20, 15, 3, 1, 1, 75.0, List.of());
+        when(hospitalService.getBedCensus()).thenReturn(censo);
 
-        mockMvc.perform(get("/api/v1/hospital/census/sede-pub")
+        mockMvc.perform(get("/api/v1/hospital/census")
                         .cookie(cookie(TOKEN_ADMIN)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalCamas").value(20))

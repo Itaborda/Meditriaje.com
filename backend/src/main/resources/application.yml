@@ -50,6 +50,9 @@ mail:
   from-name: ${MAIL_FROM_NAME:${SMTP_FROM_NAME:MediTriaje 2.0}}
 
 meditriaje:
+  # Esquema propietario de los paquetes PL/SQL que invoca PackageGateway (opcional).
+  db:
+    owner-schema: ${DB_OWNER_SCHEMA:MEDITRIAJE_OWNER}
   mail:
     transport: ${MAIL_TRANSPORT:brevo-api}
     brevo:

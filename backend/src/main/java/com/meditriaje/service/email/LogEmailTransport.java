@@ -14,19 +14,19 @@ public class LogEmailTransport implements EmailTransport {
     private static final Logger log = LoggerFactory.getLogger(LogEmailTransport.class);
 
     @Override
-    public String getNombreTransporte() {
+    public String getTransportName() {
         return "log";
     }
 
     @Override
-    public ResultadoEnvio enviar(String destinatarioEmail, String asunto, String cuerpoHtml) {
+    public EmailSendResult send(String destinatarioEmail, String asunto, String cuerpoHtml) {
         Objects.requireNonNull(destinatarioEmail, "destinatarioEmail no puede ser nulo");
         Objects.requireNonNull(asunto, "asunto no puede ser nulo");
         Objects.requireNonNull(cuerpoHtml, "cuerpoHtml no puede ser nulo");
 
-        String emailEnmascarado = EmailUtil.enmascararEmail(destinatarioEmail);
+        String emailEnmascarado = EmailUtil.maskEmail(destinatarioEmail);
         log.info("[LOG_EMAIL_TRANSPORT] Correo simulado hacia [{}] con asunto [{}] (longitud cuerpo: {} chars)",
                 emailEnmascarado, asunto, cuerpoHtml.length());
-        return ResultadoEnvio.exitosoSimulado("log");
+        return EmailSendResult.simulatedSuccess("log");
     }
 }

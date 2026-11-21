@@ -1,8 +1,8 @@
 package com.meditriaje.service;
 
-import com.meditriaje.dto.assistant.PreguntaAsistenteRequest;
-import com.meditriaje.dto.assistant.RespuestaAsistenteResponse;
-import com.meditriaje.exception.DatosInvalidosException;
+import com.meditriaje.dto.assistant.AssistantQuestionRequest;
+import com.meditriaje.dto.assistant.AssistantAnswerResponse;
+import com.meditriaje.exception.InvalidDataException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -31,177 +31,177 @@ class AssistantServiceTest {
             "Posible acv con boca torcida y perdida de fuerza"
     })
     @DisplayName("Detección infalible de emergencias: activa alerta inmediata 123")
-    void procesarConsulta_emergencia_activaAlerta(String mensaje) {
-        PreguntaAsistenteRequest req = new PreguntaAsistenteRequest(mensaje, null);
+    void processQuery_emergency_activeAlert(String mensaje) {
+        AssistantQuestionRequest req = new AssistantQuestionRequest(mensaje, null);
 
-        RespuestaAsistenteResponse res = assistantService.procesarConsulta(req);
+        AssistantAnswerResponse res = assistantService.processQuery(req);
 
-        assertThat(res.esEmergencia()).isTrue();
-        assertThat(res.categoria()).isEqualTo("EMERGENCIA");
-        assertThat(res.respuesta()).contains("123");
-        assertThat(res.respuesta()).contains("urgencias");
-        assertThat(res.sugerencias()).anyMatch(s -> s.rutaSpa().equals("tel:123"));
-        assertThat(res.avisoLegal()).isNotBlank();
+        assertThat(res.isEmergency()).isTrue();
+        assertThat(res.category()).isEqualTo("EMERGENCIA");
+        assertThat(res.answer()).contains("123");
+        assertThat(res.answer()).contains("urgencias");
+        assertThat(res.suggestions()).anyMatch(s -> s.spaRoute().equals("tel:123"));
+        assertThat(res.legalNotice()).isNotBlank();
     }
 
     @Test
     @DisplayName("Consulta sobre triaje: explica los 5 niveles y ofrece enlace de triaje")
-    void procesarConsulta_triaje_exito() {
-        PreguntaAsistenteRequest req = new PreguntaAsistenteRequest("¿Cómo funciona el triaje y qué es el nivel II?", null);
+    void processQuery_triage_success() {
+        AssistantQuestionRequest req = new AssistantQuestionRequest("¿Cómo funciona el triaje y qué es el nivel II?", null);
 
-        RespuestaAsistenteResponse res = assistantService.procesarConsulta(req);
+        AssistantAnswerResponse res = assistantService.processQuery(req);
 
-        assertThat(res.esEmergencia()).isFalse();
-        assertThat(res.categoria()).isEqualTo("TRIAJE");
-        assertThat(res.respuesta()).contains("Nivel I");
-        assertThat(res.respuesta()).contains("Nivel V");
-        assertThat(res.sugerencias()).anyMatch(s -> s.rutaSpa().equals("#/patient/triage"));
+        assertThat(res.isEmergency()).isFalse();
+        assertThat(res.category()).isEqualTo("TRIAJE");
+        assertThat(res.answer()).contains("Nivel I");
+        assertThat(res.answer()).contains("Nivel V");
+        assertThat(res.suggestions()).anyMatch(s -> s.spaRoute().equals("#/patient/triage"));
     }
 
     @Test
     @DisplayName("Consulta sobre citas: explica regla de 2 horas y ofrece disponibilidad")
-    void procesarConsulta_citas_exito() {
-        PreguntaAsistenteRequest req = new PreguntaAsistenteRequest("Quiero agendar o cancelar una cita", null);
+    void processQuery_appointments_success() {
+        AssistantQuestionRequest req = new AssistantQuestionRequest("Quiero agendar o cancelar una cita", null);
 
-        RespuestaAsistenteResponse res = assistantService.procesarConsulta(req);
+        AssistantAnswerResponse res = assistantService.processQuery(req);
 
-        assertThat(res.esEmergencia()).isFalse();
-        assertThat(res.categoria()).isEqualTo("CITAS");
-        assertThat(res.respuesta()).contains("2 horas de anticipación");
-        assertThat(res.sugerencias()).anyMatch(s -> s.rutaSpa().equals("#/patient/book"));
+        assertThat(res.isEmergency()).isFalse();
+        assertThat(res.category()).isEqualTo("CITAS");
+        assertThat(res.answer()).contains("2 horas de anticipación");
+        assertThat(res.suggestions()).anyMatch(s -> s.spaRoute().equals("#/patient/book"));
     }
 
     @Test
     @DisplayName("Consulta sobre farmacia: explica código de reclamación y saldos")
-    void procesarConsulta_farmacia_exito() {
-        PreguntaAsistenteRequest req = new PreguntaAsistenteRequest("¿Cómo puedo reclamar mi medicamento con la receta?", null);
+    void processQuery_pharmacy_success() {
+        AssistantQuestionRequest req = new AssistantQuestionRequest("¿Cómo puedo reclamar mi medicamento con la receta?", null);
 
-        RespuestaAsistenteResponse res = assistantService.procesarConsulta(req);
+        AssistantAnswerResponse res = assistantService.processQuery(req);
 
-        assertThat(res.esEmergencia()).isFalse();
-        assertThat(res.categoria()).isEqualTo("FARMACIA");
-        assertThat(res.respuesta()).contains("REC-");
-        assertThat(res.sugerencias()).anyMatch(s -> s.rutaSpa().equals("#/patient/prescriptions"));
+        assertThat(res.isEmergency()).isFalse();
+        assertThat(res.category()).isEqualTo("FARMACIA");
+        assertThat(res.answer()).contains("REC-");
+        assertThat(res.suggestions()).anyMatch(s -> s.spaRoute().equals("#/patient/prescriptions"));
     }
 
     @Test
     @DisplayName("Consulta sobre QR de emergencia: explica token de 15 minutos y PIN")
-    void procesarConsulta_resumenQr_exito() {
-        PreguntaAsistenteRequest req = new PreguntaAsistenteRequest("¿Cómo funciona el código QR de emergencia?", null);
+    void processQuery_summaryQr_success() {
+        AssistantQuestionRequest req = new AssistantQuestionRequest("¿Cómo funciona el código QR de emergencia?", null);
 
-        RespuestaAsistenteResponse res = assistantService.procesarConsulta(req);
+        AssistantAnswerResponse res = assistantService.processQuery(req);
 
-        assertThat(res.esEmergencia()).isFalse();
-        assertThat(res.categoria()).isEqualTo("RESUMEN_QR");
-        assertThat(res.respuesta()).contains("15 minutos");
-        assertThat(res.sugerencias()).anyMatch(s -> s.rutaSpa().equals("#/patient/emergency-qr"));
+        assertThat(res.isEmergency()).isFalse();
+        assertThat(res.category()).isEqualTo("RESUMEN_QR");
+        assertThat(res.answer()).contains("15 minutos");
+        assertThat(res.suggestions()).anyMatch(s -> s.spaRoute().equals("#/patient/emergency-qr"));
     }
 
     @Test
     @DisplayName("Consulta sobre historia clínica: explica inmutabilidad y enmiendas")
-    void procesarConsulta_historia_exito() {
-        PreguntaAsistenteRequest req = new PreguntaAsistenteRequest("¿Por qué mi historia clínica es inmutable y cómo pedir una corrección?", null);
+    void processQuery_history_success() {
+        AssistantQuestionRequest req = new AssistantQuestionRequest("¿Por qué mi historia clínica es inmutable y cómo pedir una corrección?", null);
 
-        RespuestaAsistenteResponse res = assistantService.procesarConsulta(req);
+        AssistantAnswerResponse res = assistantService.processQuery(req);
 
-        assertThat(res.esEmergencia()).isFalse();
-        assertThat(res.categoria()).isEqualTo("HISTORIA_CLINICA");
-        assertThat(res.respuesta()).contains("enmiendas");
-        assertThat(res.sugerencias()).anyMatch(s -> s.rutaSpa().equals("#/patient/history"));
+        assertThat(res.isEmergency()).isFalse();
+        assertThat(res.category()).isEqualTo("HISTORIA_CLINICA");
+        assertThat(res.answer()).contains("enmiendas");
+        assertThat(res.suggestions()).anyMatch(s -> s.spaRoute().equals("#/patient/history"));
     }
 
     @Test
     @DisplayName("Consulta general: responde con orientación cordial y menú de opciones")
-    void procesarConsulta_general_exito() {
-        PreguntaAsistenteRequest req = new PreguntaAsistenteRequest("Hola, buenos días", null);
+    void processQuery_general_success() {
+        AssistantQuestionRequest req = new AssistantQuestionRequest("Hola, buenos días", null);
 
-        RespuestaAsistenteResponse res = assistantService.procesarConsulta(req);
+        AssistantAnswerResponse res = assistantService.processQuery(req);
 
-        assertThat(res.esEmergencia()).isFalse();
-        assertThat(res.categoria()).isEqualTo("GENERAL");
-        assertThat(res.sugerencias()).isNotEmpty();
+        assertThat(res.isEmergency()).isFalse();
+        assertThat(res.category()).isEqualTo("GENERAL");
+        assertThat(res.suggestions()).isNotEmpty();
     }
 
     @Test
     @DisplayName("Validación: mensaje vacío o nulo lanza DatosInvalidosException")
-    void procesarConsulta_mensajeVacio_lanzaExcepcion() {
-        assertThatThrownBy(() -> assistantService.procesarConsulta(new PreguntaAsistenteRequest("   ", null)))
-                .isInstanceOf(DatosInvalidosException.class)
+    void processQuery_messageEmpty_throwsException() {
+        assertThatThrownBy(() -> assistantService.processQuery(new AssistantQuestionRequest("   ", null)))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("El mensaje de consulta no puede estar vacío.");
     }
 
     @Test
     @DisplayName("Modo Invitado (GUEST): consulta sobre citas indica iniciar sesión y ofrece login/registro")
-    void procesarConsulta_guest_citasRequiereSesion() {
-        PreguntaAsistenteRequest req = new PreguntaAsistenteRequest("¿Cómo agendar una cita?", "GUEST");
+    void processQuery_guest_appointmentsRequiresSession() {
+        AssistantQuestionRequest req = new AssistantQuestionRequest("¿Cómo agendar una cita?", "GUEST");
 
-        RespuestaAsistenteResponse res = assistantService.procesarConsulta(req);
+        AssistantAnswerResponse res = assistantService.processQuery(req);
 
-        assertThat(res.categoria()).isEqualTo("CITAS_GUEST");
-        assertThat(res.respuesta()).contains("iniciar sesión");
-        assertThat(res.sugerencias()).anyMatch(s -> s.rutaSpa().equals("#/login"));
-        assertThat(res.sugerencias()).anyMatch(s -> s.rutaSpa().equals("#/register"));
+        assertThat(res.category()).isEqualTo("CITAS_GUEST");
+        assertThat(res.answer()).contains("iniciar sesión");
+        assertThat(res.suggestions()).anyMatch(s -> s.spaRoute().equals("#/login"));
+        assertThat(res.suggestions()).anyMatch(s -> s.spaRoute().equals("#/register"));
     }
 
     @Test
     @DisplayName("Modo Invitado (GUEST): consulta general explica plataforma y ofrece login/registro")
-    void procesarConsulta_guest_general() {
-        PreguntaAsistenteRequest req = new PreguntaAsistenteRequest("¿Qué es MediTriaje?", "GUEST");
+    void processQuery_guest_general() {
+        AssistantQuestionRequest req = new AssistantQuestionRequest("¿Qué es MediTriaje?", "GUEST");
 
-        RespuestaAsistenteResponse res = assistantService.procesarConsulta(req);
+        AssistantAnswerResponse res = assistantService.processQuery(req);
 
-        assertThat(res.categoria()).isEqualTo("GENERAL_GUEST");
-        assertThat(res.respuesta()).contains("MediTriaje 2.0");
-        assertThat(res.sugerencias()).anyMatch(s -> s.rutaSpa().equals("#/login"));
-        assertThat(res.sugerencias()).anyMatch(s -> s.rutaSpa().equals("#/register"));
+        assertThat(res.category()).isEqualTo("GENERAL_GUEST");
+        assertThat(res.answer()).contains("MediTriaje 2.0");
+        assertThat(res.suggestions()).anyMatch(s -> s.spaRoute().equals("#/login"));
+        assertThat(res.suggestions()).anyMatch(s -> s.spaRoute().equals("#/register"));
     }
 
     @Test
     @DisplayName("Modo Administrador: consulta sobre reportes ofrece enlace a reportes operativos")
-    void procesarConsulta_admin_reportes() {
-        PreguntaAsistenteRequest req = new PreguntaAsistenteRequest("¿Cómo consultar los reportes operativos?", "ROLE_ADMINISTRADOR");
+    void processQuery_admin_reportes() {
+        AssistantQuestionRequest req = new AssistantQuestionRequest("¿Cómo consultar los reportes operativos?", "ROLE_ADMINISTRADOR");
 
-        RespuestaAsistenteResponse res = assistantService.procesarConsulta(req);
+        AssistantAnswerResponse res = assistantService.processQuery(req);
 
-        assertThat(res.categoria()).isEqualTo("REPORTES_ADMIN");
-        assertThat(res.respuesta()).contains("Reportes Operativos");
-        assertThat(res.sugerencias()).anyMatch(s -> s.rutaSpa().equals("#/admin/reports"));
+        assertThat(res.category()).isEqualTo("REPORTES_ADMIN");
+        assertThat(res.answer()).contains("Reportes Operativos");
+        assertThat(res.suggestions()).anyMatch(s -> s.spaRoute().equals("#/admin/reports"));
     }
 
     @Test
     @DisplayName("Modo Administrador: consulta sobre profesionales explica ReTHUS y ofrece gestión de profesionales")
-    void procesarConsulta_admin_profesionales() {
-        PreguntaAsistenteRequest req = new PreguntaAsistenteRequest("¿Cómo dar de alta a un médico?", "ROLE_ADMINISTRADOR");
+    void processQuery_admin_professionales() {
+        AssistantQuestionRequest req = new AssistantQuestionRequest("¿Cómo dar de alta a un médico?", "ROLE_ADMINISTRADOR");
 
-        RespuestaAsistenteResponse res = assistantService.procesarConsulta(req);
+        AssistantAnswerResponse res = assistantService.processQuery(req);
 
-        assertThat(res.categoria()).isEqualTo("PROFESIONALES_ADMIN");
-        assertThat(res.respuesta()).contains("ReTHUS");
-        assertThat(res.sugerencias()).anyMatch(s -> s.rutaSpa().equals("#/admin/professionals"));
+        assertThat(res.category()).isEqualTo("PROFESIONALES_ADMIN");
+        assertThat(res.answer()).contains("ReTHUS");
+        assertThat(res.suggestions()).anyMatch(s -> s.spaRoute().equals("#/admin/professionals"));
     }
 
     @Test
     @DisplayName("Modo Administrador: consulta sobre citas orienta al rol de gestión de slots sin enlaces de paciente")
-    void procesarConsulta_admin_citas() {
-        PreguntaAsistenteRequest req = new PreguntaAsistenteRequest("Quiero ver las citas", "ROLE_ADMINISTRADOR");
+    void processQuery_admin_appointments() {
+        AssistantQuestionRequest req = new AssistantQuestionRequest("Quiero ver las citas", "ROLE_ADMINISTRADOR");
 
-        RespuestaAsistenteResponse res = assistantService.procesarConsulta(req);
+        AssistantAnswerResponse res = assistantService.processQuery(req);
 
-        assertThat(res.categoria()).isEqualTo("ADMIN_ORIENTACION");
-        assertThat(res.respuesta()).contains("Como Administrador");
-        assertThat(res.sugerencias()).anyMatch(s -> s.rutaSpa().equals("#/admin/slots"));
-        assertThat(res.sugerencias()).noneMatch(s -> s.rutaSpa().startsWith("#/patient/"));
+        assertThat(res.category()).isEqualTo("ADMIN_ORIENTACION");
+        assertThat(res.answer()).contains("Como Administrador");
+        assertThat(res.suggestions()).anyMatch(s -> s.spaRoute().equals("#/admin/slots"));
+        assertThat(res.suggestions()).noneMatch(s -> s.spaRoute().startsWith("#/patient/"));
     }
 
     @Test
     @DisplayName("Modo Profesional: consulta sobre agenda ofrece enlace a agenda médica")
-    void procesarConsulta_profesional_agenda() {
-        PreguntaAsistenteRequest req = new PreguntaAsistenteRequest("¿Cómo ver mi agenda de citas?", "ROLE_PROFESIONAL");
+    void processQuery_professional_agenda() {
+        AssistantQuestionRequest req = new AssistantQuestionRequest("¿Cómo ver mi agenda de citas?", "ROLE_PROFESIONAL");
 
-        RespuestaAsistenteResponse res = assistantService.procesarConsulta(req);
+        AssistantAnswerResponse res = assistantService.processQuery(req);
 
-        assertThat(res.categoria()).isEqualTo("AGENDA_PROFESIONAL");
-        assertThat(res.respuesta()).contains("Agenda Médica");
-        assertThat(res.sugerencias()).anyMatch(s -> s.rutaSpa().equals("#/professional/agenda"));
+        assertThat(res.category()).isEqualTo("AGENDA_PROFESIONAL");
+        assertThat(res.answer()).contains("Agenda Médica");
+        assertThat(res.suggestions()).anyMatch(s -> s.spaRoute().equals("#/professional/agenda"));
     }
 }

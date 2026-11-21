@@ -1,23 +1,23 @@
 package com.meditriaje.service;
 
-import com.meditriaje.dto.admin.GenerarSlotsRequest;
-import com.meditriaje.dto.admin.GenerarSlotsResponse;
+import com.meditriaje.dto.admin.GenerateSlotsRequest;
+import com.meditriaje.dto.admin.GenerateSlotsResponse;
 import com.meditriaje.dto.admin.SlotResponse;
 import com.meditriaje.dto.common.PaginatedResponse;
-import com.meditriaje.exception.DatosInvalidosException;
-import com.meditriaje.exception.RecursoNoEncontradoException;
-import com.meditriaje.model.AccionAuditable;
-import com.meditriaje.model.DisponibilidadSlot;
-import com.meditriaje.model.Especialidad;
-import com.meditriaje.model.Profesional;
-import com.meditriaje.model.ResultadoAuditoria;
-import com.meditriaje.model.Sede;
-import com.meditriaje.model.Usuario;
-import com.meditriaje.repository.DisponibilidadSlotRepository;
-import com.meditriaje.repository.EspecialidadRepository;
-import com.meditriaje.repository.ProfesionalRepository;
-import com.meditriaje.repository.SedeRepository;
-import com.meditriaje.repository.UsuarioRepository;
+import com.meditriaje.exception.InvalidDataException;
+import com.meditriaje.exception.ResourceNotFoundException;
+import com.meditriaje.model.AuditableAction;
+import com.meditriaje.model.AvailabilitySlot;
+import com.meditriaje.model.Specialty;
+import com.meditriaje.model.Professional;
+import com.meditriaje.model.AuditResult;
+import com.meditriaje.model.Site;
+import com.meditriaje.model.User;
+import com.meditriaje.repository.AvailabilitySlotRepository;
+import com.meditriaje.repository.SpecialtyRepository;
+import com.meditriaje.repository.ProfessionalRepository;
+import com.meditriaje.repository.SiteRepository;
+import com.meditriaje.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,35 +42,35 @@ import java.util.UUID;
 @Service
 public class SlotGeneratorService {
 
-    public static final ZoneId ZONE_BOGOTA = ZoneId.of("America/Bogota");
-    private static final String ESTADO_ACTIVO = "ACTIVO";
-    private static final String ESTADO_LIBRE = "LIBRE";
-    private static final String ESTADO_BLOQUEADO = "BLOQUEADO";
-    private static final String ESTADO_OCUPADO = "OCUPADO";
-    private static final Set<String> ESTADOS_PERMITIDOS = Set.of(ESTADO_LIBRE, ESTADO_BLOQUEADO, ESTADO_OCUPADO);
-    private static final String RECURSO_SLOT = "DISPONIBILIDAD_SLOT";
+    public static final ZoneId BOGOTA_ZONE = ZoneId.of("America/Bogota");
+    private static final String STATUS_ACTIVE = "ACTIVO";
+    private static final String STATUS_FREE = "LIBRE";
+    private static final String STATUS_BLOCKED = "BLOQUEADO";
+    private static final String STATUS_BUSY = "OCUPADO";
+    private static final Set<String> ALLOWED_STATUSES = Set.of(STATUS_FREE, STATUS_BLOCKED, STATUS_BUSY);
+    private static final String RESOURCE_SLOT = "DISPONIBILIDAD_SLOT";
 
-    private final DisponibilidadSlotRepository slotRepository;
-    private final ProfesionalRepository profesionalRepository;
-    private final UsuarioRepository usuarioRepository;
-    private final SedeRepository sedeRepository;
-    private final EspecialidadRepository especialidadRepository;
-    private final AuditoriaService auditoriaService;
+    private final AvailabilitySlotRepository slotRepository;
+    private final ProfessionalRepository professionalRepository;
+    private final UserRepository userRepository;
+    private final SiteRepository siteRepository;
+    private final SpecialtyRepository specialtyRepository;
+    private final AuditService auditService;
 
     public SlotGeneratorService(
-            DisponibilidadSlotRepository slotRepository,
-            ProfesionalRepository profesionalRepository,
-            UsuarioRepository usuarioRepository,
-            SedeRepository sedeRepository,
-            EspecialidadRepository especialidadRepository,
-            AuditoriaService auditoriaService
+            AvailabilitySlotRepository slotRepository,
+            ProfessionalRepository professionalRepository,
+            UserRepository userRepository,
+            SiteRepository siteRepository,
+            SpecialtyRepository specialtyRepository,
+            AuditService auditService
     ) {
         this.slotRepository = Objects.requireNonNull(slotRepository, "DisponibilidadSlotRepository no puede ser nulo");
-        this.profesionalRepository = Objects.requireNonNull(profesionalRepository, "ProfesionalRepository no puede ser nulo");
-        this.usuarioRepository = Objects.requireNonNull(usuarioRepository, "UsuarioRepository no puede ser nulo");
-        this.sedeRepository = Objects.requireNonNull(sedeRepository, "SedeRepository no puede ser nulo");
-        this.especialidadRepository = Objects.requireNonNull(especialidadRepository, "EspecialidadRepository no puede ser nulo");
-        this.auditoriaService = Objects.requireNonNull(auditoriaService, "AuditoriaService no puede ser nulo");
+        this.professionalRepository = Objects.requireNonNull(professionalRepository, "ProfesionalRepository no puede ser nulo");
+        this.userRepository = Objects.requireNonNull(userRepository, "UsuarioRepository no puede ser nulo");
+        this.siteRepository = Objects.requireNonNull(siteRepository, "SiteRepository no puede ser nulo");
+        this.specialtyRepository = Objects.requireNonNull(specialtyRepository, "EspecialidadRepository no puede ser nulo");
+        this.auditService = Objects.requireNonNull(auditService, "AuditoriaService no puede ser nulo");
     }
 
     /**
@@ -78,94 +78,89 @@ public class SlotGeneratorService {
      * Valida reglas de negocio, inexistencia de solapes y registra auditoría inmutable.
      */
     @Transactional
-    public GenerarSlotsResponse generarSlots(GenerarSlotsRequest request, String adminPublicId, String ipOrigen) {
+    public GenerateSlotsResponse generateSlots(GenerateSlotsRequest request, String adminPublicId, String ipOrigen) {
         Objects.requireNonNull(request, "La solicitud de generacion no puede ser nula");
 
         // 1. Validar profesional existente y con usuario activo
-        Profesional profesional = profesionalRepository.buscarPorPublicId(request.profesionalPublicId().trim())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Profesional no encontrado: " + request.profesionalPublicId()));
+        Professional profesional = professionalRepository.findByPublicId(request.professionalPublicId().trim())
+                .orElseThrow(() -> new ResourceNotFoundException("Profesional no encontrado: " + request.professionalPublicId()));
 
-        Usuario usuario = usuarioRepository.buscarPorId(profesional.usuarioId())
-                .orElseThrow(() -> new DatosInvalidosException("El profesional no tiene un usuario valido en el sistema."));
+        User usuario = userRepository.findById(profesional.userId())
+                .orElseThrow(() -> new InvalidDataException("El profesional no tiene un usuario valido en el sistema."));
 
-        if (!ESTADO_ACTIVO.equalsIgnoreCase(usuario.estado())) {
-            throw new DatosInvalidosException("El profesional no tiene un usuario activo en el sistema.");
+        if (!STATUS_ACTIVE.equalsIgnoreCase(usuario.status())) {
+            throw new InvalidDataException("El profesional no tiene un usuario activo en el sistema.");
         }
 
-        // 2. Validar sede existente y activa
-        Sede sede = sedeRepository.buscarPorPublicId(request.sedePublicId().trim())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Sede no encontrada: " + request.sedePublicId()));
-
-        if (!ESTADO_ACTIVO.equalsIgnoreCase(sede.estado())) {
-            throw new DatosInvalidosException("La sede seleccionada no se encuentra activa.");
-        }
+        // 2. Hospital único: los slots se generan siempre en la única sede (la resuelve el servidor)
+        Site sede = siteRepository.getSingleSite();
 
         // 3. Validar rango de fechas (zona America/Bogota)
-        LocalDate hoyBogota = LocalDate.now(ZONE_BOGOTA);
-        if (request.fechaInicio().isBefore(hoyBogota)) {
-            throw new DatosInvalidosException("La fecha de inicio no puede ser anterior a la fecha actual (" + hoyBogota + ").");
+        LocalDate hoyBogota = LocalDate.now(BOGOTA_ZONE);
+        if (request.startDate().isBefore(hoyBogota)) {
+            throw new InvalidDataException("La fecha de inicio no puede ser anterior a la fecha actual (" + hoyBogota + ").");
         }
-        if (request.fechaFin().isBefore(request.fechaInicio())) {
-            throw new DatosInvalidosException("La fecha de fin no puede ser anterior a la fecha de inicio.");
+        if (request.endDate().isBefore(request.startDate())) {
+            throw new InvalidDataException("La fecha de fin no puede ser anterior a la fecha de inicio.");
         }
-        if (ChronoUnit.DAYS.between(request.fechaInicio(), request.fechaFin()) > 90) {
-            throw new DatosInvalidosException("El rango de fechas no puede superar los 90 dias.");
+        if (ChronoUnit.DAYS.between(request.startDate(), request.endDate()) > 90) {
+            throw new InvalidDataException("El rango de fechas no puede superar los 90 dias.");
         }
 
         // 4. Validar horas
-        if (!request.horaFin().isAfter(request.horaInicio())) {
-            throw new DatosInvalidosException("La hora de fin debe ser posterior a la hora de inicio.");
+        if (!request.endTime().isAfter(request.startTime())) {
+            throw new InvalidDataException("La hora de fin debe ser posterior a la hora de inicio.");
         }
 
         // 5. Determinar duracion del slot
-        Especialidad esp = especialidadRepository.buscarPorId(profesional.especialidadId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Especialidad del profesional"));
+        Specialty esp = specialtyRepository.findById(profesional.specialtyId())
+                .orElseThrow(() -> new ResourceNotFoundException("Especialidad del profesional"));
 
-        int duracion = (request.duracionMinutos() != null)
-                ? request.duracionMinutos()
-                : (esp.duracionSlotMin() > 0 ? esp.duracionSlotMin() : 20);
+        int duracion = (request.durationMinutes() != null)
+                ? request.durationMinutes()
+                : (esp.slotDurationMinutes() > 0 ? esp.slotDurationMinutes() : 20);
 
         if (duracion < 5 || duracion > 120) {
-            throw new DatosInvalidosException("La duracion del slot debe estar entre 5 y 120 minutos.");
+            throw new InvalidDataException("La duracion del slot debe estar entre 5 y 120 minutos.");
         }
 
         // 6. Modalidad
         String modalidad = "PRESENCIAL";
-        if (request.modalidad() != null && !request.modalidad().isBlank()) {
-            modalidad = request.modalidad().trim().toUpperCase(Locale.ROOT);
+        if (request.modality() != null && !request.modality().isBlank()) {
+            modalidad = request.modality().trim().toUpperCase(Locale.ROOT);
             if (!"PRESENCIAL".equals(modalidad) && !"TELEMEDICINA".equals(modalidad)) {
-                throw new DatosInvalidosException("Modalidad invalida. Los valores permitidos son: PRESENCIAL, TELEMEDICINA.");
+                throw new InvalidDataException("Modalidad invalida. Los valores permitidos son: PRESENCIAL, TELEMEDICINA.");
             }
         }
 
         // 7. Algoritmo generador de turnos
-        List<DayOfWeek> diasSemana = request.diasSemana();
-        List<DisponibilidadSlot> slotsGenerados = new ArrayList<>();
+        List<DayOfWeek> diasSemana = request.daysOfWeek();
+        List<AvailabilitySlot> slotsGenerados = new ArrayList<>();
 
-        LocalDate fechaActual = request.fechaInicio();
-        while (!fechaActual.isAfter(request.fechaFin())) {
+        LocalDate fechaActual = request.startDate();
+        while (!fechaActual.isAfter(request.endDate())) {
             if (diasSemana != null && !diasSemana.isEmpty() && !diasSemana.contains(fechaActual.getDayOfWeek())) {
                 fechaActual = fechaActual.plusDays(1);
                 continue;
             }
 
-            ZonedDateTime windowStart = ZonedDateTime.of(fechaActual, request.horaInicio(), ZONE_BOGOTA);
-            ZonedDateTime windowEnd = ZonedDateTime.of(fechaActual, request.horaFin(), ZONE_BOGOTA);
+            ZonedDateTime windowStart = ZonedDateTime.of(fechaActual, request.startTime(), BOGOTA_ZONE);
+            ZonedDateTime windowEnd = ZonedDateTime.of(fechaActual, request.endTime(), BOGOTA_ZONE);
 
             Instant slotInicio = windowStart.toInstant();
             Instant slotFin = slotInicio.plus(Duration.ofMinutes(duracion));
 
             while (!slotFin.isAfter(windowEnd.toInstant())) {
                 String publicId = UUID.randomUUID().toString();
-                DisponibilidadSlot slot = new DisponibilidadSlot(
+                AvailabilitySlot slot = new AvailabilitySlot(
                         publicId,
                         profesional.id(),
                         sede.id(),
-                        profesional.especialidadId(),
+                        profesional.specialtyId(),
                         slotInicio,
                         slotFin,
                         modalidad,
-                        ESTADO_LIBRE
+                        STATUS_FREE
                 );
                 slotsGenerados.add(slot);
 
@@ -177,15 +172,15 @@ public class SlotGeneratorService {
         }
 
         if (slotsGenerados.isEmpty()) {
-            throw new DatosInvalidosException("No fue posible generar ningun slot con los criterios especificados.");
+            throw new InvalidDataException("No fue posible generar ningun slot con los criterios especificados.");
         }
 
         // 8. Control de solapes con BD
-        for (DisponibilidadSlot slot : slotsGenerados) {
-            if (slotRepository.existeSolape(profesional.id(), slot.fechaHoraInicio(), slot.fechaHoraFin())) {
-                ZonedDateTime zdtInicio = slot.fechaHoraInicio().atZone(ZONE_BOGOTA);
-                ZonedDateTime zdtFin = slot.fechaHoraFin().atZone(ZONE_BOGOTA);
-                throw new DatosInvalidosException(
+        for (AvailabilitySlot slot : slotsGenerados) {
+            if (slotRepository.existsOverlap(profesional.id(), slot.startDateTime(), slot.endDateTime())) {
+                ZonedDateTime zdtInicio = slot.startDateTime().atZone(BOGOTA_ZONE);
+                ZonedDateTime zdtFin = slot.endDateTime().atZone(BOGOTA_ZONE);
+                throw new InvalidDataException(
                         "Existe un solape de horario para el profesional en el intervalo "
                         + zdtInicio.toLocalDateTime() + " - " + zdtFin.toLocalDateTime()
                 );
@@ -193,38 +188,38 @@ public class SlotGeneratorService {
         }
 
         // 9. Guardar lote
-        slotRepository.guardarLote(slotsGenerados);
+        slotRepository.saveBatch(slotsGenerados);
 
         // 10. Auditar
-        Long adminId = obtenerAdminUsuarioId(adminPublicId);
-        auditoriaService.registrarEvento(
+        Long adminId = getAdminUserId(adminPublicId);
+        auditService.recordEvent(
                 adminId,
-                AccionAuditable.CAMBIO_ADMINISTRATIVO,
-                RECURSO_SLOT,
+                AuditableAction.CAMBIO_ADMINISTRATIVO,
+                RESOURCE_SLOT,
                 profesional.publicId(),
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         );
 
         // 11. Mapear respuesta
-        String profesionalNombre = profesional.nombres() + " " + profesional.apellidos();
+        String profesionalNombre = profesional.firstNames() + " " + profesional.lastNames();
         List<SlotResponse> responseList = slotsGenerados.stream()
                 .map(s -> new SlotResponse(
                         s.publicId(),
                         profesional.publicId(),
                         profesionalNombre,
                         sede.publicId(),
-                        sede.nombre(),
+                        sede.name(),
                         esp.publicId(),
-                        esp.nombre(),
-                        s.fechaHoraInicio(),
-                        s.fechaHoraFin(),
-                        s.modalidad(),
-                        s.estado()
+                        esp.name(),
+                        s.startDateTime(),
+                        s.endDateTime(),
+                        s.modality(),
+                        s.status()
                 ))
                 .toList();
 
-        return new GenerarSlotsResponse(
+        return new GenerateSlotsResponse(
                 responseList.size(),
                 responseList,
                 "Se generaron exitosamente " + responseList.size() + " slots de disponibilidad."
@@ -235,38 +230,38 @@ public class SlotGeneratorService {
      * Bloquea un slot que se encuentre en estado LIBRE.
      */
     @Transactional
-    public SlotResponse bloquearSlot(String publicId, String adminPublicId, String ipOrigen) {
-        SlotResponse slot = slotRepository.buscarPorPublicId(publicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Slot no encontrado: " + publicId));
+    public SlotResponse blockSlot(String publicId, String adminPublicId, String ipOrigen) {
+        SlotResponse slot = slotRepository.findByPublicId(publicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Slot no encontrado: " + publicId));
 
-        if (!ESTADO_LIBRE.equalsIgnoreCase(slot.estado())) {
-            throw new DatosInvalidosException("Solo se pueden bloquear slots en estado LIBRE. Estado actual: " + slot.estado());
+        if (!STATUS_FREE.equalsIgnoreCase(slot.status())) {
+            throw new InvalidDataException("Solo se pueden bloquear slots en estado LIBRE. Estado actual: " + slot.status());
         }
 
-        slotRepository.cambiarEstado(publicId, ESTADO_BLOQUEADO);
+        slotRepository.changeStatus(publicId, STATUS_BLOCKED);
 
-        Long adminId = obtenerAdminUsuarioId(adminPublicId);
-        auditoriaService.registrarEvento(
+        Long adminId = getAdminUserId(adminPublicId);
+        auditService.recordEvent(
                 adminId,
-                AccionAuditable.CAMBIO_ADMINISTRATIVO,
-                RECURSO_SLOT,
+                AuditableAction.CAMBIO_ADMINISTRATIVO,
+                RESOURCE_SLOT,
                 publicId,
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         );
 
         return new SlotResponse(
                 slot.publicId(),
-                slot.profesionalPublicId(),
-                slot.profesionalNombre(),
-                slot.sedePublicId(),
-                slot.sedeNombre(),
-                slot.especialidadPublicId(),
-                slot.especialidadNombre(),
-                slot.fechaHoraInicio(),
-                slot.fechaHoraFin(),
-                slot.modalidad(),
-                ESTADO_BLOQUEADO
+                slot.professionalPublicId(),
+                slot.professionalName(),
+                slot.sitePublicId(),
+                slot.siteName(),
+                slot.specialtyPublicId(),
+                slot.specialtyName(),
+                slot.startDateTime(),
+                slot.endDateTime(),
+                slot.modality(),
+                STATUS_BLOCKED
         );
     }
 
@@ -274,38 +269,38 @@ public class SlotGeneratorService {
      * Desbloquea un slot que se encuentre en estado BLOQUEADO, regresándolo a LIBRE.
      */
     @Transactional
-    public SlotResponse desbloquearSlot(String publicId, String adminPublicId, String ipOrigen) {
-        SlotResponse slot = slotRepository.buscarPorPublicId(publicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Slot no encontrado: " + publicId));
+    public SlotResponse unblockSlot(String publicId, String adminPublicId, String ipOrigen) {
+        SlotResponse slot = slotRepository.findByPublicId(publicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Slot no encontrado: " + publicId));
 
-        if (!ESTADO_BLOQUEADO.equalsIgnoreCase(slot.estado())) {
-            throw new DatosInvalidosException("Solo se pueden desbloquear slots en estado BLOQUEADO. Estado actual: " + slot.estado());
+        if (!STATUS_BLOCKED.equalsIgnoreCase(slot.status())) {
+            throw new InvalidDataException("Solo se pueden desbloquear slots en estado BLOQUEADO. Estado actual: " + slot.status());
         }
 
-        slotRepository.cambiarEstado(publicId, ESTADO_LIBRE);
+        slotRepository.changeStatus(publicId, STATUS_FREE);
 
-        Long adminId = obtenerAdminUsuarioId(adminPublicId);
-        auditoriaService.registrarEvento(
+        Long adminId = getAdminUserId(adminPublicId);
+        auditService.recordEvent(
                 adminId,
-                AccionAuditable.CAMBIO_ADMINISTRATIVO,
-                RECURSO_SLOT,
+                AuditableAction.CAMBIO_ADMINISTRATIVO,
+                RESOURCE_SLOT,
                 publicId,
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         );
 
         return new SlotResponse(
                 slot.publicId(),
-                slot.profesionalPublicId(),
-                slot.profesionalNombre(),
-                slot.sedePublicId(),
-                slot.sedeNombre(),
-                slot.especialidadPublicId(),
-                slot.especialidadNombre(),
-                slot.fechaHoraInicio(),
-                slot.fechaHoraFin(),
-                slot.modalidad(),
-                ESTADO_LIBRE
+                slot.professionalPublicId(),
+                slot.professionalName(),
+                slot.sitePublicId(),
+                slot.siteName(),
+                slot.specialtyPublicId(),
+                slot.specialtyName(),
+                slot.startDateTime(),
+                slot.endDateTime(),
+                slot.modality(),
+                STATUS_FREE
         );
     }
 
@@ -313,26 +308,26 @@ public class SlotGeneratorService {
      * Elimina físicamente un slot si se encuentra en estado LIBRE.
      */
     @Transactional
-    public void eliminarSlot(String publicId, String adminPublicId, String ipOrigen) {
-        SlotResponse slot = slotRepository.buscarPorPublicId(publicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Slot no encontrado: " + publicId));
+    public void deleteSlot(String publicId, String adminPublicId, String ipOrigen) {
+        SlotResponse slot = slotRepository.findByPublicId(publicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Slot no encontrado: " + publicId));
 
-        if (!ESTADO_LIBRE.equalsIgnoreCase(slot.estado())) {
-            throw new DatosInvalidosException("Solo se pueden eliminar slots en estado LIBRE. Estado actual: " + slot.estado());
+        if (!STATUS_FREE.equalsIgnoreCase(slot.status())) {
+            throw new InvalidDataException("Solo se pueden eliminar slots en estado LIBRE. Estado actual: " + slot.status());
         }
 
-        int eliminados = slotRepository.eliminar(publicId);
+        int eliminados = slotRepository.delete(publicId);
         if (eliminados == 0) {
-            throw new DatosInvalidosException("No fue posible eliminar el slot.");
+            throw new InvalidDataException("No fue posible eliminar el slot.");
         }
 
-        Long adminId = obtenerAdminUsuarioId(adminPublicId);
-        auditoriaService.registrarEvento(
+        Long adminId = getAdminUserId(adminPublicId);
+        auditService.recordEvent(
                 adminId,
-                AccionAuditable.CAMBIO_ADMINISTRATIVO,
-                RECURSO_SLOT,
+                AuditableAction.CAMBIO_ADMINISTRATIVO,
+                RESOURCE_SLOT,
                 publicId,
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         );
     }
@@ -340,19 +335,18 @@ public class SlotGeneratorService {
     /**
      * Obtiene el detalle de un slot por su publicId.
      */
-    public SlotResponse obtenerPorPublicId(String publicId) {
-        return slotRepository.buscarPorPublicId(publicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Slot no encontrado: " + publicId));
+    public SlotResponse getByPublicId(String publicId) {
+        return slotRepository.findByPublicId(publicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Slot no encontrado: " + publicId));
     }
 
     /**
      * Lista slots paginados con filtros dinámicos.
      */
-    public PaginatedResponse<SlotResponse> listar(
+    public PaginatedResponse<SlotResponse> list(
             int page,
             int size,
             String profesionalPublicId,
-            String sedePublicId,
             String especialidadPublicId,
             Instant fechaDesde,
             Instant fechaHasta,
@@ -361,28 +355,29 @@ public class SlotGeneratorService {
         String estadoFiltro = null;
         if (estado != null && !estado.isBlank()) {
             estadoFiltro = estado.trim().toUpperCase(Locale.ROOT);
-            if (!ESTADOS_PERMITIDOS.contains(estadoFiltro)) {
-                throw new DatosInvalidosException("Estado invalido. Los valores permitidos son: LIBRE, OCUPADO, BLOQUEADO.");
+            if (!ALLOWED_STATUSES.contains(estadoFiltro)) {
+                throw new InvalidDataException("Estado invalido. Los valores permitidos son: LIBRE, OCUPADO, BLOQUEADO.");
             }
         }
 
         String profFiltro = (profesionalPublicId != null && !profesionalPublicId.isBlank()) ? profesionalPublicId.trim() : null;
-        String sedeFiltro = (sedePublicId != null && !sedePublicId.isBlank()) ? sedePublicId.trim() : null;
+        // Hospital único: no hay filtro de sede.
+        String sedeFiltro = null;
         String espFiltro = (especialidadPublicId != null && !especialidadPublicId.isBlank()) ? especialidadPublicId.trim() : null;
 
-        List<SlotResponse> items = slotRepository.listar(
+        List<SlotResponse> items = slotRepository.list(
                 page, size, profFiltro, sedeFiltro, espFiltro, fechaDesde, fechaHasta, estadoFiltro
         );
-        int total = slotRepository.contar(
+        int total = slotRepository.count(
                 profFiltro, sedeFiltro, espFiltro, fechaDesde, fechaHasta, estadoFiltro
         );
 
         return PaginatedResponse.of(items, page, size, (long) total);
     }
 
-    private Long obtenerAdminUsuarioId(String adminPublicId) {
-        return usuarioRepository.buscarPorPublicId(adminPublicId)
-                .map(Usuario::id)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario administrador"));
+    private Long getAdminUserId(String adminPublicId) {
+        return userRepository.findByPublicId(adminPublicId)
+                .map(User::id)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario administrador"));
     }
 }

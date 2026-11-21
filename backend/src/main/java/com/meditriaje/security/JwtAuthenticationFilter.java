@@ -34,11 +34,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain filterChain
     ) throws ServletException, IOException {
-        String token = extraerToken(request);
+        String token = extractToken(request);
 
-        if (token != null && jwtService.esValido(token)) {
-            String publicId = jwtService.extraerPublicId(token);
-            List<String> roles = jwtService.extraerRoles(token);
+        if (token != null && jwtService.isValid(token)) {
+            String publicId = jwtService.extractPublicId(token);
+            List<String> roles = jwtService.extractRoles(token);
 
             List<SimpleGrantedAuthority> authorities = (roles == null) ? List.of() :
                     roles.stream().map(SimpleGrantedAuthority::new).toList();
@@ -53,7 +53,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
-    private String extraerToken(HttpServletRequest request) {
+    private String extractToken(HttpServletRequest request) {
         // 1. Extraer de cookie HttpOnly (estándar ADR-002)
         Cookie[] cookies = request.getCookies();
         if (cookies != null) {

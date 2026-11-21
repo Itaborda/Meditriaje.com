@@ -1,24 +1,24 @@
 package com.meditriaje.service;
 
-import com.meditriaje.dto.allergy.AlergiaResponse;
-import com.meditriaje.dto.allergy.InactivarAlergiaRequest;
-import com.meditriaje.dto.allergy.RegistrarAlergiaRequest;
-import com.meditriaje.exception.AccesoNoAutorizadoException;
-import com.meditriaje.exception.DatosInvalidosException;
-import com.meditriaje.exception.RecursoNoEncontradoException;
-import com.meditriaje.model.AccionAuditable;
-import com.meditriaje.model.Alergia;
-import com.meditriaje.model.Atencion;
-import com.meditriaje.model.EventoAuditoria;
-import com.meditriaje.model.Paciente;
-import com.meditriaje.model.Profesional;
-import com.meditriaje.model.ResultadoAuditoria;
-import com.meditriaje.model.Usuario;
-import com.meditriaje.repository.AlergiaRepository;
-import com.meditriaje.repository.AtencionRepository;
-import com.meditriaje.repository.PacienteRepository;
-import com.meditriaje.repository.ProfesionalRepository;
-import com.meditriaje.repository.UsuarioRepository;
+import com.meditriaje.dto.allergy.AllergyResponse;
+import com.meditriaje.dto.allergy.InactivateAllergyRequest;
+import com.meditriaje.dto.allergy.RegisterAllergyRequest;
+import com.meditriaje.exception.UnauthorizedAccessException;
+import com.meditriaje.exception.InvalidDataException;
+import com.meditriaje.exception.ResourceNotFoundException;
+import com.meditriaje.model.AuditableAction;
+import com.meditriaje.model.Allergy;
+import com.meditriaje.model.ClinicalAttention;
+import com.meditriaje.model.AuditEvent;
+import com.meditriaje.model.Patient;
+import com.meditriaje.model.Professional;
+import com.meditriaje.model.AuditResult;
+import com.meditriaje.model.User;
+import com.meditriaje.repository.AllergyRepository;
+import com.meditriaje.repository.ClinicalAttentionRepository;
+import com.meditriaje.repository.PatientRepository;
+import com.meditriaje.repository.ProfessionalRepository;
+import com.meditriaje.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.stereotype.Service;
@@ -39,54 +39,54 @@ import java.util.UUID;
 @Service
 public class AllergyService {
 
-    private final AlergiaRepository alergiaRepository;
-    private final PacienteRepository pacienteRepository;
-    private final UsuarioRepository usuarioRepository;
-    private final ProfesionalRepository profesionalRepository;
-    private final AtencionRepository atencionRepository;
-    private final AccesoClinicoService accesoClinicoService;
-    private final AuditoriaService auditoriaService;
+    private final AllergyRepository allergyRepository;
+    private final PatientRepository patientRepository;
+    private final UserRepository userRepository;
+    private final ProfessionalRepository professionalRepository;
+    private final ClinicalAttentionRepository attentionRepository;
+    private final ClinicalAccessService clinicalAccessService;
+    private final AuditService auditService;
     private final Clock clock;
 
     @Autowired
     public AllergyService(
-            AlergiaRepository alergiaRepository,
-            PacienteRepository pacienteRepository,
-            UsuarioRepository usuarioRepository,
-            ProfesionalRepository profesionalRepository,
-            AtencionRepository atencionRepository,
-            AccesoClinicoService accesoClinicoService,
-            AuditoriaService auditoriaService
+            AllergyRepository allergyRepository,
+            PatientRepository patientRepository,
+            UserRepository userRepository,
+            ProfessionalRepository professionalRepository,
+            ClinicalAttentionRepository attentionRepository,
+            ClinicalAccessService clinicalAccessService,
+            AuditService auditService
     ) {
         this(
-                alergiaRepository,
-                pacienteRepository,
-                usuarioRepository,
-                profesionalRepository,
-                atencionRepository,
-                accesoClinicoService,
-                auditoriaService,
+                allergyRepository,
+                patientRepository,
+                userRepository,
+                professionalRepository,
+                attentionRepository,
+                clinicalAccessService,
+                auditService,
                 Clock.systemUTC()
         );
     }
 
     public AllergyService(
-            AlergiaRepository alergiaRepository,
-            PacienteRepository pacienteRepository,
-            UsuarioRepository usuarioRepository,
-            ProfesionalRepository profesionalRepository,
-            AtencionRepository atencionRepository,
-            AccesoClinicoService accesoClinicoService,
-            AuditoriaService auditoriaService,
+            AllergyRepository allergyRepository,
+            PatientRepository patientRepository,
+            UserRepository userRepository,
+            ProfessionalRepository professionalRepository,
+            ClinicalAttentionRepository attentionRepository,
+            ClinicalAccessService clinicalAccessService,
+            AuditService auditService,
             Clock clock
     ) {
-        this.alergiaRepository = Objects.requireNonNull(alergiaRepository, "alergiaRepository no puede ser nulo");
-        this.pacienteRepository = Objects.requireNonNull(pacienteRepository, "pacienteRepository no puede ser nulo");
-        this.usuarioRepository = Objects.requireNonNull(usuarioRepository, "usuarioRepository no puede ser nulo");
-        this.profesionalRepository = Objects.requireNonNull(profesionalRepository, "profesionalRepository no puede ser nulo");
-        this.atencionRepository = Objects.requireNonNull(atencionRepository, "atencionRepository no puede ser nulo");
-        this.accesoClinicoService = Objects.requireNonNull(accesoClinicoService, "accesoClinicoService no puede ser nulo");
-        this.auditoriaService = Objects.requireNonNull(auditoriaService, "auditoriaService no puede ser nulo");
+        this.allergyRepository = Objects.requireNonNull(allergyRepository, "alergiaRepository no puede ser nulo");
+        this.patientRepository = Objects.requireNonNull(patientRepository, "pacienteRepository no puede ser nulo");
+        this.userRepository = Objects.requireNonNull(userRepository, "usuarioRepository no puede ser nulo");
+        this.professionalRepository = Objects.requireNonNull(professionalRepository, "profesionalRepository no puede ser nulo");
+        this.attentionRepository = Objects.requireNonNull(attentionRepository, "atencionRepository no puede ser nulo");
+        this.clinicalAccessService = Objects.requireNonNull(clinicalAccessService, "accesoClinicoService no puede ser nulo");
+        this.auditService = Objects.requireNonNull(auditService, "auditoriaService no puede ser nulo");
         this.clock = Objects.requireNonNull(clock, "clock no puede ser nulo");
     }
 
@@ -99,27 +99,27 @@ public class AllergyService {
      * Requiere relación asistencial activa u autorización Break-Glass válida.
      */
     @Transactional(readOnly = true)
-    public List<AlergiaResponse> listarAlergiasPacienteParaProfesional(
+    public List<AllergyResponse> listPatientAllergiesForProfessional(
             String pacientePublicId,
             boolean incluirInactivas,
             String usuarioAutenticadoPublicId,
             Collection<? extends GrantedAuthority> authorities,
             String ipOrigen
     ) {
-        Usuario usuario = obtenerUsuarioPorPublicId(usuarioAutenticadoPublicId);
-        accesoClinicoService.validarAccesoHistorialClinico(usuarioAutenticadoPublicId, pacientePublicId, authorities);
+        User usuario = getUserByPublicId(usuarioAutenticadoPublicId);
+        clinicalAccessService.validateClinicalHistoryAccess(usuarioAutenticadoPublicId, pacientePublicId, authorities);
 
-        Paciente paciente = pacienteRepository.buscarPorPublicId(pacientePublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado."));
+        Patient paciente = patientRepository.findByPublicId(pacientePublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Paciente no encontrado."));
 
-        List<AlergiaResponse> lista = alergiaRepository.listarPorPacientePublicId(paciente.publicId(), incluirInactivas);
+        List<AllergyResponse> lista = allergyRepository.listByPatientPublicId(paciente.publicId(), incluirInactivas);
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.ALERGIA_CONSULTADA,
+                AuditableAction.ALERGIA_CONSULTADA,
                 "PACIENTE",
                 paciente.publicId(),
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
@@ -131,48 +131,48 @@ public class AllergyService {
      * Requiere relación asistencial ordinaria vigente. El acceso Break-Glass es estrictamente de solo lectura.
      */
     @Transactional
-    public AlergiaResponse registrarAlergiaPorProfesional(
+    public AllergyResponse registerAllergyByProfessional(
             String pacientePublicId,
-            RegistrarAlergiaRequest request,
+            RegisterAllergyRequest request,
             String usuarioAutenticadoPublicId,
             String ipOrigen
     ) {
         Objects.requireNonNull(request, "request no puede ser nulo");
-        Usuario usuario = obtenerUsuarioPorPublicId(usuarioAutenticadoPublicId);
-        Profesional profesional = profesionalRepository.buscarPorUsuarioId(usuario.id())
-                .orElseThrow(() -> new AccesoNoAutorizadoException("Usuario no registrado como profesional asistencial."));
+        User usuario = getUserByPublicId(usuarioAutenticadoPublicId);
+        Professional profesional = professionalRepository.findByUserId(usuario.id())
+                .orElseThrow(() -> new UnauthorizedAccessException("Usuario no registrado como profesional asistencial."));
 
-        Paciente paciente = pacienteRepository.buscarPorPublicId(pacientePublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado."));
+        Patient paciente = patientRepository.findByPublicId(pacientePublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Paciente no encontrado."));
 
         // Autorización de escritura clínica (Break-Glass es SOLO LECTURA)
-        accesoClinicoService.validarEscrituraClinica(profesional.id(), paciente.id());
+        clinicalAccessService.validateClinicalWriteAccess(profesional.id(), paciente.id());
 
         Long atencionId = null;
-        if (request.atencionPublicId() != null && !request.atencionPublicId().isBlank()) {
-            Atencion atencion = atencionRepository.buscarEntidadPorPublicId(request.atencionPublicId())
-                    .orElseThrow(() -> new RecursoNoEncontradoException("Atencion medica no encontrada."));
-            if (!atencion.pacienteId().equals(paciente.id())) {
-                throw new DatosInvalidosException("La atencion medica no corresponde al paciente indicado.");
+        if (request.attentionPublicId() != null && !request.attentionPublicId().isBlank()) {
+            ClinicalAttention atencion = attentionRepository.findEntityByPublicId(request.attentionPublicId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Atencion medica no encontrada."));
+            if (!atencion.patientId().equals(paciente.id())) {
+                throw new InvalidDataException("La atencion medica no corresponde al paciente indicado.");
             }
             atencionId = atencion.id();
         }
 
         // Unicidad de sustancia activa
-        if (alergiaRepository.existeActivaPorSustancia(paciente.id(), request.sustancia())) {
-            throw new DatosInvalidosException("El paciente ya cuenta con una alergia activa registrada para la sustancia: " + request.sustancia().trim());
+        if (allergyRepository.existsActiveBySubstance(paciente.id(), request.substance())) {
+            throw new InvalidDataException("El paciente ya cuenta con una alergia activa registrada para la sustancia: " + request.substance().trim());
         }
 
         String publicId = UUID.randomUUID().toString();
         Instant ahora = Instant.now(clock);
 
-        Alergia nueva = new Alergia(
+        Allergy nueva = new Allergy(
                 null,
                 publicId,
                 paciente.id(),
-                request.sustancia().trim(),
-                request.reaccion(),
-                request.severidad(),
+                request.substance().trim(),
+                request.reaction(),
+                request.severity(),
                 "ACTIVA",
                 "PROFESIONAL",
                 usuario.id(),
@@ -184,18 +184,18 @@ public class AllergyService {
                 ahora
         );
 
-        alergiaRepository.crear(nueva);
+        allergyRepository.create(nueva);
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.ALERGIA_REGISTRADA,
+                AuditableAction.ALERGIA_REGISTRADA,
                 "ALERGIA",
                 publicId,
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
-        return alergiaRepository.buscarPorPublicId(publicId)
+        return allergyRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new IllegalStateException("Error al recuperar la alergia recién registrada."));
     }
 
@@ -204,39 +204,39 @@ public class AllergyService {
      * Requiere relación asistencial ordinaria. Break-Glass es solo lectura.
      */
     @Transactional
-    public AlergiaResponse inactivarAlergiaPorProfesional(
+    public AllergyResponse inactivateAllergyByProfessional(
             String alergiaPublicId,
-            InactivarAlergiaRequest request,
+            InactivateAllergyRequest request,
             String usuarioAutenticadoPublicId,
             String ipOrigen
     ) {
         Objects.requireNonNull(request, "request no puede ser nulo");
-        Usuario usuario = obtenerUsuarioPorPublicId(usuarioAutenticadoPublicId);
-        Profesional profesional = profesionalRepository.buscarPorUsuarioId(usuario.id())
-                .orElseThrow(() -> new AccesoNoAutorizadoException("Usuario no registrado como profesional asistencial."));
+        User usuario = getUserByPublicId(usuarioAutenticadoPublicId);
+        Professional profesional = professionalRepository.findByUserId(usuario.id())
+                .orElseThrow(() -> new UnauthorizedAccessException("Usuario no registrado como profesional asistencial."));
 
-        Alergia alergia = alergiaRepository.buscarEntidadPorPublicId(alergiaPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Alergia no encontrada."));
+        Allergy alergia = allergyRepository.findEntityByPublicId(alergiaPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Alergia no encontrada."));
 
         // Autorización de escritura clínica
-        accesoClinicoService.validarEscrituraClinica(profesional.id(), alergia.pacienteId());
+        clinicalAccessService.validateClinicalWriteAccess(profesional.id(), alergia.patientId());
 
-        if (!"ACTIVA".equalsIgnoreCase(alergia.estado())) {
-            throw new DatosInvalidosException("La alergia ya se encuentra inactiva.");
+        if (!"ACTIVA".equalsIgnoreCase(alergia.status())) {
+            throw new InvalidDataException("La alergia ya se encuentra inactiva.");
         }
 
-        alergiaRepository.inactivar(alergia.id(), usuario.id(), request.motivo(), Instant.now(clock));
+        allergyRepository.inactivate(alergia.id(), usuario.id(), request.reason(), Instant.now(clock));
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.ALERGIA_INACTIVADA,
+                AuditableAction.ALERGIA_INACTIVADA,
                 "ALERGIA",
                 alergiaPublicId,
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
-        return alergiaRepository.buscarPorPublicId(alergiaPublicId)
+        return allergyRepository.findByPublicId(alergiaPublicId)
                 .orElseThrow(() -> new IllegalStateException("Error al recuperar la alergia recién inactivada."));
     }
 
@@ -248,19 +248,19 @@ public class AllergyService {
      * Consulta las alergias del propio paciente autenticado (D3, T4).
      */
     @Transactional(readOnly = true)
-    public List<AlergiaResponse> listarMisAlergias(String usuarioAutenticadoPublicId, String ipOrigen) {
-        Usuario usuario = obtenerUsuarioPorPublicId(usuarioAutenticadoPublicId);
-        Paciente paciente = pacienteRepository.buscarPorUsuarioId(usuario.id())
-                .orElseThrow(() -> new AccesoNoAutorizadoException("Usuario no registrado como paciente."));
+    public List<AllergyResponse> listMyAllergies(String usuarioAutenticadoPublicId, String ipOrigen) {
+        User usuario = getUserByPublicId(usuarioAutenticadoPublicId);
+        Patient paciente = patientRepository.findByUserId(usuario.id())
+                .orElseThrow(() -> new UnauthorizedAccessException("Usuario no registrado como paciente."));
 
-        List<AlergiaResponse> lista = alergiaRepository.listarPorPacientePublicId(paciente.publicId(), true);
+        List<AllergyResponse> lista = allergyRepository.listByPatientPublicId(paciente.publicId(), true);
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.ALERGIA_CONSULTADA,
+                AuditableAction.ALERGIA_CONSULTADA,
                 "PACIENTE",
                 paciente.publicId(),
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
@@ -271,30 +271,30 @@ public class AllergyService {
      * Registra una alergia autorreportada por el propio paciente (D3, T4).
      */
     @Transactional
-    public AlergiaResponse registrarMiAlergia(
-            RegistrarAlergiaRequest request,
+    public AllergyResponse registerMyAllergy(
+            RegisterAllergyRequest request,
             String usuarioAutenticadoPublicId,
             String ipOrigen
     ) {
         Objects.requireNonNull(request, "request no puede ser nulo");
-        Usuario usuario = obtenerUsuarioPorPublicId(usuarioAutenticadoPublicId);
-        Paciente paciente = pacienteRepository.buscarPorUsuarioId(usuario.id())
-                .orElseThrow(() -> new AccesoNoAutorizadoException("Usuario no registrado como paciente."));
+        User usuario = getUserByPublicId(usuarioAutenticadoPublicId);
+        Patient paciente = patientRepository.findByUserId(usuario.id())
+                .orElseThrow(() -> new UnauthorizedAccessException("Usuario no registrado como paciente."));
 
-        if (alergiaRepository.existeActivaPorSustancia(paciente.id(), request.sustancia())) {
-            throw new DatosInvalidosException("Ya cuenta con una alergia activa registrada para la sustancia: " + request.sustancia().trim());
+        if (allergyRepository.existsActiveBySubstance(paciente.id(), request.substance())) {
+            throw new InvalidDataException("Ya cuenta con una alergia activa registrada para la sustancia: " + request.substance().trim());
         }
 
         String publicId = UUID.randomUUID().toString();
         Instant ahora = Instant.now(clock);
 
-        Alergia nueva = new Alergia(
+        Allergy nueva = new Allergy(
                 null,
                 publicId,
                 paciente.id(),
-                request.sustancia().trim(),
-                request.reaccion(),
-                request.severidad(),
+                request.substance().trim(),
+                request.reaction(),
+                request.severity(),
                 "ACTIVA",
                 "PACIENTE",
                 usuario.id(),
@@ -306,18 +306,18 @@ public class AllergyService {
                 ahora
         );
 
-        alergiaRepository.crear(nueva);
+        allergyRepository.create(nueva);
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.ALERGIA_REGISTRADA,
+                AuditableAction.ALERGIA_REGISTRADA,
                 "ALERGIA",
                 publicId,
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
-        return alergiaRepository.buscarPorPublicId(publicId)
+        return allergyRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new IllegalStateException("Error al recuperar la alergia autorreportada recién registrada."));
     }
 
@@ -326,44 +326,44 @@ public class AllergyService {
      * El paciente SOLO puede inactivar alergias registradas con origen 'PACIENTE'.
      */
     @Transactional
-    public AlergiaResponse inactivarMiAlergia(
+    public AllergyResponse inactivateMyAllergy(
             String alergiaPublicId,
-            InactivarAlergiaRequest request,
+            InactivateAllergyRequest request,
             String usuarioAutenticadoPublicId,
             String ipOrigen
     ) {
         Objects.requireNonNull(request, "request no puede ser nulo");
-        Usuario usuario = obtenerUsuarioPorPublicId(usuarioAutenticadoPublicId);
-        Paciente paciente = pacienteRepository.buscarPorUsuarioId(usuario.id())
-                .orElseThrow(() -> new AccesoNoAutorizadoException("Usuario no registrado como paciente."));
+        User usuario = getUserByPublicId(usuarioAutenticadoPublicId);
+        Patient paciente = patientRepository.findByUserId(usuario.id())
+                .orElseThrow(() -> new UnauthorizedAccessException("Usuario no registrado como paciente."));
 
-        Alergia alergia = alergiaRepository.buscarEntidadPorPublicId(alergiaPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Alergia no encontrada."));
+        Allergy alergia = allergyRepository.findEntityByPublicId(alergiaPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Alergia no encontrada."));
 
-        if (!alergia.pacienteId().equals(paciente.id())) {
-            throw new AccesoNoAutorizadoException("No tiene autorizacion para inactivar una alergia de otro paciente.");
+        if (!alergia.patientId().equals(paciente.id())) {
+            throw new UnauthorizedAccessException("No tiene autorizacion para inactivar una alergia de otro paciente.");
         }
 
-        if (!"PACIENTE".equalsIgnoreCase(alergia.origen())) {
-            throw new AccesoNoAutorizadoException("El paciente solo puede inactivar alergias autorreportadas por si mismo. Las alergias registradas por profesionales deben ser modificadas por el personal de salud.");
+        if (!"PACIENTE".equalsIgnoreCase(alergia.origin())) {
+            throw new UnauthorizedAccessException("El paciente solo puede inactivar alergias autorreportadas por si mismo. Las alergias registradas por profesionales deben ser modificadas por el personal de salud.");
         }
 
-        if (!"ACTIVA".equalsIgnoreCase(alergia.estado())) {
-            throw new DatosInvalidosException("La alergia ya se encuentra inactiva.");
+        if (!"ACTIVA".equalsIgnoreCase(alergia.status())) {
+            throw new InvalidDataException("La alergia ya se encuentra inactiva.");
         }
 
-        alergiaRepository.inactivar(alergia.id(), usuario.id(), request.motivo(), Instant.now(clock));
+        allergyRepository.inactivate(alergia.id(), usuario.id(), request.reason(), Instant.now(clock));
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.ALERGIA_INACTIVADA,
+                AuditableAction.ALERGIA_INACTIVADA,
                 "ALERGIA",
                 alergiaPublicId,
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
-        return alergiaRepository.buscarPorPublicId(alergiaPublicId)
+        return allergyRepository.findByPublicId(alergiaPublicId)
                 .orElseThrow(() -> new IllegalStateException("Error al recuperar la alergia recién inactivada."));
     }
 
@@ -371,11 +371,11 @@ public class AllergyService {
     // UTILIDADES PRIVADAS
     // =========================================================================
 
-    private Usuario obtenerUsuarioPorPublicId(String usuarioPublicId) {
+    private User getUserByPublicId(String usuarioPublicId) {
         if (usuarioPublicId == null || usuarioPublicId.isBlank()) {
-            throw new AccesoNoAutorizadoException("Usuario no autenticado.");
+            throw new UnauthorizedAccessException("Usuario no autenticado.");
         }
-        return usuarioRepository.buscarPorPublicId(usuarioPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario autenticado no encontrado."));
+        return userRepository.findByPublicId(usuarioPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario autenticado no encontrado."));
     }
 }

@@ -1,9 +1,9 @@
 package com.meditriaje.controller;
 
-import com.meditriaje.dto.affiliation.ReprogramarCitaRequest;
-import com.meditriaje.dto.appointment.CancelarCitaRequest;
-import com.meditriaje.dto.appointment.CitaResponse;
-import com.meditriaje.dto.appointment.ReservarCitaRequest;
+import com.meditriaje.dto.affiliation.RescheduleAppointmentRequest;
+import com.meditriaje.dto.appointment.CancelAppointmentRequest;
+import com.meditriaje.dto.appointment.AppointmentResponse;
+import com.meditriaje.dto.appointment.BookAppointmentRequest;
 import com.meditriaje.service.AppointmentService;
 import com.meditriaje.util.IpUtil;
 import jakarta.servlet.http.HttpServletRequest;
@@ -43,15 +43,15 @@ public class AppointmentController {
      */
     @PostMapping
     @PreAuthorize("hasAnyAuthority('ROLE_PACIENTE', 'ROLE_ADMINISTRADOR')")
-    public ResponseEntity<CitaResponse> reservarCita(
-            @Valid @RequestBody ReservarCitaRequest request,
+    public ResponseEntity<AppointmentResponse> bookAppointment(
+            @Valid @RequestBody BookAppointmentRequest request,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String usuarioPublicId = authentication.getName();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
+        String sourceIp = IpUtil.extractIp(httpRequest);
 
-        CitaResponse response = appointmentService.reservarCita(request, usuarioPublicId, ipOrigen);
+        AppointmentResponse response = appointmentService.bookAppointment(request, usuarioPublicId, sourceIp);
         URI location = URI.create("/api/v1/appointments/" + response.publicId());
 
         return ResponseEntity.created(location).body(response);
@@ -63,22 +63,22 @@ public class AppointmentController {
      */
     @PatchMapping("/{publicId}/cancel")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<CitaResponse> cancelarCita(
-            @PathVariable String publicId,
-            @Valid @RequestBody(required = false) CancelarCitaRequest request,
+    public ResponseEntity<AppointmentResponse> cancelAppointment(
+            @PathVariable("publicId") String publicId,
+            @Valid @RequestBody(required = false) CancelAppointmentRequest request,
             Authentication authentication,
             HttpServletRequest servletRequest
     ) {
         String usuarioPublicId = authentication.getName();
         Collection<? extends GrantedAuthority> authorities = authentication.getAuthorities();
-        String ipOrigen = IpUtil.extraerIp(servletRequest);
+        String sourceIp = IpUtil.extractIp(servletRequest);
 
-        CitaResponse response = appointmentService.cancelarCita(
+        AppointmentResponse response = appointmentService.cancelAppointment(
                 publicId,
                 request,
                 usuarioPublicId,
                 authorities,
-                ipOrigen
+                sourceIp
         );
 
         return ResponseEntity.ok(response);
@@ -91,20 +91,20 @@ public class AppointmentController {
      */
     @PatchMapping("/{publicId}/no-show")
     @PreAuthorize("hasAnyAuthority('ROLE_PROFESIONAL', 'ROLE_ADMINISTRADOR')")
-    public ResponseEntity<CitaResponse> marcarNoAsistio(
-            @PathVariable String publicId,
+    public ResponseEntity<AppointmentResponse> markNoShow(
+            @PathVariable("publicId") String publicId,
             Authentication authentication,
             HttpServletRequest servletRequest
     ) {
         String usuarioPublicId = authentication.getName();
         Collection<? extends GrantedAuthority> authorities = authentication.getAuthorities();
-        String ipOrigen = IpUtil.extraerIp(servletRequest);
+        String sourceIp = IpUtil.extractIp(servletRequest);
 
-        CitaResponse response = appointmentService.marcarNoAsistio(
+        AppointmentResponse response = appointmentService.markNoShow(
                 publicId,
                 usuarioPublicId,
                 authorities,
-                ipOrigen
+                sourceIp
         );
 
         return ResponseEntity.ok(response);
@@ -117,22 +117,22 @@ public class AppointmentController {
      */
     @PatchMapping("/{publicId}/reschedule")
     @PreAuthorize("hasAnyAuthority('ROLE_PACIENTE', 'ROLE_PROFESIONAL', 'ROLE_ADMINISTRADOR')")
-    public ResponseEntity<CitaResponse> reprogramarCita(
-            @PathVariable String publicId,
-            @Valid @RequestBody ReprogramarCitaRequest request,
+    public ResponseEntity<AppointmentResponse> rescheduleAppointment(
+            @PathVariable("publicId") String publicId,
+            @Valid @RequestBody RescheduleAppointmentRequest request,
             Authentication authentication,
             HttpServletRequest servletRequest
     ) {
         String usuarioPublicId = authentication.getName();
         Collection<? extends GrantedAuthority> authorities = authentication.getAuthorities();
-        String ipOrigen = IpUtil.extraerIp(servletRequest);
+        String sourceIp = IpUtil.extractIp(servletRequest);
 
-        CitaResponse response = appointmentService.reprogramarCita(
+        AppointmentResponse response = appointmentService.rescheduleAppointment(
                 publicId,
                 request,
                 usuarioPublicId,
                 authorities,
-                ipOrigen
+                sourceIp
         );
 
         return ResponseEntity.ok(response);

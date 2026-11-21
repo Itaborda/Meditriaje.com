@@ -5,14 +5,14 @@ package com.meditriaje.exception;
  */
 public abstract class MediTriajeException extends RuntimeException {
 
-    private final String codigo;
+    private final String code;
 
-    protected MediTriajeException(String codigo, String mensaje) {
-        super(mensaje);
-        this.codigo = codigo;
+    protected MediTriajeException(String code, String message) {
+        super(message);
+        this.code = code;
     }
 
-    public String getCodigo() {
-        return codigo;
+    public String getCode() {
+        return code;
     }
 }

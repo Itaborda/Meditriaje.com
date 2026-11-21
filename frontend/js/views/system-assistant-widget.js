@@ -49,7 +49,7 @@ function getAssistantRoleConfig() {
         </p>
         <p class="m-0 text-xs text-muted">
           Soy tu asistente de gestión operativa. Puedo ayudarte a consultar <strong>reportes y métricas</strong>,
-          gestionar <strong>profesionales de la salud</strong> bajo la Ley 1164, habilitar <strong>sedes e instituciones</strong>,
+          gestionar <strong>profesionales de la salud</strong> bajo la Ley 1164, consultar el <strong>censo de camas</strong>,
           generar <strong>slots de disponibilidad</strong> o revisar la <strong>auditoría</strong> del sistema.
         </p>
       `,
@@ -57,7 +57,7 @@ function getAssistantRoleConfig() {
         { label: '📊 Reportes operativos', query: '¿Cómo consultar los reportes operativos y métricas?' },
         { label: '👨‍⚕️ Alta de profesionales', query: '¿Cómo registrar un profesional de la salud según la ley?' },
         { label: '⏰ Generar turnos de citas', query: '¿Cómo generar slots de disponibilidad para citas?' },
-        { label: '🏥 Sedes e IPS', query: '¿Cómo gestionar sedes e instituciones hospitalarias?' },
+        { label: '🏥 Infraestructura', query: '¿Cómo se configura la infraestructura del hospital?' },
         { label: '🔒 Registro de auditoría', query: '¿Cómo revisar el registro de auditoría del sistema?' }
       ]
     };

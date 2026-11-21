@@ -1,27 +1,27 @@
 package com.meditriaje.service;
 
 import com.meditriaje.dto.common.PaginatedResponse;
-import com.meditriaje.dto.followup.CrearSeguimientoRequest;
-import com.meditriaje.dto.followup.ReportarEvolucionRequest;
-import com.meditriaje.dto.followup.SeguimientoResponse;
-import com.meditriaje.exception.AccesoNoAutorizadoException;
-import com.meditriaje.exception.DatosInvalidosException;
-import com.meditriaje.exception.RecursoNoEncontradoException;
-import com.meditriaje.model.AccionAuditable;
-import com.meditriaje.model.Atencion;
-import com.meditriaje.model.EstadoSeguimiento;
-import com.meditriaje.model.EventoAuditoria;
-import com.meditriaje.model.Paciente;
-import com.meditriaje.model.Profesional;
-import com.meditriaje.model.ResultadoAuditoria;
-import com.meditriaje.model.SeguimientoPostAtencion;
-import com.meditriaje.model.TipoSeguimiento;
-import com.meditriaje.model.Usuario;
-import com.meditriaje.repository.AtencionRepository;
-import com.meditriaje.repository.PacienteRepository;
-import com.meditriaje.repository.ProfesionalRepository;
-import com.meditriaje.repository.SeguimientoRepository;
-import com.meditriaje.repository.UsuarioRepository;
+import com.meditriaje.dto.followup.CreateFollowUpRequest;
+import com.meditriaje.dto.followup.ReportProgressRequest;
+import com.meditriaje.dto.followup.FollowUpResponse;
+import com.meditriaje.exception.UnauthorizedAccessException;
+import com.meditriaje.exception.InvalidDataException;
+import com.meditriaje.exception.ResourceNotFoundException;
+import com.meditriaje.model.AuditableAction;
+import com.meditriaje.model.ClinicalAttention;
+import com.meditriaje.model.FollowUpStatus;
+import com.meditriaje.model.AuditEvent;
+import com.meditriaje.model.Patient;
+import com.meditriaje.model.Professional;
+import com.meditriaje.model.AuditResult;
+import com.meditriaje.model.PostAttentionFollowUp;
+import com.meditriaje.model.FollowUpType;
+import com.meditriaje.model.User;
+import com.meditriaje.repository.ClinicalAttentionRepository;
+import com.meditriaje.repository.PatientRepository;
+import com.meditriaje.repository.ProfessionalRepository;
+import com.meditriaje.repository.FollowUpRepository;
+import com.meditriaje.repository.UserRepository;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,35 +42,35 @@ import java.util.UUID;
 @Service
 public class FollowUpService {
 
-    private static final ZoneId ZONE_BOGOTA = ZoneId.of("America/Bogota");
+    private static final ZoneId BOGOTA_ZONE = ZoneId.of("America/Bogota");
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
-    private final SeguimientoRepository seguimientoRepository;
-    private final AtencionRepository atencionRepository;
-    private final PacienteRepository pacienteRepository;
-    private final ProfesionalRepository profesionalRepository;
-    private final UsuarioRepository usuarioRepository;
-    private final AccesoClinicoService accesoClinicoService;
-    private final AuditoriaService auditoriaService;
+    private final FollowUpRepository followUpRepository;
+    private final ClinicalAttentionRepository attentionRepository;
+    private final PatientRepository patientRepository;
+    private final ProfessionalRepository professionalRepository;
+    private final UserRepository userRepository;
+    private final ClinicalAccessService clinicalAccessService;
+    private final AuditService auditService;
     private final AppointmentNotificationService notificationService;
 
     public FollowUpService(
-            SeguimientoRepository seguimientoRepository,
-            AtencionRepository atencionRepository,
-            PacienteRepository pacienteRepository,
-            ProfesionalRepository profesionalRepository,
-            UsuarioRepository usuarioRepository,
-            AccesoClinicoService accesoClinicoService,
-            AuditoriaService auditoriaService,
+            FollowUpRepository followUpRepository,
+            ClinicalAttentionRepository attentionRepository,
+            PatientRepository patientRepository,
+            ProfessionalRepository professionalRepository,
+            UserRepository userRepository,
+            ClinicalAccessService clinicalAccessService,
+            AuditService auditService,
             AppointmentNotificationService notificationService
     ) {
-        this.seguimientoRepository = Objects.requireNonNull(seguimientoRepository, "seguimientoRepository no puede ser nulo");
-        this.atencionRepository = Objects.requireNonNull(atencionRepository, "atencionRepository no puede ser nulo");
-        this.pacienteRepository = Objects.requireNonNull(pacienteRepository, "pacienteRepository no puede ser nulo");
-        this.profesionalRepository = Objects.requireNonNull(profesionalRepository, "profesionalRepository no puede ser nulo");
-        this.usuarioRepository = Objects.requireNonNull(usuarioRepository, "usuarioRepository no puede ser nulo");
-        this.accesoClinicoService = Objects.requireNonNull(accesoClinicoService, "accesoClinicoService no puede ser nulo");
-        this.auditoriaService = Objects.requireNonNull(auditoriaService, "auditoriaService no puede ser nulo");
+        this.followUpRepository = Objects.requireNonNull(followUpRepository, "seguimientoRepository no puede ser nulo");
+        this.attentionRepository = Objects.requireNonNull(attentionRepository, "atencionRepository no puede ser nulo");
+        this.patientRepository = Objects.requireNonNull(patientRepository, "pacienteRepository no puede ser nulo");
+        this.professionalRepository = Objects.requireNonNull(professionalRepository, "profesionalRepository no puede ser nulo");
+        this.userRepository = Objects.requireNonNull(userRepository, "usuarioRepository no puede ser nulo");
+        this.clinicalAccessService = Objects.requireNonNull(clinicalAccessService, "accesoClinicoService no puede ser nulo");
+        this.auditService = Objects.requireNonNull(auditService, "auditoriaService no puede ser nulo");
         this.notificationService = Objects.requireNonNull(notificationService, "notificationService no puede ser nulo");
     }
 
@@ -79,50 +79,50 @@ public class FollowUpService {
      * Exclusivo para profesionales asistenciales (autor o con relación asistencial activa).
      */
     @Transactional
-    public SeguimientoResponse prescribirSeguimiento(
+    public FollowUpResponse prescribeFollowUp(
             String atencionPublicId,
-            CrearSeguimientoRequest request,
+            CreateFollowUpRequest request,
             String usuarioAutenticadoPublicId,
             String ipOrigen
     ) {
-        Usuario usuario = obtenerUsuario(usuarioAutenticadoPublicId);
-        Profesional profesional = profesionalRepository.buscarPorUsuarioId(usuario.id())
-                .orElseThrow(() -> new AccesoNoAutorizadoException("Usuario no registrado como profesional asistencial."));
+        User usuario = getUser(usuarioAutenticadoPublicId);
+        Professional profesional = professionalRepository.findByUserId(usuario.id())
+                .orElseThrow(() -> new UnauthorizedAccessException("Usuario no registrado como profesional asistencial."));
 
-        if (!TipoSeguimiento.esValido(request.tipo())) {
-            throw new DatosInvalidosException("Tipo de seguimiento invalido: " + request.tipo()
+        if (!FollowUpType.isValid(request.type())) {
+            throw new InvalidDataException("Tipo de seguimiento invalido: " + request.type()
                     + ". Tipos permitidos: CONTROL_MEDICO, EVOLUCION_SINTOMAS, EXAMEN_PENDIENTE, ADHERENCIA_TRATAMIENTO.");
         }
 
-        if (request.fechaSugeridaControl() != null) {
-            LocalDate hoy = LocalDate.now(ZONE_BOGOTA);
-            if (request.fechaSugeridaControl().isBefore(hoy)) {
-                throw new DatosInvalidosException("La fecha sugerida de control no puede ser anterior a la fecha actual.");
+        if (request.suggestedControlDate() != null) {
+            LocalDate hoy = LocalDate.now(BOGOTA_ZONE);
+            if (request.suggestedControlDate().isBefore(hoy)) {
+                throw new InvalidDataException("La fecha sugerida de control no puede ser anterior a la fecha actual.");
             }
         }
 
-        Atencion atencion = atencionRepository.buscarEntidadPorPublicId(atencionPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Atencion medica no encontrada."));
+        ClinicalAttention atencion = attentionRepository.findEntityByPublicId(atencionPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Atencion medica no encontrada."));
 
-        if (!"CERRADA".equalsIgnoreCase(atencion.estado())) {
-            throw new DatosInvalidosException("Solo se pueden prescribir tareas de seguimiento sobre atenciones medicas cerradas.");
+        if (!"CERRADA".equalsIgnoreCase(atencion.status())) {
+            throw new InvalidDataException("Solo se pueden prescribir tareas de seguimiento sobre atenciones medicas cerradas.");
         }
 
-        boolean esAutor = atencion.profesionalId().equals(profesional.id());
+        boolean esAutor = atencion.professionalId().equals(profesional.id());
         if (!esAutor) {
-            accesoClinicoService.validarRelacionAsistencial(profesional.id(), atencion.pacienteId());
+            clinicalAccessService.validateCareRelationship(profesional.id(), atencion.patientId());
         }
 
         String publicId = UUID.randomUUID().toString();
-        SeguimientoPostAtencion nuevo = new SeguimientoPostAtencion(
+        PostAttentionFollowUp nuevo = new PostAttentionFollowUp(
                 null,
                 publicId,
                 atencion.id(),
-                atencion.pacienteId(),
+                atencion.patientId(),
                 profesional.id(),
-                request.tipo().toUpperCase().trim(),
-                request.indicaciones().trim(),
-                request.fechaSugeridaControl(),
+                request.type().toUpperCase().trim(),
+                request.instructions().trim(),
+                request.suggestedControlDate(),
                 "PENDIENTE",
                 null,
                 null,
@@ -130,21 +130,21 @@ public class FollowUpService {
                 Instant.now()
         );
 
-        seguimientoRepository.guardar(nuevo);
+        followUpRepository.save(nuevo);
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.CREACION_SEGUIMIENTO,
+                AuditableAction.CREACION_SEGUIMIENTO,
                 "SEGUIMIENTO_POST_ATENCION",
                 publicId,
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
-        SeguimientoResponse response = seguimientoRepository.buscarPorPublicId(publicId)
+        FollowUpResponse response = followUpRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new IllegalStateException("Error al recuperar el seguimiento recién creado."));
 
-        despacharNotificacionAsincrona(atencion, response);
+        dispatchAsyncNotification(atencion, response);
 
         return response;
     }
@@ -154,142 +154,142 @@ public class FollowUpService {
      * El reporte del paciente nunca se convierte automáticamente en un diagnóstico médico.
      */
     @Transactional
-    public SeguimientoResponse reportarEvolucion(
+    public FollowUpResponse reportProgress(
             String seguimientoPublicId,
-            ReportarEvolucionRequest request,
+            ReportProgressRequest request,
             String usuarioAutenticadoPublicId,
             String ipOrigen
     ) {
-        Usuario usuario = obtenerUsuario(usuarioAutenticadoPublicId);
-        Paciente paciente = pacienteRepository.buscarPorUsuarioId(usuario.id())
-                .orElseThrow(() -> new AccesoNoAutorizadoException("Usuario no registrado como paciente."));
+        User usuario = getUser(usuarioAutenticadoPublicId);
+        Patient paciente = patientRepository.findByUserId(usuario.id())
+                .orElseThrow(() -> new UnauthorizedAccessException("Usuario no registrado como paciente."));
 
-        SeguimientoPostAtencion seguimiento = seguimientoRepository.buscarEntidadPorPublicId(seguimientoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Seguimiento post-atencion no encontrado."));
+        PostAttentionFollowUp seguimiento = followUpRepository.findEntityByPublicId(seguimientoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Seguimiento post-atencion no encontrado."));
 
-        if (!seguimiento.pacienteId().equals(paciente.id())) {
-            throw new AccesoNoAutorizadoException("No tiene autorizacion para reportar evolucion en un seguimiento ajeno.");
+        if (!seguimiento.patientId().equals(paciente.id())) {
+            throw new UnauthorizedAccessException("No tiene autorizacion para reportar evolucion en un seguimiento ajeno.");
         }
 
-        if (!"PENDIENTE".equalsIgnoreCase(seguimiento.estado())) {
-            throw new DatosInvalidosException("El seguimiento ya se encuentra " + seguimiento.estado().toLowerCase() + ".");
+        if (!"PENDIENTE".equalsIgnoreCase(seguimiento.status())) {
+            throw new InvalidDataException("El seguimiento ya se encuentra " + seguimiento.status().toLowerCase() + ".");
         }
 
-        seguimientoRepository.registrarReportePaciente(
+        followUpRepository.recordPatientReport(
                 seguimiento.id(),
-                request.reporte().trim(),
+                request.report().trim(),
                 Instant.now()
         );
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.REPORTE_EVOLUCION_SEGUIMIENTO,
+                AuditableAction.REPORTE_EVOLUCION_SEGUIMIENTO,
                 "SEGUIMIENTO_POST_ATENCION",
                 seguimiento.publicId(),
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
-        return seguimientoRepository.buscarPorPublicId(seguimiento.publicId())
+        return followUpRepository.findByPublicId(seguimiento.publicId())
                 .orElseThrow(() -> new IllegalStateException("Error al recuperar el seguimiento actualizado."));
     }
 
     /**
      * Consulta el detalle de un seguimiento puntual con validación de autorización (ADR-007, ADR-015).
      */
-    public SeguimientoResponse obtenerPorPublicId(
+    public FollowUpResponse getByPublicId(
             String seguimientoPublicId,
             String usuarioAutenticadoPublicId,
             Collection<? extends GrantedAuthority> authorities
     ) {
-        validarNoEsAdministrador(authorities);
+        validateNotAdministrator(authorities);
 
-        Usuario usuario = obtenerUsuario(usuarioAutenticadoPublicId);
-        SeguimientoPostAtencion seguimiento = seguimientoRepository.buscarEntidadPorPublicId(seguimientoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Seguimiento post-atencion no encontrado."));
+        User usuario = getUser(usuarioAutenticadoPublicId);
+        PostAttentionFollowUp seguimiento = followUpRepository.findEntityByPublicId(seguimientoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Seguimiento post-atencion no encontrado."));
 
-        if (tieneRol(authorities, "ROLE_PACIENTE")) {
-            Paciente paciente = pacienteRepository.buscarPorUsuarioId(usuario.id())
-                    .orElseThrow(() -> new AccesoNoAutorizadoException("Usuario no registrado como paciente."));
-            if (!seguimiento.pacienteId().equals(paciente.id())) {
-                throw new AccesoNoAutorizadoException("No tiene autorizacion para consultar el seguimiento de otro paciente.");
+        if (hasRole(authorities, "ROLE_PACIENTE")) {
+            Patient paciente = patientRepository.findByUserId(usuario.id())
+                    .orElseThrow(() -> new UnauthorizedAccessException("Usuario no registrado como paciente."));
+            if (!seguimiento.patientId().equals(paciente.id())) {
+                throw new UnauthorizedAccessException("No tiene autorizacion para consultar el seguimiento de otro paciente.");
             }
-        } else if (tieneRol(authorities, "ROLE_PROFESIONAL")) {
-            Profesional profesional = profesionalRepository.buscarPorUsuarioId(usuario.id())
-                    .orElseThrow(() -> new AccesoNoAutorizadoException("Usuario no registrado como profesional."));
-            boolean esAutor = seguimiento.profesionalId().equals(profesional.id());
+        } else if (hasRole(authorities, "ROLE_PROFESIONAL")) {
+            Professional profesional = professionalRepository.findByUserId(usuario.id())
+                    .orElseThrow(() -> new UnauthorizedAccessException("Usuario no registrado como profesional."));
+            boolean esAutor = seguimiento.professionalId().equals(profesional.id());
             if (!esAutor) {
-                accesoClinicoService.validarRelacionAsistencial(profesional.id(), seguimiento.pacienteId());
+                clinicalAccessService.validateCareRelationship(profesional.id(), seguimiento.patientId());
             }
         } else {
-            throw new AccesoNoAutorizadoException("Rol no autorizado para acceder al seguimiento.");
+            throw new UnauthorizedAccessException("Rol no autorizado para acceder al seguimiento.");
         }
 
-        return seguimientoRepository.buscarPorPublicId(seguimientoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Seguimiento post-atencion no encontrado."));
+        return followUpRepository.findByPublicId(seguimientoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Seguimiento post-atencion no encontrado."));
     }
 
     /**
      * Lista los seguimientos asociados a una atención médica específica (ADR-007, ADR-015).
      */
-    public List<SeguimientoResponse> listarPorAtencion(
+    public List<FollowUpResponse> listByAttention(
             String atencionPublicId,
             String usuarioAutenticadoPublicId,
             Collection<? extends GrantedAuthority> authorities
     ) {
-        validarNoEsAdministrador(authorities);
+        validateNotAdministrator(authorities);
 
-        Usuario usuario = obtenerUsuario(usuarioAutenticadoPublicId);
-        Atencion atencion = atencionRepository.buscarEntidadPorPublicId(atencionPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Atencion medica no encontrada."));
+        User usuario = getUser(usuarioAutenticadoPublicId);
+        ClinicalAttention atencion = attentionRepository.findEntityByPublicId(atencionPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Atencion medica no encontrada."));
 
-        if (tieneRol(authorities, "ROLE_PACIENTE")) {
-            Paciente paciente = pacienteRepository.buscarPorUsuarioId(usuario.id())
-                    .orElseThrow(() -> new AccesoNoAutorizadoException("Usuario no registrado como paciente."));
-            if (!atencion.pacienteId().equals(paciente.id())) {
-                throw new AccesoNoAutorizadoException("No tiene autorizacion para consultar los seguimientos de otro paciente.");
+        if (hasRole(authorities, "ROLE_PACIENTE")) {
+            Patient paciente = patientRepository.findByUserId(usuario.id())
+                    .orElseThrow(() -> new UnauthorizedAccessException("Usuario no registrado como paciente."));
+            if (!atencion.patientId().equals(paciente.id())) {
+                throw new UnauthorizedAccessException("No tiene autorizacion para consultar los seguimientos de otro paciente.");
             }
-        } else if (tieneRol(authorities, "ROLE_PROFESIONAL")) {
-            Profesional profesional = profesionalRepository.buscarPorUsuarioId(usuario.id())
-                    .orElseThrow(() -> new AccesoNoAutorizadoException("Usuario no registrado como profesional."));
-            boolean esAutor = atencion.profesionalId().equals(profesional.id());
+        } else if (hasRole(authorities, "ROLE_PROFESIONAL")) {
+            Professional profesional = professionalRepository.findByUserId(usuario.id())
+                    .orElseThrow(() -> new UnauthorizedAccessException("Usuario no registrado como profesional."));
+            boolean esAutor = atencion.professionalId().equals(profesional.id());
             if (!esAutor) {
-                accesoClinicoService.validarRelacionAsistencial(profesional.id(), atencion.pacienteId());
+                clinicalAccessService.validateCareRelationship(profesional.id(), atencion.patientId());
             }
         } else {
-            throw new AccesoNoAutorizadoException("Rol no autorizado.");
+            throw new UnauthorizedAccessException("Rol no autorizado.");
         }
 
-        return seguimientoRepository.listarPorAtencionId(atencion.id());
+        return followUpRepository.listByAttentionId(atencion.id());
     }
 
     /**
      * Consulta paginada de las tareas de seguimiento pertenecientes al paciente autenticado.
      */
-    public PaginatedResponse<SeguimientoResponse> listarMisSeguimientos(
+    public PaginatedResponse<FollowUpResponse> listMyFollowUps(
             String usuarioAutenticadoPublicId,
             String estadoFiltro,
             int page,
             int size
     ) {
-        Usuario usuario = obtenerUsuario(usuarioAutenticadoPublicId);
-        Paciente paciente = pacienteRepository.buscarPorUsuarioId(usuario.id())
-                .orElseThrow(() -> new AccesoNoAutorizadoException("Usuario no registrado como paciente."));
+        User usuario = getUser(usuarioAutenticadoPublicId);
+        Patient paciente = patientRepository.findByUserId(usuario.id())
+                .orElseThrow(() -> new UnauthorizedAccessException("Usuario no registrado como paciente."));
 
         int safePage = Math.max(page, 0);
         int safeSize = (size < 1 || size > 100) ? 10 : size;
 
         String filtro = null;
         if (estadoFiltro != null && !estadoFiltro.isBlank()) {
-            if (!EstadoSeguimiento.esValido(estadoFiltro)) {
-                throw new DatosInvalidosException("Filtro de estado invalido: " + estadoFiltro
+            if (!FollowUpStatus.isValid(estadoFiltro)) {
+                throw new InvalidDataException("Filtro de estado invalido: " + estadoFiltro
                         + ". Estados permitidos: PENDIENTE, COMPLETADO, CANCELADO.");
             }
             filtro = estadoFiltro.toUpperCase().trim();
         }
 
-        List<SeguimientoResponse> items = seguimientoRepository.listarPorPacienteId(paciente.id(), filtro, safePage, safeSize);
-        int totalElements = seguimientoRepository.contarPorPacienteId(paciente.id(), filtro);
+        List<FollowUpResponse> items = followUpRepository.listByPatientId(paciente.id(), filtro, safePage, safeSize);
+        int totalElements = followUpRepository.countByPatientId(paciente.id(), filtro);
         int totalPages = (int) Math.ceil((double) totalElements / safeSize);
         boolean hasNext = safePage < totalPages - 1;
         boolean hasPrevious = safePage > 0;
@@ -302,59 +302,59 @@ public class FollowUpService {
      * Solo permitido para profesionales asistenciales (autor o con relación activa).
      */
     @Transactional
-    public SeguimientoResponse cancelarSeguimiento(
+    public FollowUpResponse cancelFollowUp(
             String seguimientoPublicId,
             String usuarioAutenticadoPublicId,
             Collection<? extends GrantedAuthority> authorities
     ) {
-        validarNoEsAdministrador(authorities);
+        validateNotAdministrator(authorities);
 
-        if (!tieneRol(authorities, "ROLE_PROFESIONAL")) {
-            throw new AccesoNoAutorizadoException("Solo profesionales asistenciales pueden cancelar seguimientos.");
+        if (!hasRole(authorities, "ROLE_PROFESIONAL")) {
+            throw new UnauthorizedAccessException("Solo profesionales asistenciales pueden cancelar seguimientos.");
         }
 
-        Usuario usuario = obtenerUsuario(usuarioAutenticadoPublicId);
-        Profesional profesional = profesionalRepository.buscarPorUsuarioId(usuario.id())
-                .orElseThrow(() -> new AccesoNoAutorizadoException("Usuario no registrado como profesional."));
+        User usuario = getUser(usuarioAutenticadoPublicId);
+        Professional profesional = professionalRepository.findByUserId(usuario.id())
+                .orElseThrow(() -> new UnauthorizedAccessException("Usuario no registrado como profesional."));
 
-        SeguimientoPostAtencion seguimiento = seguimientoRepository.buscarEntidadPorPublicId(seguimientoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Seguimiento post-atencion no encontrado."));
+        PostAttentionFollowUp seguimiento = followUpRepository.findEntityByPublicId(seguimientoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Seguimiento post-atencion no encontrado."));
 
-        boolean esAutor = seguimiento.profesionalId().equals(profesional.id());
+        boolean esAutor = seguimiento.professionalId().equals(profesional.id());
         if (!esAutor) {
-            accesoClinicoService.validarRelacionAsistencial(profesional.id(), seguimiento.pacienteId());
+            clinicalAccessService.validateCareRelationship(profesional.id(), seguimiento.patientId());
         }
 
-        if (!"PENDIENTE".equalsIgnoreCase(seguimiento.estado())) {
-            throw new DatosInvalidosException("Solo se pueden cancelar seguimientos en estado PENDIENTE. Estado actual: " + seguimiento.estado());
+        if (!"PENDIENTE".equalsIgnoreCase(seguimiento.status())) {
+            throw new InvalidDataException("Solo se pueden cancelar seguimientos en estado PENDIENTE. Estado actual: " + seguimiento.status());
         }
 
-        seguimientoRepository.actualizarEstado(seguimiento.id(), "CANCELADO");
+        followUpRepository.updateStatus(seguimiento.id(), "CANCELADO");
 
-        return seguimientoRepository.buscarPorPublicId(seguimiento.publicId())
+        return followUpRepository.findByPublicId(seguimiento.publicId())
                 .orElseThrow(() -> new IllegalStateException("Error al recuperar el seguimiento cancelado."));
     }
 
-    private void despacharNotificacionAsincrona(Atencion atencion, SeguimientoResponse response) {
+    private void dispatchAsyncNotification(ClinicalAttention atencion, FollowUpResponse response) {
         try {
-            String email = notificationService.resolverEmailPaciente(atencion.pacienteId());
+            String email = notificationService.resolvePatientEmail(atencion.patientId());
             if (email != null && !email.isBlank()) {
-                String fechaAtencionStr = atencion.fechaCierre() != null
-                        ? DATE_FORMATTER.format(atencion.fechaCierre().atZone(ZONE_BOGOTA))
-                        : (atencion.createdAt() != null ? DATE_FORMATTER.format(atencion.createdAt().atZone(ZONE_BOGOTA)) : "");
+                String fechaAtencionStr = atencion.closedAt() != null
+                        ? DATE_FORMATTER.format(atencion.closedAt().atZone(BOGOTA_ZONE))
+                        : (atencion.createdAt() != null ? DATE_FORMATTER.format(atencion.createdAt().atZone(BOGOTA_ZONE)) : "");
 
-                String fechaControlStr = response.fechaSugeridaControl() != null
-                        ? DATE_FORMATTER.format(response.fechaSugeridaControl())
+                String fechaControlStr = response.suggestedControlDate() != null
+                        ? DATE_FORMATTER.format(response.suggestedControlDate())
                         : "Según evolución médica";
 
-                notificationService.enviarResumenAtencionSeguimiento(
+                notificationService.sendFollowUpAttentionSummary(
                         email,
-                        response.pacienteNombre(),
-                        response.profesionalNombre(),
-                        response.profesionalEspecialidad(),
+                        response.patientName(),
+                        response.professionalName(),
+                        response.professionalSpecialty(),
                         fechaAtencionStr,
-                        response.tipo(),
-                        response.indicaciones(),
+                        response.type(),
+                        response.instructions(),
                         fechaControlStr
                 );
             }
@@ -363,18 +363,18 @@ public class FollowUpService {
         }
     }
 
-    private Usuario obtenerUsuario(String usuarioPublicId) {
-        return usuarioRepository.buscarPorPublicId(usuarioPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado."));
+    private User getUser(String usuarioPublicId) {
+        return userRepository.findByPublicId(usuarioPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
     }
 
-    private void validarNoEsAdministrador(Collection<? extends GrantedAuthority> authorities) {
-        if (tieneRol(authorities, "ROLE_ADMINISTRADOR")) {
-            throw new AccesoNoAutorizadoException("El personal administrativo no tiene acceso a contenido clinico.");
+    private void validateNotAdministrator(Collection<? extends GrantedAuthority> authorities) {
+        if (hasRole(authorities, "ROLE_ADMINISTRADOR")) {
+            throw new UnauthorizedAccessException("El personal administrativo no tiene acceso a contenido clinico.");
         }
     }
 
-    private boolean tieneRol(Collection<? extends GrantedAuthority> authorities, String rol) {
+    private boolean hasRole(Collection<? extends GrantedAuthority> authorities, String rol) {
         return authorities != null && authorities.stream().anyMatch(a -> a.getAuthority().equals(rol));
     }
 }

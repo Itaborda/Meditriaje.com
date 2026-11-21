@@ -1,6 +1,6 @@
 package com.meditriaje.controller;
 
-import com.meditriaje.dto.appointment.CitaResponse;
+import com.meditriaje.dto.appointment.AppointmentResponse;
 import com.meditriaje.dto.common.PaginatedResponse;
 import com.meditriaje.service.AppointmentService;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -40,18 +40,18 @@ public class ProfessionalAgendaController {
      * @return Paginación de citas asistenciales.
      */
     @GetMapping
-    public ResponseEntity<PaginatedResponse<CitaResponse>> obtenerMiAgenda(
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha,
-            @RequestParam(required = false) String estado,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
+    public ResponseEntity<PaginatedResponse<AppointmentResponse>> getMyAgenda(
+            @RequestParam(value = "fecha", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(value = "estado", required = false) String status,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size,
             Authentication authentication
     ) {
         String usuarioPublicId = authentication.getName();
-        PaginatedResponse<CitaResponse> agenda = appointmentService.obtenerMiAgenda(
+        PaginatedResponse<AppointmentResponse> agenda = appointmentService.getMyAgenda(
                 usuarioPublicId,
-                fecha,
-                estado,
+                date,
+                status,
                 page,
                 size
         );

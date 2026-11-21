@@ -54,14 +54,14 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
-    void doFilter_conCookieAccessTokenValida_autenticaUsuario() throws ServletException, IOException {
+    void doFilter_withCookieAccessTokenValid_autenticaUser() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/patients/me");
         request.setCookies(new Cookie("access_token", "valid.access.jwt"));
         MockHttpServletResponse response = new MockHttpServletResponse();
 
-        when(jwtService.esValido("valid.access.jwt")).thenReturn(true);
-        when(jwtService.extraerPublicId("valid.access.jwt")).thenReturn("user-public-uuid");
-        when(jwtService.extraerRoles("valid.access.jwt")).thenReturn(List.of("ROLE_PACIENTE"));
+        when(jwtService.isValid("valid.access.jwt")).thenReturn(true);
+        when(jwtService.extractPublicId("valid.access.jwt")).thenReturn("user-public-uuid");
+        when(jwtService.extractRoles("valid.access.jwt")).thenReturn(List.of("ROLE_PACIENTE"));
 
         jwtAuthenticationFilter.doFilter(request, response, filterChain);
 
@@ -73,12 +73,12 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
-    void doFilter_conTokenExpiradoOInvalido_noAutentica() throws ServletException, IOException {
+    void doFilter_withTokenExpiredOrInvalid_notAutentica() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/patients/me");
         request.setCookies(new Cookie("access_token", "expired.jwt"));
         MockHttpServletResponse response = new MockHttpServletResponse();
 
-        when(jwtService.esValido("expired.jwt")).thenReturn(false);
+        when(jwtService.isValid("expired.jwt")).thenReturn(false);
 
         jwtAuthenticationFilter.doFilter(request, response, filterChain);
 
@@ -87,14 +87,14 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
-    void doFilter_conHeaderAuthorizationBearerValido_autentica() throws ServletException, IOException {
+    void doFilter_withHeaderAuthorizationBearerValid_autentica() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/patients/me");
         request.addHeader("Authorization", "Bearer bearer.access.jwt");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
-        when(jwtService.esValido("bearer.access.jwt")).thenReturn(true);
-        when(jwtService.extraerPublicId("bearer.access.jwt")).thenReturn("user-public-uuid");
-        when(jwtService.extraerRoles("bearer.access.jwt")).thenReturn(List.of("ROLE_PACIENTE"));
+        when(jwtService.isValid("bearer.access.jwt")).thenReturn(true);
+        when(jwtService.extractPublicId("bearer.access.jwt")).thenReturn("user-public-uuid");
+        when(jwtService.extractRoles("bearer.access.jwt")).thenReturn(List.of("ROLE_PACIENTE"));
 
         jwtAuthenticationFilter.doFilter(request, response, filterChain);
 

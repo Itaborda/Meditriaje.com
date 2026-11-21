@@ -14,11 +14,11 @@ import java.time.ZoneId;
 @Configuration
 public class ClockConfig {
 
-    public static final ZoneId ZONA_BOGOTA = ZoneId.of("America/Bogota");
+    public static final ZoneId BOGOTA_ZONE = ZoneId.of("America/Bogota");
 
     @Bean
     @ConditionalOnMissingBean(Clock.class)
     public Clock clock() {
-        return Clock.system(ZONA_BOGOTA);
+        return Clock.system(BOGOTA_ZONE);
     }
 }

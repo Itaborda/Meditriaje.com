@@ -21,28 +21,28 @@ public class TotpService {
     private static final String HMAC_ALGO = "HmacSHA1";
     private static final int TIME_STEP_SECONDS = 30;
     private static final int OTP_DIGITS = 6;
-    private static final int DIGITS_MODULO = 1_000_000;
+    private static final int DIGITS_MODULUS = 1_000_000;
     private static final int SECRET_BYTES = 20; // 160 bits
 
     /**
      * Genera un nuevo secreto criptográfico aleatorio en Base32.
      */
-    public String generarNuevoSecreto() {
-        return Base32Util.generarSecreto(SECRET_BYTES);
+    public String generateNewSecret() {
+        return Base32Util.generateSecret(SECRET_BYTES);
     }
 
     /**
      * Genera el código TOTP numérico de 6 dígitos para un instante dado.
      */
-    public String generarCodigo(String secretBase32, Instant instant) {
+    public String generateCode(String secretBase32, Instant instant) {
         long timeStep = instant.getEpochSecond() / TIME_STEP_SECONDS;
-        return generarCodigoParaPaso(secretBase32, timeStep);
+        return generateCodeForStep(secretBase32, timeStep);
     }
 
     /**
      * Valida un código TOTP ingresado por el usuario considerando una ventana de tolerancia de ±1 paso (±30s).
      */
-    public boolean validarCodigo(String secretBase32, String codigoOtp, Instant instant) {
+    public boolean validateCode(String secretBase32, String codigoOtp, Instant instant) {
         if (secretBase32 == null || secretBase32.isBlank() || codigoOtp == null || codigoOtp.isBlank()) {
             return false;
         }
@@ -56,7 +56,7 @@ public class TotpService {
 
         // Tolerancia a deriva horaria: paso anterior (-30s), actual (0s), paso siguiente (+30s)
         for (long paso = pasoActual - 1; paso <= pasoActual + 1; paso++) {
-            String esperado = generarCodigoParaPaso(secretBase32, paso);
+            String esperado = generateCodeForStep(secretBase32, paso);
             if (MessageDigest.isEqual(esperado.getBytes(StandardCharsets.UTF_8), codigoLimpio.getBytes(StandardCharsets.UTF_8))) {
                 return true;
             }
@@ -68,7 +68,7 @@ public class TotpService {
     /**
      * Genera la URI estándar otpauth:// compatible con lectores QR de autenticadores móviles.
      */
-    public String generarOtpAuthUri(String issuer, String accountName, String secretBase32) {
+    public String generateOtpAuthUri(String issuer, String accountName, String secretBase32) {
         String encodedIssuer = URLEncoder.encode(issuer, StandardCharsets.UTF_8).replace("+", "%20");
         String encodedAccount = URLEncoder.encode(accountName, StandardCharsets.UTF_8).replace("+", "%20");
 
@@ -78,7 +78,7 @@ public class TotpService {
         );
     }
 
-    private String generarCodigoParaPaso(String secretBase32, long timeStep) {
+    private String generateCodeForStep(String secretBase32, long timeStep) {
         byte[] keyBytes = Base32Util.decode(secretBase32);
         byte[] data = ByteBuffer.allocate(8).putLong(timeStep).array();
 
@@ -94,7 +94,7 @@ public class TotpService {
                     | ((hash[offset + 2] & 0xFF) << 8)
                     | (hash[offset + 3] & 0xFF);
 
-            int otp = binary % DIGITS_MODULO;
+            int otp = binary % DIGITS_MODULUS;
             return String.format("%06d", otp);
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException("Error al calcular HMAC-SHA1 para TOTP", e);

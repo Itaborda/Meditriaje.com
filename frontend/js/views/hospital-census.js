@@ -4,14 +4,12 @@
  * disponibilidad por pabellón y desinfección (Fase H, H06, ADR-024).
  */
 
-import { hospitalApi, emergencyApi } from '../api.js';
+import { hospitalApi } from '../api.js';
 import { auth } from '../auth.js';
 import { router } from '../router.js';
 import { ui, esc } from '../ui.js';
 
 let censusState = {
-  sedes: [],
-  selectedSedePublicId: '',
   censusData: null,
   beds: [],
   filterEstado: '',
@@ -50,11 +48,8 @@ export async function hospitalCensusView(container) {
         </div>
 
         <div class="flex flex-wrap items-center gap-3">
-          <div class="form-group m-0" style="min-width: 240px;">
-            <select id="censusSedeSelect" class="form-select form-input--sm" aria-label="Seleccionar sede hospitalaria">
-              <option value="">Cargando sedes...</option>
-            </select>
-          </div>
+          <!-- Hospital único: el servidor resuelve la sede; solo se muestra su nombre -->
+          <span id="censusHospitalName" class="text-sm font-semibold text-muted"></span>
 
           <button type="button" id="btnRefreshCensus" class="btn btn-ghost btn--sm flex items-center gap-1">
             ${ui.icon('refresh-cw', 'icon icon--sm')}
@@ -142,13 +137,7 @@ export async function hospitalCensusView(container) {
     </div>
   `;
 
-  await loadSedes();
-
-  const sedeSelect = document.getElementById('censusSedeSelect');
-  sedeSelect.addEventListener('change', async (e) => {
-    censusState.selectedSedePublicId = e.target.value;
-    await loadData();
-  });
+  await loadData();
 
   document.getElementById('btnRefreshCensus').addEventListener('click', async () => {
     await loadData();
@@ -166,32 +155,15 @@ export async function hospitalCensusView(container) {
   });
 }
 
-async function loadSedes() {
-  const sedeSelect = document.getElementById('censusSedeSelect');
-  try {
-    const rawSedes = await emergencyApi.listarSedes();
-    const sedes = Array.isArray(rawSedes) ? rawSedes : (rawSedes?.content || []);
-    censusState.sedes = sedes || [];
-    if (sedes && sedes.length > 0) {
-      censusState.selectedSedePublicId = sedes[0].publicId;
-      sedeSelect.innerHTML = sedes.map(s => `
-        <option value="${esc(s.publicId)}">${esc(s.nombre)} (${esc(s.ciudad || 'Valledupar')})</option>
-      `).join('');
-      await loadData();
-    }
-  } catch (err) {
-    ui.showToast('Error cargando sedes: ' + err.message, 'error');
-  }
-}
-
 async function loadData() {
-  if (!censusState.selectedSedePublicId) return;
-
   try {
     const [census, beds] = await Promise.all([
-      hospitalApi.obtenerCenso(censusState.selectedSedePublicId),
-      hospitalApi.listarCamas(censusState.selectedSedePublicId)
+      hospitalApi.obtenerCenso(),
+      hospitalApi.listarCamas()
     ]);
+
+    const hospitalName = document.getElementById('censusHospitalName');
+    if (hospitalName) hospitalName.textContent = census?.sedeNombre || '';
 
     censusState.censusData = census;
     censusState.beds = beds || [];
@@ -209,7 +181,7 @@ async function loadData() {
           ${ui.icon('info', 'icon alert-icon')}
           <div class="alert-content">
             <div class="alert-title">Capacidad hospitalaria en sincronización</div>
-            <div>El módulo de censo en tiempo real para esta sede se encuentra en inicialización o sin camas activas registradas aún.</div>
+            <div>El módulo de censo en tiempo real para el hospital se encuentra en inicialización o sin camas activas registradas aún.</div>
           </div>
         </div>
       `;
@@ -229,7 +201,7 @@ function updateKpis(c) {
 function renderAreas(areas) {
   const container = document.getElementById('areaSummaryGrid');
   if (!areas || areas.length === 0) {
-    container.innerHTML = `<p class="text-sm text-muted m-0">No hay áreas configuradas para esta sede.</p>`;
+    container.innerHTML = `<p class="text-sm text-muted m-0">No hay áreas configuradas en el hospital.</p>`;
     return;
   }
 

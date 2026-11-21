@@ -1,7 +1,7 @@
 package com.meditriaje.controller;
 
-import com.meditriaje.dto.assistant.PreguntaAsistenteRequest;
-import com.meditriaje.dto.assistant.RespuestaAsistenteResponse;
+import com.meditriaje.dto.assistant.AssistantQuestionRequest;
+import com.meditriaje.dto.assistant.AssistantAnswerResponse;
 import com.meditriaje.service.AssistantService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -30,10 +30,10 @@ public class AssistantController {
      * Procesa una consulta de orientación o soporte del usuario.
      */
     @PostMapping("/chat")
-    public ResponseEntity<RespuestaAsistenteResponse> chat(
-            @Valid @RequestBody PreguntaAsistenteRequest request
+    public ResponseEntity<AssistantAnswerResponse> chat(
+            @Valid @RequestBody AssistantQuestionRequest request
     ) {
-        RespuestaAsistenteResponse response = assistantService.procesarConsulta(request);
+        AssistantAnswerResponse response = assistantService.processQuery(request);
         return ResponseEntity.ok(response);
     }
 }

@@ -89,7 +89,7 @@ test.describe('Fase 2: Circuito de Enfermería, Urgencias y Triaje Presencial', 
       });
     });
 
-    await page.route('**/api/v1/emergency/queue/**', async (route) => {
+    await page.route('**/api/v1/emergency/queue*', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -171,9 +171,7 @@ test.describe('Fase 2: Circuito de Enfermería, Urgencias y Triaje Presencial', 
     await page.goto('/#/nursing/admission');
     await expect(page.locator('h1')).toContainText('Admisión Presencial de Urgencias');
 
-    // Esperar y seleccionar sede
-    await page.waitForSelector('#admSedeSelect option[value="sede-valledupar-01"]', { state: 'attached' });
-    await page.selectOption('#admSedeSelect', 'sede-valledupar-01');
+    // Hospital único: no hay selector de sede (el servidor la resuelve)
 
     // Activar switch de paciente no identificado (NN)
     const chkNN = page.locator('#chkEsNN');
@@ -201,7 +199,7 @@ test.describe('Fase 2: Circuito de Enfermería, Urgencias y Triaje Presencial', 
     // Verificar que el payload contiene la bandera esNN y los datos
     expect(admissionPayload).not.toBeNull();
     expect(admissionPayload.esIdentidadProvisional).toBe(true);
-    expect(admissionPayload.motivoConsulta).toContain('traumatismo craneoencefálico');
+    expect(admissionPayload.motivoLlegada).toContain('traumatismo craneoencefálico');
     expect(admissionPayload.edadAparente).toBe(45);
   });
 

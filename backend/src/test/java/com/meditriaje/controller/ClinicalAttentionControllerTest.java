@@ -3,12 +3,12 @@ package com.meditriaje.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.meditriaje.config.CorsConfig;
 import com.meditriaje.config.SecurityConfig;
-import com.meditriaje.dto.clinical.AtencionResponse;
-import com.meditriaje.dto.clinical.CerrarAtencionRequest;
-import com.meditriaje.dto.clinical.CrearEnmiendaRequest;
-import com.meditriaje.dto.clinical.EnmiendaResponse;
-import com.meditriaje.dto.clinical.IniciarAtencionRequest;
-import com.meditriaje.dto.clinical.SignosVitalesDto;
+import com.meditriaje.dto.clinical.ClinicalAttentionResponse;
+import com.meditriaje.dto.clinical.CloseAttentionRequest;
+import com.meditriaje.dto.clinical.CreateAmendmentRequest;
+import com.meditriaje.dto.clinical.AmendmentResponse;
+import com.meditriaje.dto.clinical.StartAttentionRequest;
+import com.meditriaje.dto.clinical.VitalSignsDto;
 import com.meditriaje.exception.GlobalExceptionHandler;
 import com.meditriaje.security.JwtService;
 import com.meditriaje.service.ClinicalAttentionService;
@@ -66,21 +66,21 @@ class ClinicalAttentionControllerTest {
 
     @BeforeEach
     void setUpTokens() {
-        when(jwtService.esValido(TOKEN_PACIENTE)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_PACIENTE)).thenReturn(PACIENTE_UUID);
-        when(jwtService.extraerRoles(TOKEN_PACIENTE)).thenReturn(List.of("ROLE_PACIENTE"));
+        when(jwtService.isValid(TOKEN_PACIENTE)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_PACIENTE)).thenReturn(PACIENTE_UUID);
+        when(jwtService.extractRoles(TOKEN_PACIENTE)).thenReturn(List.of("ROLE_PACIENTE"));
 
-        when(jwtService.esValido(TOKEN_PROFESIONAL)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_PROFESIONAL)).thenReturn(PROFESIONAL_UUID);
-        when(jwtService.extraerRoles(TOKEN_PROFESIONAL)).thenReturn(List.of("ROLE_PROFESIONAL"));
+        when(jwtService.isValid(TOKEN_PROFESIONAL)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_PROFESIONAL)).thenReturn(PROFESIONAL_UUID);
+        when(jwtService.extractRoles(TOKEN_PROFESIONAL)).thenReturn(List.of("ROLE_PROFESIONAL"));
 
-        when(jwtService.esValido(TOKEN_ADMIN)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_ADMIN)).thenReturn(ADMIN_UUID);
-        when(jwtService.extraerRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
+        when(jwtService.isValid(TOKEN_ADMIN)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_ADMIN)).thenReturn(ADMIN_UUID);
+        when(jwtService.extractRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
     }
 
-    private AtencionResponse construirAtencionResponse(String atencionPublicId, String estado) {
-        return new AtencionResponse(
+    private ClinicalAttentionResponse construirAtencionResponse(String atencionPublicId, String estado) {
+        return new ClinicalAttentionResponse(
                 atencionPublicId,
                 "cita-uuid-1",
                 "pac-uuid-1",
@@ -96,17 +96,17 @@ class ClinicalAttentionControllerTest {
                 "Cefalea y congestion nasal",
                 "Cuadro viral agudo",
                 "Reposo e hidratacion",
-                new SignosVitalesDto(120, 80, 72, 16, new BigDecimal("36.5"), 98, new BigDecimal("70.0"), new BigDecimal("170.0"))
+                new VitalSignsDto(120, 80, 72, 16, new BigDecimal("36.5"), 98, new BigDecimal("70.0"), new BigDecimal("170.0"))
         );
     }
 
     @Test
     @DisplayName("POST /api/v1/attentions - Profesional: 201 Created con cabecera Location")
-    void iniciarAtencion_profesional_retorna201Created() throws Exception {
-        IniciarAtencionRequest request = new IniciarAtencionRequest("cita-uuid-1");
-        AtencionResponse mockResponse = construirAtencionResponse("atencion-uuid-1", "ABIERTA");
+    void startAttention_professional_returns201Created() throws Exception {
+        StartAttentionRequest request = new StartAttentionRequest("cita-uuid-1");
+        ClinicalAttentionResponse mockResponse = construirAtencionResponse("atencion-uuid-1", "ABIERTA");
 
-        when(clinicalAttentionService.iniciarAtencion(any(IniciarAtencionRequest.class), eq(PROFESIONAL_UUID), anyString()))
+        when(clinicalAttentionService.startAttention(any(StartAttentionRequest.class), eq(PROFESIONAL_UUID), anyString()))
                 .thenReturn(mockResponse);
 
         mockMvc.perform(post("/api/v1/attentions")
@@ -122,8 +122,8 @@ class ClinicalAttentionControllerTest {
 
     @Test
     @DisplayName("POST /api/v1/attentions - Paciente: 403 Forbidden")
-    void iniciarAtencion_paciente_retorna403() throws Exception {
-        IniciarAtencionRequest request = new IniciarAtencionRequest("cita-uuid-1");
+    void startAttention_patient_returns403() throws Exception {
+        StartAttentionRequest request = new StartAttentionRequest("cita-uuid-1");
 
         mockMvc.perform(post("/api/v1/attentions")
                         .header("X-Requested-With", "XMLHttpRequest")
@@ -135,8 +135,8 @@ class ClinicalAttentionControllerTest {
 
     @Test
     @DisplayName("POST /api/v1/attentions - Administrador: 403 Forbidden (Admin sin acceso clínico)")
-    void iniciarAtencion_admin_retorna403() throws Exception {
-        IniciarAtencionRequest request = new IniciarAtencionRequest("cita-uuid-1");
+    void startAttention_admin_returns403() throws Exception {
+        StartAttentionRequest request = new StartAttentionRequest("cita-uuid-1");
 
         mockMvc.perform(post("/api/v1/attentions")
                         .header("X-Requested-With", "XMLHttpRequest")
@@ -148,8 +148,8 @@ class ClinicalAttentionControllerTest {
 
     @Test
     @DisplayName("POST /api/v1/attentions - Sin autenticación: 401 Unauthorized")
-    void iniciarAtencion_sinAuth_retorna401() throws Exception {
-        IniciarAtencionRequest request = new IniciarAtencionRequest("cita-uuid-1");
+    void startAttention_withoutAuth_returns401() throws Exception {
+        StartAttentionRequest request = new StartAttentionRequest("cita-uuid-1");
 
         mockMvc.perform(post("/api/v1/attentions")
                         .header("X-Requested-With", "XMLHttpRequest")
@@ -160,8 +160,8 @@ class ClinicalAttentionControllerTest {
 
     @Test
     @DisplayName("POST /api/v1/attentions - Body inválido: 400 Bad Request")
-    void iniciarAtencion_bodyInvalido_retorna400() throws Exception {
-        IniciarAtencionRequest requestInvalido = new IniciarAtencionRequest("  ");
+    void startAttention_invalidBody_returns400() throws Exception {
+        StartAttentionRequest requestInvalido = new StartAttentionRequest("  ");
 
         mockMvc.perform(post("/api/v1/attentions")
                         .header("X-Requested-With", "XMLHttpRequest")
@@ -174,14 +174,14 @@ class ClinicalAttentionControllerTest {
 
     @Test
     @DisplayName("POST /api/v1/attentions/{publicId}/close - Profesional: 200 OK")
-    void cerrarAtencion_profesional_retorna200Ok() throws Exception {
-        CerrarAtencionRequest request = new CerrarAtencionRequest(
+    void closeAttention_professional_returns200Ok() throws Exception {
+        CloseAttentionRequest request = new CloseAttentionRequest(
                 "J00", "Motivo de consulta", "Evolución clínica", "Indicaciones y plan de manejo",
-                new SignosVitalesDto(120, 80, 72, 16, new BigDecimal("36.5"), 98, new BigDecimal("70.0"), new BigDecimal("170.0"))
+                new VitalSignsDto(120, 80, 72, 16, new BigDecimal("36.5"), 98, new BigDecimal("70.0"), new BigDecimal("170.0"))
         );
-        AtencionResponse mockResponse = construirAtencionResponse("atencion-uuid-1", "CERRADA");
+        ClinicalAttentionResponse mockResponse = construirAtencionResponse("atencion-uuid-1", "CERRADA");
 
-        when(clinicalAttentionService.cerrarAtencion(eq("atencion-uuid-1"), any(CerrarAtencionRequest.class), eq(PROFESIONAL_UUID), anyString()))
+        when(clinicalAttentionService.closeAttention(eq("atencion-uuid-1"), any(CloseAttentionRequest.class), eq(PROFESIONAL_UUID), anyString()))
                 .thenReturn(mockResponse);
 
         mockMvc.perform(post("/api/v1/attentions/atencion-uuid-1/close")
@@ -197,8 +197,8 @@ class ClinicalAttentionControllerTest {
 
     @Test
     @DisplayName("POST /api/v1/attentions/{publicId}/close - Paciente: 403 Forbidden")
-    void cerrarAtencion_paciente_retorna403() throws Exception {
-        CerrarAtencionRequest request = new CerrarAtencionRequest(
+    void closeAttention_patient_returns403() throws Exception {
+        CloseAttentionRequest request = new CloseAttentionRequest(
                 "J00", "Motivo de consulta", "Evolución clínica", "Indicaciones", null
         );
 
@@ -212,8 +212,8 @@ class ClinicalAttentionControllerTest {
 
     @Test
     @DisplayName("POST /api/v1/attentions/{publicId}/close - Administrador: 403 Forbidden")
-    void cerrarAtencion_admin_retorna403() throws Exception {
-        CerrarAtencionRequest request = new CerrarAtencionRequest(
+    void closeAttention_admin_returns403() throws Exception {
+        CloseAttentionRequest request = new CloseAttentionRequest(
                 "J00", "Motivo de consulta", "Evolución clínica", "Indicaciones", null
         );
 
@@ -227,10 +227,10 @@ class ClinicalAttentionControllerTest {
 
     @Test
     @DisplayName("GET /api/v1/attentions/{publicId} - Usuario autenticado: 200 OK")
-    void obtenerAtencion_autenticado_retorna200Ok() throws Exception {
-        AtencionResponse mockResponse = construirAtencionResponse("atencion-uuid-1", "CERRADA");
+    void getAttention_authenticated_returns200Ok() throws Exception {
+        ClinicalAttentionResponse mockResponse = construirAtencionResponse("atencion-uuid-1", "CERRADA");
 
-        when(clinicalAttentionService.obtenerPorPublicId(eq("atencion-uuid-1"), eq(PACIENTE_UUID), anyCollection(), anyString()))
+        when(clinicalAttentionService.getByPublicId(eq("atencion-uuid-1"), eq(PACIENTE_UUID), anyCollection(), anyString()))
                 .thenReturn(mockResponse);
 
         mockMvc.perform(get("/api/v1/attentions/atencion-uuid-1")
@@ -243,7 +243,7 @@ class ClinicalAttentionControllerTest {
 
     @Test
     @DisplayName("GET /api/v1/attentions/{publicId} - Sin autenticación: 401 Unauthorized")
-    void obtenerAtencion_sinAuth_retorna401() throws Exception {
+    void getAttention_withoutAuth_returns401() throws Exception {
         mockMvc.perform(get("/api/v1/attentions/atencion-uuid-1")
                         .header("X-Requested-With", "XMLHttpRequest"))
                 .andExpect(status().isUnauthorized());
@@ -251,13 +251,13 @@ class ClinicalAttentionControllerTest {
 
     @Test
     @DisplayName("POST /api/v1/attentions/{publicId}/amendments - Profesional: 201 Created con Location")
-    void crearEnmienda_profesional_retorna201Created() throws Exception {
-        CrearEnmiendaRequest request = new CrearEnmiendaRequest("Corrección de posología", "La frecuencia indicada es cada 8 horas.");
-        EnmiendaResponse mockResponse = new EnmiendaResponse(
+    void createAmendment_professional_returns201Created() throws Exception {
+        CreateAmendmentRequest request = new CreateAmendmentRequest("Corrección de posología", "La frecuencia indicada es cada 8 horas.");
+        AmendmentResponse mockResponse = new AmendmentResponse(
                 PROFESIONAL_UUID, "Carlos Gomez", "Corrección de posología", "La frecuencia indicada es cada 8 horas.", Instant.now()
         );
 
-        when(clinicalAttentionService.crearEnmienda(eq("atencion-uuid-1"), any(CrearEnmiendaRequest.class), eq(PROFESIONAL_UUID), anyString()))
+        when(clinicalAttentionService.createAmendment(eq("atencion-uuid-1"), any(CreateAmendmentRequest.class), eq(PROFESIONAL_UUID), anyString()))
                 .thenReturn(mockResponse);
 
         mockMvc.perform(post("/api/v1/attentions/atencion-uuid-1/amendments")
@@ -274,8 +274,8 @@ class ClinicalAttentionControllerTest {
 
     @Test
     @DisplayName("POST /api/v1/attentions/{publicId}/amendments - Paciente: 403 Forbidden")
-    void crearEnmienda_paciente_retorna403() throws Exception {
-        CrearEnmiendaRequest request = new CrearEnmiendaRequest("Motivo", "Contenido");
+    void createAmendment_patient_returns403() throws Exception {
+        CreateAmendmentRequest request = new CreateAmendmentRequest("Motivo", "Contenido");
 
         mockMvc.perform(post("/api/v1/attentions/atencion-uuid-1/amendments")
                         .header("X-Requested-With", "XMLHttpRequest")
@@ -287,8 +287,8 @@ class ClinicalAttentionControllerTest {
 
     @Test
     @DisplayName("POST /api/v1/attentions/{publicId}/amendments - Administrador: 403 Forbidden")
-    void crearEnmienda_admin_retorna403() throws Exception {
-        CrearEnmiendaRequest request = new CrearEnmiendaRequest("Motivo", "Contenido");
+    void createAmendment_admin_returns403() throws Exception {
+        CreateAmendmentRequest request = new CreateAmendmentRequest("Motivo", "Contenido");
 
         mockMvc.perform(post("/api/v1/attentions/atencion-uuid-1/amendments")
                         .header("X-Requested-With", "XMLHttpRequest")
@@ -300,8 +300,8 @@ class ClinicalAttentionControllerTest {
 
     @Test
     @DisplayName("POST /api/v1/attentions/{publicId}/amendments - Sin autenticación: 401 Unauthorized")
-    void crearEnmienda_sinAuth_retorna401() throws Exception {
-        CrearEnmiendaRequest request = new CrearEnmiendaRequest("Motivo", "Contenido");
+    void createAmendment_withoutAuth_returns401() throws Exception {
+        CreateAmendmentRequest request = new CreateAmendmentRequest("Motivo", "Contenido");
 
         mockMvc.perform(post("/api/v1/attentions/atencion-uuid-1/amendments")
                         .header("X-Requested-With", "XMLHttpRequest")
@@ -312,8 +312,8 @@ class ClinicalAttentionControllerTest {
 
     @Test
     @DisplayName("POST /api/v1/attentions/{publicId}/amendments - Body inválido: 400 Bad Request")
-    void crearEnmienda_bodyInvalido_retorna400() throws Exception {
-        CrearEnmiendaRequest requestInvalido = new CrearEnmiendaRequest("  ", "");
+    void createAmendment_invalidBody_returns400() throws Exception {
+        CreateAmendmentRequest requestInvalido = new CreateAmendmentRequest("  ", "");
 
         mockMvc.perform(post("/api/v1/attentions/atencion-uuid-1/amendments")
                         .header("X-Requested-With", "XMLHttpRequest")

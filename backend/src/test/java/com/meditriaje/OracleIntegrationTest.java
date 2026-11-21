@@ -1,12 +1,11 @@
 package com.meditriaje;
 
-import org.flywaydb.core.Flyway;
+import com.meditriaje.db.OracleTestDatabase;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.DockerClientFactory;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -44,82 +43,44 @@ class OracleIntegrationTest {
     private static final String APP_PASS   = "App_Pass1";
 
     @Container
-    static final OracleContainer oracle = new OracleContainer("gvenzl/oracle-free:23-slim-faststart")
-            .withPassword("testPassword1")
-            .withReuse(false);
+    static final OracleContainer oracle = OracleTestDatabase.newContainer();
 
-    /** DataSource con el usuario que genera el container (tiene DBA en el PDB). */
-    private static DataSource systemDataSource() {
-        DriverManagerDataSource ds = new DriverManagerDataSource();
-        ds.setDriverClassName("oracle.jdbc.OracleDriver");
-        ds.setUrl(oracle.getJdbcUrl());
-        ds.setUsername(oracle.getUsername());
-        ds.setPassword(oracle.getPassword());
-        return ds;
-    }
-
-    /** DataSource usando MEDITRIAJE_OWNER para migraciones Flyway. */
+    /** DataSource usando MEDITRIAJE_OWNER para migraciones Flyway y fixtures. */
     private static DataSource ownerDataSource() {
-        DriverManagerDataSource ds = new DriverManagerDataSource();
-        ds.setDriverClassName("oracle.jdbc.OracleDriver");
-        ds.setUrl(oracle.getJdbcUrl());
-        ds.setUsername(OWNER_USER);
-        ds.setPassword(OWNER_PASS);
-        return ds;
+        return OracleTestDatabase.dataSource(oracle, OWNER_USER, OWNER_PASS);
     }
 
     /** DataSource usando MEDITRIAJE_APP para la aplicación (privilegios mínimos). */
     private static DataSource appDataSource() {
-        DriverManagerDataSource ds = new DriverManagerDataSource();
-        ds.setDriverClassName("oracle.jdbc.OracleDriver");
-        ds.setUrl(oracle.getJdbcUrl());
-        ds.setUsername(APP_USER);
-        ds.setPassword(APP_PASS);
-        return ds;
+        return OracleTestDatabase.dataSource(oracle, APP_USER, APP_PASS);
     }
 
     @BeforeAll
     static void provisionarUsuarios() {
-        // Skip graceful si Docker no está disponible (dev local sin Docker Desktop)
+        // Omisión elegante si Docker no está disponible (desarrollo local sin Docker Desktop)
         Assumptions.assumeTrue(
                 DockerClientFactory.instance().isDockerAvailable(),
                 "Docker no disponible — prueba de integración omitida"
         );
 
-        JdbcTemplate sys = new JdbcTemplate(systemDataSource());
-
-        // Crear usuario DDL (owner de esquema)
-        sys.execute("CREATE USER " + OWNER_USER + " IDENTIFIED BY \"" + OWNER_PASS + "\"");
-        sys.execute("GRANT CONNECT, RESOURCE, CREATE SESSION TO " + OWNER_USER);
-        sys.execute("ALTER USER " + OWNER_USER + " QUOTA UNLIMITED ON USERS");
-
-        // Crear usuario runtime (solo puede conectar y operar con GRANTs explícitos)
-        sys.execute("CREATE USER " + APP_USER + " IDENTIFIED BY \"" + APP_PASS + "\"");
-        sys.execute("GRANT CREATE SESSION TO " + APP_USER);
-
-        // Aplicar migraciones Flyway como MEDITRIAJE_OWNER
-        Flyway flyway = Flyway.configure()
-                .dataSource(ownerDataSource())
-                .locations("classpath:database/migrations")
-                .schemas(OWNER_USER)
-                .baselineOnMigrate(true)
-                .validateOnMigrate(true)
-                .load();
-        flyway.migrate();
+        // El helper usa SYS (rol del ADMIN de ATP) para crear MEDITRIAJE_OWNER con los privilegios de
+        // producción y MEDITRIAJE_APP como usuario runtime sin privilegios propios; luego migra como owner.
+        DataSource owner = OracleTestDatabase.provisionOwner(oracle, OWNER_USER);
+        OracleTestDatabase.flyway(owner).migrate();
     }
 
     @Test
-    void flyway_schema_history_tieneAlMenosV16() {
+    void flyway_schema_history_hasToLess16() {
         JdbcTemplate ownerTemplate = new JdbcTemplate(ownerDataSource());
         Integer count = ownerTemplate.queryForObject(
-                "SELECT COUNT(*) FROM flyway_schema_history WHERE success = 1",
+                "SELECT COUNT(*) FROM \"flyway_schema_history\" WHERE \"success\" = 1",
                 Integer.class
         );
         assertThat(count).isGreaterThanOrEqualTo(16);
     }
 
     @Test
-    void app_puedeConsultarTablasAccesoBreakGlass() {
+    void app_canQueryTablesAccessBreakGlass() {
         // MEDITRIAJE_APP puede consultar tablas de V014 (ACCESO_BREAK_GLASS)
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         for (String tabla : new String[] {"ACCESO_BREAK_GLASS"}) {
@@ -129,7 +90,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_puedeConsultarTablasDispensacion() {
+    void app_canQueryTablesDispensation() {
         // MEDITRIAJE_APP puede consultar tablas de V013 y rol farmacéutico existe
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         for (String tabla : new String[] {"DISPENSACION", "DISPENSACION_DETALLE"}) {
@@ -144,7 +105,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_puedeConsultarTablasAccesoTemporalQr() {
+    void app_canQueryTablesAccessTemporaryQr() {
         // MEDITRIAJE_APP puede consultar tablas de V012
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         for (String tabla : new String[] {"ACCESO_TEMPORAL_QR"}) {
@@ -154,7 +115,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_puedeConsultarTablasMfaYRecuperacion() {
+    void app_canQueryTablesMfaAndRecovery() {
         // MEDITRIAJE_APP puede consultar tablas de V010
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         for (String tabla : new String[] {"CODIGO_VERIFICACION", "MFA_BACKUP_CODE"}) {
@@ -164,7 +125,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_puedeConsultarTablasSeguimientoYRecordatorios() {
+    void app_canQueryTablesFollowUpAndReminders() {
         // MEDITRIAJE_APP puede consultar tablas de V011
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         for (String tabla : new String[] {"SEGUIMIENTO_POST_ATENCION", "RECORDATORIO_CITA"}) {
@@ -174,7 +135,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_puedeConsultarTablasTriaje() {
+    void app_canQueryTablesTriage() {
         // MEDITRIAJE_APP puede consultar las tablas de triaje (V007)
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         for (String tabla : new String[] {"SINTOMA", "REGLA_TRIAJE", "TRIAJE", "TRIAJE_SINTOMA"}) {
@@ -184,7 +145,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void semillas_triaje_tienenSintomasYAlarmas() {
+    void seeds_triage_haveSymptomsAndAlarms() {
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         Integer total = appTemplate.queryForObject("SELECT COUNT(*) FROM " + OWNER_USER + ".SINTOMA", Integer.class);
         Integer alarmas = appTemplate.queryForObject(
@@ -201,7 +162,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_noPuedeUpdateNiDeleteEnTriaje() {
+    void app_notCanUpdateNorDeleteInTriage() {
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         org.junit.jupiter.api.Assertions.assertThrows(
                 org.springframework.dao.DataAccessException.class,
@@ -214,7 +175,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void db_fkCompuestaRechazaCitaConTriajeDeOtroPaciente() {
+    void db_fkCompositeRechazaAppointmentWithTriageOfOtherPatient() {
         JdbcTemplate ownerTemplate = new JdbcTemplate(ownerDataSource());
         String uid = java.util.UUID.randomUUID().toString().substring(0, 8);
 
@@ -226,8 +187,8 @@ class OracleIntegrationTest {
                     "u-tri-" + p, "tri-" + p + "@test.com", "hash");
             Long uId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".USUARIO WHERE PUBLIC_ID = ?", Long.class, "u-tri-" + p);
             ownerTemplate.update(
-                    "INSERT INTO " + OWNER_USER + ".PACIENTE (PUBLIC_ID, USUARIO_ID, NUMERO_IDENTIFICACION, NOMBRES, APELLIDOS, FECHA_NACIMIENTO, GENERO, TELEFONO) "
-                            + "VALUES (?, ?, ?, ?, ?, DATE '1990-01-01', 'M', '3001234567')",
+                    "INSERT INTO " + OWNER_USER + ".PACIENTE (PUBLIC_ID, USUARIO_ID, TIPO_DOCUMENTO, NUMERO_DOCUMENTO, NOMBRES, APELLIDOS, FECHA_NACIMIENTO, TELEFONO) "
+                            + "VALUES (?, ?, 'CC', ?, ?, ?, DATE '1990-01-01', '3001234567')",
                     "pac-tri-" + p, uId, "CC-TRI-" + p, "Paciente" + i, "Test");
             pacientes[i] = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".PACIENTE WHERE PUBLIC_ID = ?", Long.class, "pac-tri-" + p);
         }
@@ -246,20 +207,14 @@ class OracleIntegrationTest {
         ownerTemplate.update("INSERT INTO " + OWNER_USER + ".ESPECIALIDAD (PUBLIC_ID, NOMBRE, DURACION_SLOT_MIN) VALUES (?, ?, ?)",
                 "esp-t-" + uid, "Esp-T-" + uid, 20);
         Long espId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".ESPECIALIDAD WHERE PUBLIC_ID = ?", Long.class, "esp-t-" + uid);
-        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".PROFESIONAL (USUARIO_ID, PUBLIC_ID, ESPECIALIDAD_ID, REGISTRO_MEDICO, NOMBRES, APELLIDOS) VALUES (?, ?, ?, ?, ?, ?)",
+        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".PROFESIONAL (USUARIO_ID, PUBLIC_ID, ESPECIALIDAD_ID, REGISTRO_MEDICO, NOMBRES, APELLIDOS, NUMERO_DOCUMENTO) VALUES (?, ?, ?, ?, ?, ?, SUBSTR(RAWTOHEX(SYS_GUID()), 1, 20))",
                 docUsuarioId, "prof-t-" + uid, espId, "RM-T-" + uid, "Doc", "Test");
         Long profId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".PROFESIONAL WHERE PUBLIC_ID = ?", Long.class, "prof-t-" + uid);
-        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".INSTITUCION (PUBLIC_ID, NIT, RAZON_SOCIAL) VALUES (?, ?, ?)",
-                "inst-t-" + uid, "NIT-T-" + uid, "Inst-T-" + uid);
-        Long instId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".INSTITUCION WHERE PUBLIC_ID = ?", Long.class, "inst-t-" + uid);
-        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".SEDE (INSTITUCION_ID, PUBLIC_ID, NOMBRE, DIRECCION, CIUDAD) VALUES (?, ?, ?, ?, ?)",
-                instId, "sede-t-" + uid, "Sede-T-" + uid, "Calle 1", "Bogota");
-        Long sedeId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".SEDE WHERE PUBLIC_ID = ?", Long.class, "sede-t-" + uid);
         java.time.Instant ahora = java.time.Instant.now();
         ownerTemplate.update(
-                "INSERT INTO " + OWNER_USER + ".DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, SEDE_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, 'PRESENCIAL', 'LIBRE')",
-                "slot-t-" + uid, profId, sedeId, espId, java.sql.Timestamp.from(ahora), java.sql.Timestamp.from(ahora.plusSeconds(1200)));
+                "INSERT INTO " + OWNER_USER + ".DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO) "
+                        + "VALUES (?, ?, ?, ?, ?, 'PRESENCIAL', 'LIBRE')",
+                "slot-t-" + uid, profId, espId, java.sql.Timestamp.from(ahora), java.sql.Timestamp.from(ahora.plusSeconds(1200)));
         Long slotId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".DISPONIBILIDAD_SLOT WHERE PUBLIC_ID = ?", Long.class, "slot-t-" + uid);
 
         // Paciente B con triaje de A -> rechazado por FK_CITA_TRIAJE_PACIENTE
@@ -278,7 +233,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_puedeConsultarControlSistema() {
+    void app_canQueryControlSistema() {
         // MEDITRIAJE_APP recibe GRANT SELECT en CONTROL_SISTEMA desde V001__baseline.sql
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         Integer count = appTemplate.queryForObject(
@@ -289,18 +244,19 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_puedeConsultarRolesSembrados() {
+    void app_canQueryRolesSeeded() {
         // MEDITRIAJE_APP puede consultar el catálogo de roles (semillas de V002)
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         Integer count = appTemplate.queryForObject(
                 "SELECT COUNT(*) FROM " + OWNER_USER + ".ROL",
                 Integer.class
         );
-        assertThat(count).isEqualTo(3);
+        // V002 siembra 3 roles; V013 agrega ROLE_FARMACEUTICO y V018 el rol de enfermería: 5 en total.
+        assertThat(count).isEqualTo(5);
     }
 
     @Test
-    void app_puedeConsultarPacientes() {
+    void app_canQueryPatients() {
         // MEDITRIAJE_APP puede consultar la tabla PACIENTE (V003)
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         Integer count = appTemplate.queryForObject(
@@ -311,25 +267,24 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_puedeConsultarTablasOferta() {
-        // MEDITRIAJE_APP puede consultar las tablas de oferta asistencial (V004)
+    void app_canQueryTablesOferta() {
+        // MEDITRIAJE_APP puede consultar CONFIGURACION_HOSPITAL y las tablas de oferta asistencial
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
-        assertThat(appTemplate.queryForObject("SELECT COUNT(*) FROM " + OWNER_USER + ".INSTITUCION", Integer.class)).isNotNull();
-        assertThat(appTemplate.queryForObject("SELECT COUNT(*) FROM " + OWNER_USER + ".SEDE", Integer.class)).isNotNull();
+        assertThat(appTemplate.queryForObject("SELECT COUNT(*) FROM " + OWNER_USER + ".CONFIGURACION_HOSPITAL", Integer.class)).isEqualTo(1);
         assertThat(appTemplate.queryForObject("SELECT COUNT(*) FROM " + OWNER_USER + ".ESPECIALIDAD", Integer.class)).isNotNull();
         assertThat(appTemplate.queryForObject("SELECT COUNT(*) FROM " + OWNER_USER + ".PROFESIONAL", Integer.class)).isNotNull();
         assertThat(appTemplate.queryForObject("SELECT COUNT(*) FROM " + OWNER_USER + ".DISPONIBILIDAD_SLOT", Integer.class)).isNotNull();
     }
 
     @Test
-    void app_puedeConsultarCitas() {
+    void app_canQueryAppointments() {
         // MEDITRIAJE_APP puede consultar la tabla CITA (V006)
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         assertThat(appTemplate.queryForObject("SELECT COUNT(*) FROM " + OWNER_USER + ".CITA", Integer.class)).isNotNull();
     }
 
     @Test
-    void db_rechazaDobleCitaActivaEnMismoSlot() {
+    void db_rejectsDobleAppointmentActiveInSameSlot() {
         // Demuestra a nivel de motor Oracle el índice funcional único UQ_CITA_SLOT_ACTIVA (ADR-006)
         JdbcTemplate ownerTemplate = new JdbcTemplate(ownerDataSource());
         String uid = java.util.UUID.randomUUID().toString().substring(0, 8);
@@ -352,28 +307,13 @@ class OracleIntegrationTest {
         );
 
         ownerTemplate.update(
-                "INSERT INTO " + OWNER_USER + ".PROFESIONAL (USUARIO_ID, PUBLIC_ID, ESPECIALIDAD_ID, REGISTRO_MEDICO, NOMBRES, APELLIDOS) VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO " + OWNER_USER + ".PROFESIONAL (USUARIO_ID, PUBLIC_ID, ESPECIALIDAD_ID, REGISTRO_MEDICO, NOMBRES, APELLIDOS, NUMERO_DOCUMENTO) VALUES (?, ?, ?, ?, ?, ?, SUBSTR(RAWTOHEX(SYS_GUID()), 1, 20))",
                 docUsuarioId, "prof-" + uid, espId, "RM-" + uid, "Doc", "Test"
         );
         Long profId = ownerTemplate.queryForObject(
                 "SELECT ID FROM " + OWNER_USER + ".PROFESIONAL WHERE PUBLIC_ID = ?", Long.class, "prof-" + uid
         );
 
-        ownerTemplate.update(
-                "INSERT INTO " + OWNER_USER + ".INSTITUCION (PUBLIC_ID, NIT, RAZON_SOCIAL) VALUES (?, ?, ?)",
-                "inst-" + uid, "NIT-" + uid, "Inst-" + uid
-        );
-        Long instId = ownerTemplate.queryForObject(
-                "SELECT ID FROM " + OWNER_USER + ".INSTITUCION WHERE PUBLIC_ID = ?", Long.class, "inst-" + uid
-        );
-
-        ownerTemplate.update(
-                "INSERT INTO " + OWNER_USER + ".SEDE (INSTITUCION_ID, PUBLIC_ID, NOMBRE, DIRECCION, CIUDAD) VALUES (?, ?, ?, ?, ?)",
-                instId, "sede-" + uid, "Sede-" + uid, "Calle 1", "Bogota"
-        );
-        Long sedeId = ownerTemplate.queryForObject(
-                "SELECT ID FROM " + OWNER_USER + ".SEDE WHERE PUBLIC_ID = ?", Long.class, "sede-" + uid
-        );
 
         ownerTemplate.update(
                 "INSERT INTO " + OWNER_USER + ".USUARIO (PUBLIC_ID, EMAIL, PASSWORD_HASH) VALUES (?, ?, ?)",
@@ -384,8 +324,8 @@ class OracleIntegrationTest {
         );
 
         ownerTemplate.update(
-                "INSERT INTO " + OWNER_USER + ".PACIENTE (PUBLIC_ID, USUARIO_ID, NUMERO_IDENTIFICACION, NOMBRES, APELLIDOS, FECHA_NACIMIENTO, GENERO, TELEFONO) " +
-                "VALUES (?, ?, ?, ?, ?, DATE '1990-01-01', 'M', '3001234567')",
+                "INSERT INTO " + OWNER_USER + ".PACIENTE (PUBLIC_ID, USUARIO_ID, TIPO_DOCUMENTO, NUMERO_DOCUMENTO, NOMBRES, APELLIDOS, FECHA_NACIMIENTO, TELEFONO) " +
+                "VALUES (?, ?, 'CC', ?, ?, ?, DATE '1990-01-01', '3001234567')",
                 "pac-" + uid, pacUsuarioId, "CC-" + uid, "Paciente", "Test"
         );
         Long pacId = ownerTemplate.queryForObject(
@@ -394,9 +334,9 @@ class OracleIntegrationTest {
 
         java.time.Instant ahora = java.time.Instant.now();
         ownerTemplate.update(
-                "INSERT INTO " + OWNER_USER + ".DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, SEDE_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO) " +
-                "VALUES (?, ?, ?, ?, ?, ?, 'PRESENCIAL', 'LIBRE')",
-                "slot-" + uid, profId, sedeId, espId, java.sql.Timestamp.from(ahora), java.sql.Timestamp.from(ahora.plusSeconds(1200))
+                "INSERT INTO " + OWNER_USER + ".DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO) " +
+                "VALUES (?, ?, ?, ?, ?, 'PRESENCIAL', 'LIBRE')",
+                "slot-" + uid, profId, espId, java.sql.Timestamp.from(ahora), java.sql.Timestamp.from(ahora.plusSeconds(1200))
         );
         Long slotId = ownerTemplate.queryForObject(
                 "SELECT ID FROM " + OWNER_USER + ".DISPONIBILIDAD_SLOT WHERE PUBLIC_ID = ?", Long.class, "slot-" + uid
@@ -447,23 +387,16 @@ class OracleIntegrationTest {
                 "esp-mc-" + uid, "Esp-MC-" + uid, 20);
         Long espId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".ESPECIALIDAD WHERE PUBLIC_ID = ?", Long.class, "esp-mc-" + uid);
 
-        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".PROFESIONAL (USUARIO_ID, PUBLIC_ID, ESPECIALIDAD_ID, REGISTRO_MEDICO, NOMBRES, APELLIDOS) VALUES (?, ?, ?, ?, ?, ?)",
+        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".PROFESIONAL (USUARIO_ID, PUBLIC_ID, ESPECIALIDAD_ID, REGISTRO_MEDICO, NOMBRES, APELLIDOS, NUMERO_DOCUMENTO) VALUES (?, ?, ?, ?, ?, ?, SUBSTR(RAWTOHEX(SYS_GUID()), 1, 20))",
                 docUsuarioId, "prof-mc-" + uid, espId, "RM-MC-" + uid, "Doc", "MultiThread");
         Long profId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".PROFESIONAL WHERE PUBLIC_ID = ?", Long.class, "prof-mc-" + uid);
 
-        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".INSTITUCION (PUBLIC_ID, NIT, RAZON_SOCIAL) VALUES (?, ?, ?)",
-                "inst-mc-" + uid, "NIT-MC-" + uid, "Inst-MC-" + uid);
-        Long instId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".INSTITUCION WHERE PUBLIC_ID = ?", Long.class, "inst-mc-" + uid);
-
-        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".SEDE (INSTITUCION_ID, PUBLIC_ID, NOMBRE, DIRECCION, CIUDAD) VALUES (?, ?, ?, ?, ?)",
-                instId, "sede-mc-" + uid, "Sede-MC-" + uid, "Calle 10", "Bogota");
-        Long sedeId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".SEDE WHERE PUBLIC_ID = ?", Long.class, "sede-mc-" + uid);
 
         java.time.Instant ahora = java.time.Instant.now();
         ownerTemplate.update(
-                "INSERT INTO " + OWNER_USER + ".DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, SEDE_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO) " +
-                "VALUES (?, ?, ?, ?, ?, ?, 'PRESENCIAL', 'LIBRE')",
-                "slot-mc-" + uid, profId, sedeId, espId, java.sql.Timestamp.from(ahora), java.sql.Timestamp.from(ahora.plusSeconds(1200))
+                "INSERT INTO " + OWNER_USER + ".DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO) " +
+                "VALUES (?, ?, ?, ?, ?, 'PRESENCIAL', 'LIBRE')",
+                "slot-mc-" + uid, profId, espId, java.sql.Timestamp.from(ahora), java.sql.Timestamp.from(ahora.plusSeconds(1200))
         );
         Long slotId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".DISPONIBILIDAD_SLOT WHERE PUBLIC_ID = ?", Long.class, "slot-mc-" + uid);
 
@@ -477,8 +410,8 @@ class OracleIntegrationTest {
             Long uId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".USUARIO WHERE PUBLIC_ID = ?", Long.class, "u-pac-mc-" + pUid);
 
             ownerTemplate.update(
-                    "INSERT INTO " + OWNER_USER + ".PACIENTE (PUBLIC_ID, USUARIO_ID, NUMERO_IDENTIFICACION, NOMBRES, APELLIDOS, FECHA_NACIMIENTO, GENERO, TELEFONO) " +
-                    "VALUES (?, ?, ?, ?, ?, DATE '1990-01-01', 'M', '3001234567')",
+                    "INSERT INTO " + OWNER_USER + ".PACIENTE (PUBLIC_ID, USUARIO_ID, TIPO_DOCUMENTO, NUMERO_DOCUMENTO, NOMBRES, APELLIDOS, FECHA_NACIMIENTO, TELEFONO) " +
+                    "VALUES (?, ?, 'CC', ?, ?, ?, DATE '1990-01-01', '3001234567')",
                     "pac-mc-" + pUid, uId, "CC-MC-" + pUid, "Paciente" + i, "Test"
             );
             Long pId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".PACIENTE WHERE PUBLIC_ID = ?", Long.class, "pac-mc-" + pUid);
@@ -539,7 +472,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_noPuedeHacerDropTable() {
+    void app_notCanPerformDropTable() {
         // MEDITRIAJE_APP NO debe tener privilegio de DDL
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         boolean tuvoError = false;
@@ -552,7 +485,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_noPuedeHacerUpdateNiDeleteAuditoria() {
+    void app_notCanPerformUpdateNorDeleteAudit() {
         // AUDITORIA es insert-only para MEDITRIAJE_APP (sin GRANT UPDATE ni DELETE)
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         org.junit.jupiter.api.Assertions.assertThrows(
@@ -568,7 +501,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_puedeConsultarTablasClinicas() {
+    void app_canQueryTablesClinical() {
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         for (String tabla : new String[] {"DIAGNOSTICO_CIE10", "ATENCION", "SIGNO_VITAL", "ATENCION_ENMIENDA", "ALERGIA"}) {
             assertThat(appTemplate.queryForObject("SELECT COUNT(*) FROM " + OWNER_USER + "." + tabla, Integer.class))
@@ -577,7 +510,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void semillas_cie10_tienenCodigosYDescripciones() {
+    void seeds_cie10_haveCodesAndDescriptions() {
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         Integer total = appTemplate.queryForObject(
                 "SELECT COUNT(*) FROM " + OWNER_USER + ".DIAGNOSTICO_CIE10 WHERE ESTADO = 'ACTIVO'",
@@ -593,7 +526,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_noTieneDeleteSobreTablasClinicas() {
+    void app_notHasDeleteOverTablesClinical() {
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         for (String tabla : new String[] {"ATENCION", "SIGNO_VITAL", "ATENCION_ENMIENDA", "ALERGIA", "RECETA", "RECETA_DETALLE", "CONSENTIMIENTO"}) {
             org.junit.jupiter.api.Assertions.assertThrows(
@@ -605,7 +538,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_noTieneUpdateSobreAtencionEnmienda() {
+    void app_notHasUpdateOverAttentionAmendment() {
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         org.junit.jupiter.api.Assertions.assertThrows(
                 org.springframework.dao.DataAccessException.class,
@@ -615,7 +548,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void db_triggerBloqueaUpdateYDeleteSobreAtencionesCerradas() {
+    void db_triggerLocksUpdateAndDeleteOverAttentionsCerradas() {
         JdbcTemplate ownerTemplate = new JdbcTemplate(ownerDataSource());
         String uid = java.util.UUID.randomUUID().toString().substring(0, 8);
 
@@ -623,8 +556,8 @@ class OracleIntegrationTest {
         ownerTemplate.update("INSERT INTO " + OWNER_USER + ".USUARIO (PUBLIC_ID, EMAIL, PASSWORD_HASH) VALUES (?, ?, ?)",
                 "u-clin-" + uid, "clin-" + uid + "@test.com", "hash");
         Long usuarioId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".USUARIO WHERE PUBLIC_ID = ?", Long.class, "u-clin-" + uid);
-        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".PACIENTE (PUBLIC_ID, USUARIO_ID, NUMERO_IDENTIFICACION, NOMBRES, APELLIDOS, FECHA_NACIMIENTO, GENERO, TELEFONO) "
-                + "VALUES (?, ?, ?, ?, ?, DATE '1985-05-15', 'F', '3109876543')",
+        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".PACIENTE (PUBLIC_ID, USUARIO_ID, TIPO_DOCUMENTO, NUMERO_DOCUMENTO, NOMBRES, APELLIDOS, FECHA_NACIMIENTO, TELEFONO) "
+                + "VALUES (?, ?, 'CC', ?, ?, ?, DATE '1985-05-15', '3109876543')",
                 "pac-clin-" + uid, usuarioId, "CC-CLIN-" + uid, "Paciente", "Clinica");
         Long pacienteId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".PACIENTE WHERE PUBLIC_ID = ?", Long.class, "pac-clin-" + uid);
 
@@ -633,26 +566,19 @@ class OracleIntegrationTest {
                 "esp-clin-" + uid, "Medicina General " + uid);
         Long espId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".ESPECIALIDAD WHERE PUBLIC_ID = ?", Long.class, "esp-clin-" + uid);
 
-        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".INSTITUCION (PUBLIC_ID, NIT, RAZON_SOCIAL) VALUES (?, ?, ?)",
-                "inst-clin-" + uid, "901-CLIN-" + uid, "Clinica IPS " + uid);
-        Long instId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".INSTITUCION WHERE PUBLIC_ID = ?", Long.class, "inst-clin-" + uid);
-
-        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".SEDE (INSTITUCION_ID, PUBLIC_ID, NOMBRE, DIRECCION, CIUDAD) VALUES (?, ?, ?, ?, 'Bogota')",
-                instId, "sede-clin-" + uid, "Sede Central " + uid, "Calle 100 # 15-20");
-        Long sedeId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".SEDE WHERE PUBLIC_ID = ?", Long.class, "sede-clin-" + uid);
 
         ownerTemplate.update("INSERT INTO " + OWNER_USER + ".USUARIO (PUBLIC_ID, EMAIL, PASSWORD_HASH) VALUES (?, ?, ?)",
                 "u-med-" + uid, "med-" + uid + "@test.com", "hash");
         Long uMedId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".USUARIO WHERE PUBLIC_ID = ?", Long.class, "u-med-" + uid);
-        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".PROFESIONAL (PUBLIC_ID, USUARIO_ID, ESPECIALIDAD_ID, REGISTRO_MEDICO, NOMBRES, APELLIDOS) "
-                + "VALUES (?, ?, ?, ?, 'Doctor', 'Asistencial')",
+        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".PROFESIONAL (PUBLIC_ID, USUARIO_ID, ESPECIALIDAD_ID, REGISTRO_MEDICO, NOMBRES, APELLIDOS, NUMERO_DOCUMENTO) "
+                + "VALUES (?, ?, ?, ?, 'Doctor', 'Asistencial', SUBSTR(RAWTOHEX(SYS_GUID()), 1, 20))",
                 "pro-clin-" + uid, uMedId, espId, "RM-CLIN-" + uid);
         Long profesionalId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".PROFESIONAL WHERE PUBLIC_ID = ?", Long.class, "pro-clin-" + uid);
 
         // Slot y cita
-        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, SEDE_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO) "
-                + "VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP + INTERVAL '1' DAY, CURRENT_TIMESTAMP + INTERVAL '1' DAY + INTERVAL '20' MINUTE, 'PRESENCIAL', 'OCUPADO')",
-                "slot-clin-" + uid, profesionalId, sedeId, espId);
+        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO) "
+                + "VALUES (?, ?, ?, CURRENT_TIMESTAMP + INTERVAL '1' DAY, CURRENT_TIMESTAMP + INTERVAL '1' DAY + INTERVAL '20' MINUTE, 'PRESENCIAL', 'OCUPADO')",
+                "slot-clin-" + uid, profesionalId, espId);
         Long slotId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".DISPONIBILIDAD_SLOT WHERE PUBLIC_ID = ?", Long.class, "slot-clin-" + uid);
 
         ownerTemplate.update("INSERT INTO " + OWNER_USER + ".CITA (PUBLIC_ID, SLOT_ID, PACIENTE_ID, ESTADO) VALUES (?, ?, ?, 'CONFIRMADA')",
@@ -721,7 +647,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_puedeConsultarTablasRecetas() {
+    void app_canQueryTablesPrescriptions() {
         // MEDITRIAJE_APP puede consultar tablas de recetas y medicamentos (V009)
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         for (String tabla : new String[] {"MEDICAMENTO", "RECETA", "RECETA_DETALLE"}) {
@@ -731,7 +657,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void semillas_medicamentos_tienenAlMenos15() {
+    void seeds_medications_haveToLess15() {
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         Integer total = appTemplate.queryForObject(
                 "SELECT COUNT(*) FROM " + OWNER_USER + ".MEDICAMENTO WHERE ESTADO = 'ACTIVO'", Integer.class);
@@ -739,7 +665,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_noPuedeUpdateNiDeleteEnRecetas() {
+    void app_notCanUpdateNorDeleteInPrescriptions() {
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         org.junit.jupiter.api.Assertions.assertThrows(
                 org.springframework.dao.DataAccessException.class,
@@ -764,7 +690,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void db_triggersInmutabilidadRecetaYDetalle() {
+    void db_triggersImmutabilityPrescriptionAndDetail() {
         JdbcTemplate ownerTemplate = new JdbcTemplate(ownerDataSource());
         String uid = java.util.UUID.randomUUID().toString().substring(0, 8);
 
@@ -772,22 +698,21 @@ class OracleIntegrationTest {
         ownerTemplate.update("INSERT INTO " + OWNER_USER + ".USUARIO (PUBLIC_ID, EMAIL, PASSWORD_HASH, ESTADO) VALUES (?, ?, 'hash', 'ACTIVO')",
                 "usr-rx-pac-" + uid, "rx-pac-" + uid + "@test.com");
         Long usuarioPacId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".USUARIO WHERE PUBLIC_ID = ?", Long.class, "usr-rx-pac-" + uid);
-        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".PACIENTE (PUBLIC_ID, USUARIO_ID, TIPO_DOCUMENTO, NUMERO_DOCUMENTO, NOMBRES, APELLIDOS) "
-                + "VALUES (?, ?, 'CC', ?, 'Paciente', 'Receta')", "pac-rx-" + uid, usuarioPacId, "DOC-RX-" + uid);
+        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".PACIENTE (PUBLIC_ID, USUARIO_ID, TIPO_DOCUMENTO, NUMERO_DOCUMENTO, NOMBRES, APELLIDOS, FECHA_NACIMIENTO) "
+                + "VALUES (?, ?, 'CC', ?, 'Paciente', 'Receta', DATE '1990-01-01')", "pac-rx-" + uid, usuarioPacId, "DOC-RX-" + uid);
         Long pacienteId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".PACIENTE WHERE PUBLIC_ID = ?", Long.class, "pac-rx-" + uid);
 
         ownerTemplate.update("INSERT INTO " + OWNER_USER + ".USUARIO (PUBLIC_ID, EMAIL, PASSWORD_HASH, ESTADO) VALUES (?, ?, 'hash', 'ACTIVO')",
                 "usr-rx-prof-" + uid, "rx-prof-" + uid + "@test.com");
         Long usuarioProfId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".USUARIO WHERE PUBLIC_ID = ?", Long.class, "usr-rx-prof-" + uid);
         Long espId = ownerTemplate.queryForObject("SELECT MIN(ID) FROM " + OWNER_USER + ".ESPECIALIDAD", Long.class);
-        Long sedeId = ownerTemplate.queryForObject("SELECT MIN(ID) FROM " + OWNER_USER + ".SEDE", Long.class);
-        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".PROFESIONAL (PUBLIC_ID, USUARIO_ID, ESPECIALIDAD_ID, REGISTRO_MEDICO, NOMBRES, APELLIDOS) "
-                + "VALUES (?, ?, ?, ?, 'Dr', 'Prescriptor')", "prof-rx-" + uid, usuarioProfId, espId, "RM-RX-" + uid);
+        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".PROFESIONAL (PUBLIC_ID, USUARIO_ID, ESPECIALIDAD_ID, REGISTRO_MEDICO, NOMBRES, APELLIDOS, NUMERO_DOCUMENTO) "
+                + "VALUES (?, ?, ?, ?, 'Dr', 'Prescriptor', SUBSTR(RAWTOHEX(SYS_GUID()), 1, 20))", "prof-rx-" + uid, usuarioProfId, espId, "RM-RX-" + uid);
         Long profesionalId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".PROFESIONAL WHERE PUBLIC_ID = ?", Long.class, "prof-rx-" + uid);
 
-        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, SEDE_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, ESTADO) "
-                + "VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP + INTERVAL '1' DAY, CURRENT_TIMESTAMP + INTERVAL '1' DAY + INTERVAL '20' MINUTE, 'OCUPADO')",
-                "slot-rx-" + uid, profesionalId, sedeId, espId);
+        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, ESTADO) "
+                + "VALUES (?, ?, ?, CURRENT_TIMESTAMP + INTERVAL '1' DAY, CURRENT_TIMESTAMP + INTERVAL '1' DAY + INTERVAL '20' MINUTE, 'OCUPADO')",
+                "slot-rx-" + uid, profesionalId, espId);
         Long slotId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".DISPONIBILIDAD_SLOT WHERE PUBLIC_ID = ?", Long.class, "slot-rx-" + uid);
 
         ownerTemplate.update("INSERT INTO " + OWNER_USER + ".CITA (PUBLIC_ID, SLOT_ID, PACIENTE_ID, ESTADO) VALUES (?, ?, ?, 'CONFIRMADA')",
@@ -844,7 +769,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void db_recetaRollback_siFallaDetalleNoQuedaCabecera() {
+    void db_prescriptionRollback_whenFallaDetailNotRemainsHeader() {
         DataSource ds = ownerDataSource();
         org.springframework.jdbc.datasource.DataSourceTransactionManager txManager =
                 new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds);
@@ -858,25 +783,21 @@ class OracleIntegrationTest {
         ownerTemplate.update("INSERT INTO " + OWNER_USER + ".USUARIO (PUBLIC_ID, EMAIL, PASSWORD_HASH, ESTADO) VALUES (?, ?, 'hash', 'ACTIVO')",
                 "usr-rx-rb-p-" + uid, "rx-rb-p-" + uid + "@test.com");
         Long usuarioPacId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".USUARIO WHERE PUBLIC_ID = ?", Long.class, "usr-rx-rb-p-" + uid);
-        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".PACIENTE (PUBLIC_ID, USUARIO_ID, NUMERO_IDENTIFICACION, NOMBRES, APELLIDOS) "
-                + "VALUES (?, ?, ?, 'Paciente', 'Rollback')", "pac-rx-rb-" + uid, usuarioPacId, "CC-RX-RB-" + uid);
+        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".PACIENTE (PUBLIC_ID, USUARIO_ID, TIPO_DOCUMENTO, NUMERO_DOCUMENTO, NOMBRES, APELLIDOS, FECHA_NACIMIENTO) "
+                + "VALUES (?, ?, 'CC', ?, 'Paciente', 'Rollback', DATE '1990-01-01')", "pac-rx-rb-" + uid, usuarioPacId, "CC-RX-RB-" + uid);
         Long pacienteId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".PACIENTE WHERE PUBLIC_ID = ?", Long.class, "pac-rx-rb-" + uid);
 
         ownerTemplate.update("INSERT INTO " + OWNER_USER + ".USUARIO (PUBLIC_ID, EMAIL, PASSWORD_HASH, ESTADO) VALUES (?, ?, 'hash', 'ACTIVO')",
                 "usr-rx-rb-d-" + uid, "rx-rb-d-" + uid + "@test.com");
         Long usuarioProfId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".USUARIO WHERE PUBLIC_ID = ?", Long.class, "usr-rx-rb-d-" + uid);
         Long espId = ownerTemplate.queryForObject("SELECT MIN(ID) FROM " + OWNER_USER + ".ESPECIALIDAD", Long.class);
-        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".PROFESIONAL (PUBLIC_ID, USUARIO_ID, ESPECIALIDAD_ID, REGISTRO_MEDICO, NOMBRES, APELLIDOS) "
-                + "VALUES (?, ?, ?, ?, 'Dr', 'Rollback')", "prof-rx-rb-" + uid, usuarioProfId, espId, "RM-RX-RB-" + uid);
+        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".PROFESIONAL (PUBLIC_ID, USUARIO_ID, ESPECIALIDAD_ID, REGISTRO_MEDICO, NOMBRES, APELLIDOS, NUMERO_DOCUMENTO) "
+                + "VALUES (?, ?, ?, ?, 'Dr', 'Rollback', SUBSTR(RAWTOHEX(SYS_GUID()), 1, 20))", "prof-rx-rb-" + uid, usuarioProfId, espId, "RM-RX-RB-" + uid);
         Long profesionalId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".PROFESIONAL WHERE PUBLIC_ID = ?", Long.class, "prof-rx-rb-" + uid);
 
-        Long instId = ownerTemplate.queryForObject("SELECT MIN(ID) FROM " + OWNER_USER + ".INSTITUCION", Long.class);
-        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".SEDE (INSTITUCION_ID, PUBLIC_ID, NOMBRE, DIRECCION, CIUDAD) VALUES (?, ?, 'Sede RB', 'Dir', 'Bogota')",
-                instId, "sede-rx-rb-" + uid);
-        Long sedeId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".SEDE WHERE PUBLIC_ID = ?", Long.class, "sede-rx-rb-" + uid);
-        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, SEDE_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO) "
-                + "VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '20' MINUTE, 'PRESENCIAL', 'OCUPADO')",
-                "slot-rx-rb-" + uid, profesionalId, sedeId, espId);
+        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO) "
+                + "VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '20' MINUTE, 'PRESENCIAL', 'OCUPADO')",
+                "slot-rx-rb-" + uid, profesionalId, espId);
         Long slotId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".DISPONIBILIDAD_SLOT WHERE PUBLIC_ID = ?", Long.class, "slot-rx-rb-" + uid);
 
         ownerTemplate.update("INSERT INTO " + OWNER_USER + ".CITA (PUBLIC_ID, SLOT_ID, PACIENTE_ID, ESTADO) VALUES (?, ?, ?, 'ATENDIDA')",
@@ -884,8 +805,8 @@ class OracleIntegrationTest {
         Long citaId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".CITA WHERE PUBLIC_ID = ?", Long.class, "cita-rx-rb-" + uid);
 
         Long cie10Id = ownerTemplate.queryForObject("SELECT MIN(ID) FROM " + OWNER_USER + ".DIAGNOSTICO_CIE10", Long.class);
-        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".ATENCION (PUBLIC_ID, CITA_ID, PACIENTE_ID, PROFESIONAL_ID, DIAGNOSTICO_CIE10_ID, ESTADO, MOTIVO_CONSULTA) "
-                + "VALUES (?, ?, ?, ?, ?, 'CERRADA', 'Consulta para receta')",
+        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".ATENCION (PUBLIC_ID, CITA_ID, PACIENTE_ID, PROFESIONAL_ID, DIAGNOSTICO_PRINCIPAL_ID, ESTADO, FECHA_CIERRE, MOTIVO_CONSULTA, EVOLUCION, INDICACIONES) "
+                + "VALUES (?, ?, ?, ?, ?, 'CERRADA', CURRENT_TIMESTAMP, 'Consulta para receta', 'Evolucion', 'Indicaciones')",
                 "atn-rx-rb-" + uid, citaId, pacienteId, profesionalId, cie10Id);
         Long atencionId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".ATENCION WHERE PUBLIC_ID = ?", Long.class, "atn-rx-rb-" + uid);
 
@@ -920,16 +841,16 @@ class OracleIntegrationTest {
         ownerTemplate.update("INSERT INTO " + OWNER_USER + ".USUARIO (PUBLIC_ID, EMAIL, PASSWORD_HASH, ESTADO) VALUES (?, ?, 'hash', 'ACTIVO')",
                 "usr-bg-pac-" + uid, "bg-pac-" + uid + "@test.com");
         Long usuarioPacId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".USUARIO WHERE PUBLIC_ID = ?", Long.class, "usr-bg-pac-" + uid);
-        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".PACIENTE (PUBLIC_ID, USUARIO_ID, TIPO_DOCUMENTO, NUMERO_DOCUMENTO, NOMBRES, APELLIDOS) "
-                + "VALUES (?, ?, 'CC', ?, 'Paciente', 'Emergencia')", "pac-bg-" + uid, usuarioPacId, "DOC-BG-" + uid);
+        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".PACIENTE (PUBLIC_ID, USUARIO_ID, TIPO_DOCUMENTO, NUMERO_DOCUMENTO, NOMBRES, APELLIDOS, FECHA_NACIMIENTO) "
+                + "VALUES (?, ?, 'CC', ?, 'Paciente', 'Emergencia', DATE '1990-01-01')", "pac-bg-" + uid, usuarioPacId, "DOC-BG-" + uid);
         Long pacienteId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".PACIENTE WHERE PUBLIC_ID = ?", Long.class, "pac-bg-" + uid);
 
         ownerTemplate.update("INSERT INTO " + OWNER_USER + ".USUARIO (PUBLIC_ID, EMAIL, PASSWORD_HASH, ESTADO) VALUES (?, ?, 'hash', 'ACTIVO')",
                 "usr-bg-prof-" + uid, "bg-prof-" + uid + "@test.com");
         Long usuarioProfId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".USUARIO WHERE PUBLIC_ID = ?", Long.class, "usr-bg-prof-" + uid);
         Long espId = ownerTemplate.queryForObject("SELECT MIN(ID) FROM " + OWNER_USER + ".ESPECIALIDAD", Long.class);
-        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".PROFESIONAL (PUBLIC_ID, USUARIO_ID, ESPECIALIDAD_ID, REGISTRO_MEDICO, NOMBRES, APELLIDOS) "
-                + "VALUES (?, ?, ?, ?, 'Dr', 'Urgencias')", "prof-bg-" + uid, usuarioProfId, espId, "RM-BG-" + uid);
+        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".PROFESIONAL (PUBLIC_ID, USUARIO_ID, ESPECIALIDAD_ID, REGISTRO_MEDICO, NOMBRES, APELLIDOS, NUMERO_DOCUMENTO) "
+                + "VALUES (?, ?, ?, ?, 'Dr', 'Urgencias', SUBSTR(RAWTOHEX(SYS_GUID()), 1, 20))", "prof-bg-" + uid, usuarioProfId, espId, "RM-BG-" + uid);
         Long profesionalId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".PROFESIONAL WHERE PUBLIC_ID = ?", Long.class, "prof-bg-" + uid);
 
         // 1. Insertar ACCESO_BREAK_GLASS
@@ -954,7 +875,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void db_triggerInmutabilidadAlergias() {
+    void db_triggerImmutabilityAllergies() {
         JdbcTemplate ownerTemplate = new JdbcTemplate(ownerDataSource());
         String uid = java.util.UUID.randomUUID().toString().substring(0, 8);
 
@@ -962,8 +883,8 @@ class OracleIntegrationTest {
         ownerTemplate.update("INSERT INTO " + OWNER_USER + ".USUARIO (PUBLIC_ID, EMAIL, PASSWORD_HASH, ESTADO) VALUES (?, ?, 'hash', 'ACTIVO')",
                 "usr-al-pac-" + uid, "al-pac-" + uid + "@test.com");
         Long usuarioPacId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".USUARIO WHERE PUBLIC_ID = ?", Long.class, "usr-al-pac-" + uid);
-        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".PACIENTE (PUBLIC_ID, USUARIO_ID, NUMERO_IDENTIFICACION, NOMBRES, APELLIDOS) "
-                + "VALUES (?, ?, ?, 'Paciente', 'Alergico')", "pac-al-" + uid, usuarioPacId, "DOC-AL-" + uid);
+        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".PACIENTE (PUBLIC_ID, USUARIO_ID, TIPO_DOCUMENTO, NUMERO_DOCUMENTO, NOMBRES, APELLIDOS, FECHA_NACIMIENTO) "
+                + "VALUES (?, ?, 'CC', ?, 'Paciente', 'Alergico', DATE '1990-01-01')", "pac-al-" + uid, usuarioPacId, "DOC-AL-" + uid);
         Long pacienteId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".PACIENTE WHERE PUBLIC_ID = ?", Long.class, "pac-al-" + uid);
 
         // 1. Insertar ALERGIA activa

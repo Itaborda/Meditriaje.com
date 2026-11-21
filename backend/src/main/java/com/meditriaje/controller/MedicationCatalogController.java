@@ -1,7 +1,7 @@
 package com.meditriaje.controller;
 
 import com.meditriaje.dto.common.PaginatedResponse;
-import com.meditriaje.dto.prescription.MedicamentoResponse;
+import com.meditriaje.dto.prescription.MedicationResponse;
 import com.meditriaje.service.PrescriptionService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -31,12 +31,12 @@ public class MedicationCatalogController {
      */
     @GetMapping
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<PaginatedResponse<MedicamentoResponse>> listarMedicamentos(
+    public ResponseEntity<PaginatedResponse<MedicationResponse>> listMedications(
             @RequestParam(required = false, name = "q") String q,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size
     ) {
-        PaginatedResponse<MedicamentoResponse> response = prescriptionService.listarCatalogo(q, page, size);
+        PaginatedResponse<MedicationResponse> response = prescriptionService.listCatalog(q, page, size);
         return ResponseEntity.ok(response);
     }
 }

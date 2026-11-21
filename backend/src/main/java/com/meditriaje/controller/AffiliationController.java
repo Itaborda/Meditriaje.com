@@ -1,7 +1,7 @@
 package com.meditriaje.controller;
 
 import com.meditriaje.dto.affiliation.*;
-import com.meditriaje.model.EntidadEps;
+import com.meditriaje.model.EpsEntity;
 import com.meditriaje.service.AffiliationService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -30,7 +30,7 @@ public class AffiliationController {
         this.affiliationService = Objects.requireNonNull(affiliationService, "affiliationService no puede ser nulo");
     }
 
-    private String obtenerIp(HttpServletRequest request) {
+    private String extractClientIp(HttpServletRequest request) {
         String xf = request.getHeader("X-Forwarded-For");
         return (xf != null && !xf.isBlank()) ? xf.split(",")[0].trim() : request.getRemoteAddr();
     }
@@ -40,16 +40,16 @@ public class AffiliationController {
      */
     @GetMapping("/eps")
     @PreAuthorize("hasAnyRole('ROLE_ADMINISTRADOR', 'ROLE_ENFERMERIA', 'ROLE_PROFESIONAL', 'ROLE_PACIENTE')")
-    public ResponseEntity<List<EntidadEps>> listarEps() {
-        return ResponseEntity.ok(affiliationService.listarEpsActivas());
+    public ResponseEntity<List<EpsEntity>> listEps() {
+        return ResponseEntity.ok(affiliationService.listActiveEps());
     }
 
     /**
      * Descarga la plantilla oficial en formato Excel (.xlsx) para importación masiva de afiliados.
      */
     @GetMapping(value = "/template", produces = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    public ResponseEntity<byte[]> descargarPlantilla() {
-        byte[] archivo = affiliationService.generarPlantillaExcel();
+    public ResponseEntity<byte[]> downloadTemplate() {
+        byte[] archivo = affiliationService.generateExcelTemplate();
         return ResponseEntity.ok()
                 .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"plantilla_afiliados_eps.xlsx\"")
                 .body(archivo);
@@ -60,7 +60,7 @@ public class AffiliationController {
      */
     @PostMapping(value = "/upload-preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('ROLE_ADMINISTRADOR')")
-    public ResponseEntity<LotePreviewResponse> cargarPreview(
+    public ResponseEntity<BatchPreviewResponse> uploadPreview(
             @RequestParam("file") MultipartFile file,
             @RequestParam("epsPublicId") String epsPublicId,
             Authentication auth,
@@ -70,12 +70,12 @@ public class AffiliationController {
         byte[] bytes = file.getBytes();
         String originalFilename = file.getOriginalFilename() != null ? file.getOriginalFilename() : "importacion.xlsx";
 
-        LotePreviewResponse response = affiliationService.procesarArchivoExcelPreview(
+        BatchPreviewResponse response = affiliationService.previewExcelImport(
                 bytes,
                 originalFilename,
                 epsPublicId,
                 usuarioPubId,
-                obtenerIp(httpRequest)
+                extractClientIp(httpRequest)
         );
         return ResponseEntity.ok(response);
     }
@@ -85,14 +85,14 @@ public class AffiliationController {
      */
     @PostMapping("/batches/{lotePublicId}/commit")
     @PreAuthorize("hasRole('ROLE_ADMINISTRADOR')")
-    public ResponseEntity<Void> confirmarLote(
-            @PathVariable String lotePublicId,
-            @Valid @RequestBody(required = false) CommitLoteRequest request,
+    public ResponseEntity<Void> confirmBatch(
+            @PathVariable("lotePublicId") String batchPublicId,
+            @Valid @RequestBody(required = false) CommitBatchRequest request,
             Authentication auth,
             HttpServletRequest httpRequest
     ) {
         String usuarioPubId = auth.getName();
-        affiliationService.commitLote(lotePublicId, request, usuarioPubId, obtenerIp(httpRequest));
+        affiliationService.commitBatch(batchPublicId, request, usuarioPubId, extractClientIp(httpRequest));
         return ResponseEntity.noContent().build();
     }
 
@@ -101,18 +101,18 @@ public class AffiliationController {
      */
     @GetMapping("/patients/{tipoDocumento}/{numeroDocumento}")
     @PreAuthorize("hasAnyRole('ROLE_ADMINISTRADOR', 'ROLE_ENFERMERIA', 'ROLE_PROFESIONAL')")
-    public ResponseEntity<AfiliacionResponse> consultarAfiliacion(
-            @PathVariable String tipoDocumento,
-            @PathVariable String numeroDocumento,
+    public ResponseEntity<AffiliationResponse> getAffiliation(
+            @PathVariable("tipoDocumento") String documentType,
+            @PathVariable("numeroDocumento") String documentNumber,
             Authentication auth,
             HttpServletRequest httpRequest
     ) {
         String usuarioPubId = auth.getName();
-        AfiliacionResponse response = affiliationService.consultarAfiliacion(
-                tipoDocumento,
-                numeroDocumento,
+        AffiliationResponse response = affiliationService.getAffiliation(
+                documentType,
+                documentNumber,
                 usuarioPubId,
-                obtenerIp(httpRequest)
+                extractClientIp(httpRequest)
         );
         return ResponseEntity.ok(response);
     }
@@ -122,13 +122,13 @@ public class AffiliationController {
      */
     @PostMapping("/absences")
     @PreAuthorize("hasAnyRole('ROLE_ADMINISTRADOR', 'ROLE_PROFESIONAL')")
-    public ResponseEntity<AusenciaResponse> registrarAusencia(
-            @Valid @RequestBody RegistrarAusenciaRequest request,
+    public ResponseEntity<AbsenceResponse> registerAbsence(
+            @Valid @RequestBody RegisterAbsenceRequest request,
             Authentication auth,
             HttpServletRequest httpRequest
     ) {
         String usuarioPubId = auth.getName();
-        AusenciaResponse response = affiliationService.registrarAusenciaMedica(request, usuarioPubId, obtenerIp(httpRequest));
+        AbsenceResponse response = affiliationService.registerMedicalAbsence(request, usuarioPubId, extractClientIp(httpRequest));
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -137,10 +137,10 @@ public class AffiliationController {
      */
     @GetMapping("/professionals/{profesionalPublicId}/absences")
     @PreAuthorize("hasAnyRole('ROLE_ADMINISTRADOR', 'ROLE_PROFESIONAL')")
-    public ResponseEntity<List<AusenciaResponse>> listarAusencias(
-            @PathVariable String profesionalPublicId
+    public ResponseEntity<List<AbsenceResponse>> listAbsences(
+            @PathVariable("profesionalPublicId") String professionalPublicId
     ) {
-        return ResponseEntity.ok(affiliationService.listarAusenciasProfesional(profesionalPublicId));
+        return ResponseEntity.ok(affiliationService.listProfessionalAbsences(professionalPublicId));
     }
 
     /**
@@ -148,13 +148,13 @@ public class AffiliationController {
      */
     @PostMapping("/guardians")
     @PreAuthorize("hasAnyRole('ROLE_ADMINISTRADOR', 'ROLE_PACIENTE')")
-    public ResponseEntity<RepresentacionLegalResponse> registrarRepresentacion(
-            @Valid @RequestBody RepresentacionLegalRequest request,
+    public ResponseEntity<LegalRepresentationResponse> registerRepresentation(
+            @Valid @RequestBody LegalRepresentationRequest request,
             Authentication auth,
             HttpServletRequest httpRequest
     ) {
         String usuarioPubId = auth.getName();
-        RepresentacionLegalResponse response = affiliationService.registrarRepresentacionLegal(request, usuarioPubId, obtenerIp(httpRequest));
+        LegalRepresentationResponse response = affiliationService.registerLegalRepresentation(request, usuarioPubId, extractClientIp(httpRequest));
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -163,9 +163,9 @@ public class AffiliationController {
      */
     @GetMapping("/guardians/{tutorPublicId}/minors")
     @PreAuthorize("hasAnyRole('ROLE_ADMINISTRADOR', 'ROLE_PACIENTE')")
-    public ResponseEntity<List<RepresentacionLegalResponse>> listarMenoresACargo(
-            @PathVariable String tutorPublicId
+    public ResponseEntity<List<LegalRepresentationResponse>> listDependents(
+            @PathVariable("tutorPublicId") String guardianPublicId
     ) {
-        return ResponseEntity.ok(affiliationService.listarRepresentacionesPorTutor(tutorPublicId));
+        return ResponseEntity.ok(affiliationService.listRepresentationsByGuardian(guardianPublicId));
     }
 }

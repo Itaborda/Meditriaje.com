@@ -5,21 +5,21 @@ import com.meditriaje.config.CorsConfig;
 import com.meditriaje.config.SecurityConfig;
 import com.meditriaje.dto.AuthSessionResponse;
 import com.meditriaje.dto.AuthTokens;
-import com.meditriaje.dto.CambiarPasswordRequest;
+import com.meditriaje.dto.ChangePasswordRequest;
 import com.meditriaje.dto.LoginRequest;
-import com.meditriaje.dto.RegistroPacienteRequest;
-import com.meditriaje.dto.RegistroPacienteResponse;
+import com.meditriaje.dto.RegisterPatientRequest;
+import com.meditriaje.dto.RegisterPatientResponse;
 import com.meditriaje.dto.auth.MfaAuthenticateRequest;
 import com.meditriaje.dto.auth.MfaSetupResponse;
 import com.meditriaje.dto.auth.MfaVerifyRequest;
 import com.meditriaje.dto.auth.MfaVerifyResponse;
-import com.meditriaje.dto.auth.RestablecerPasswordRequest;
-import com.meditriaje.dto.auth.RestablecerPasswordResponse;
-import com.meditriaje.dto.auth.SolicitarRecuperacionRequest;
-import com.meditriaje.dto.auth.SolicitarRecuperacionResponse;
-import com.meditriaje.exception.CredencialesInvalidasException;
+import com.meditriaje.dto.auth.ResetPasswordRequest;
+import com.meditriaje.dto.auth.ResetPasswordResponse;
+import com.meditriaje.dto.auth.RequestPasswordResetRequest;
+import com.meditriaje.dto.auth.RequestPasswordResetResponse;
+import com.meditriaje.exception.InvalidCredentialsException;
 import com.meditriaje.exception.GlobalExceptionHandler;
-import com.meditriaje.exception.TokenInvalidoException;
+import com.meditriaje.exception.InvalidTokenException;
 import com.meditriaje.security.CsrfHeaderFilter;
 import com.meditriaje.security.CustomAccessDeniedHandler;
 import com.meditriaje.security.CustomAuthenticationEntryPoint;
@@ -69,8 +69,8 @@ class AuthControllerTest {
     private com.meditriaje.security.JwtService jwtService;
 
     @Test
-    void register_conPayloadValido_retorna201Created() throws Exception {
-        RegistroPacienteRequest request = new RegistroPacienteRequest(
+    void register_withPayloadValid_returns201Created() throws Exception {
+        RegisterPatientRequest request = new RegisterPatientRequest(
                 "CC",
                 "1234567890",
                 "Maria",
@@ -83,7 +83,7 @@ class AuthControllerTest {
                 true
         );
 
-        RegistroPacienteResponse mockResponse = new RegistroPacienteResponse(
+        RegisterPatientResponse mockResponse = new RegisterPatientResponse(
                 "f81d4fae-7dec-11d0-a765-00a0c91e6bf6",
                 "maria.gomez@example.com",
                 "Maria",
@@ -91,7 +91,7 @@ class AuthControllerTest {
                 "Registro completado exitosamente."
         );
 
-        when(authService.registrarPaciente(any(), anyString())).thenReturn(mockResponse);
+        when(authService.registerPatient(any(), anyString())).thenReturn(mockResponse);
 
         mockMvc.perform(post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -106,7 +106,7 @@ class AuthControllerTest {
 
     @Test
     void register_conContrasenaCorta_retorna400BadRequest() throws Exception {
-        RegistroPacienteRequest request = new RegistroPacienteRequest(
+        RegisterPatientRequest request = new RegisterPatientRequest(
                 "CC",
                 "1234567890",
                 "Maria",
@@ -129,8 +129,8 @@ class AuthControllerTest {
     }
 
     @Test
-    void register_sinAceptarConsentimiento_retorna400BadRequest() throws Exception {
-        RegistroPacienteRequest request = new RegistroPacienteRequest(
+    void register_withoutConsentAccepted_returns400BadRequest() throws Exception {
+        RegisterPatientRequest request = new RegisterPatientRequest(
                 "CC",
                 "1234567890",
                 "Maria",
@@ -156,7 +156,7 @@ class AuthControllerTest {
     // -------------------------------------------------------------------------
 
     @Test
-    void login_credencialesValidas_retorna200YSeteaCookiesHttpOnly() throws Exception {
+    void login_credentialsValidas_returns200AndSetsCookiesHttpOnly() throws Exception {
         LoginRequest request = new LoginRequest("maria.gomez@example.com", "PasswordSegura123*");
 
         AuthSessionResponse session = new AuthSessionResponse(
@@ -183,10 +183,10 @@ class AuthControllerTest {
     }
 
     @Test
-    void login_credencialesInvalidas_retorna401Unauthorized() throws Exception {
+    void login_credentialsInvalidas_returns401Unauthorized() throws Exception {
         LoginRequest request = new LoginRequest("maria.gomez@example.com", "ClaveErronea123*");
 
-        when(authService.login(any(), anyString())).thenThrow(new CredencialesInvalidasException());
+        when(authService.login(any(), anyString())).thenThrow(new InvalidCredentialsException());
 
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -252,7 +252,7 @@ class AuthControllerTest {
 
     @Test
     void changePassword_sinAutenticacion_retorna401Unauthorized() throws Exception {
-        CambiarPasswordRequest request = new CambiarPasswordRequest("PasswordActual123*", "PasswordNuevo123*");
+        ChangePasswordRequest request = new ChangePasswordRequest("PasswordActual123*", "PasswordNuevo123*");
 
         mockMvc.perform(post("/api/v1/auth/change-password")
                         .header("X-Requested-With", "XMLHttpRequest")
@@ -263,16 +263,16 @@ class AuthControllerTest {
     }
 
     @Test
-    void changePassword_conTokenValido_retorna200OK() throws Exception {
+    void changePassword_withTokenValid_returns200OK() throws Exception {
         String tokenValido = "jwt.usuario.valido";
         String userPubId = "user-pub-id-1";
-        CambiarPasswordRequest request = new CambiarPasswordRequest("PasswordActual123*", "PasswordNuevo123*");
+        ChangePasswordRequest request = new ChangePasswordRequest("PasswordActual123*", "PasswordNuevo123*");
 
-        when(jwtService.esValido(tokenValido)).thenReturn(true);
-        when(jwtService.esAccessToken(tokenValido)).thenReturn(true);
-        when(jwtService.extraerPublicId(tokenValido)).thenReturn(userPubId);
-        when(jwtService.extraerRoles(tokenValido)).thenReturn(List.of("ROLE_PACIENTE"));
-        doNothing().when(authService).cambiarPassword(eq(userPubId), any(), anyString());
+        when(jwtService.isValid(tokenValido)).thenReturn(true);
+        when(jwtService.isAccessToken(tokenValido)).thenReturn(true);
+        when(jwtService.extractPublicId(tokenValido)).thenReturn(userPubId);
+        when(jwtService.extractRoles(tokenValido)).thenReturn(List.of("ROLE_PACIENTE"));
+        doNothing().when(authService).changePassword(eq(userPubId), any(), anyString());
 
         mockMvc.perform(post("/api/v1/auth/change-password")
                         .cookie(new Cookie("access_token", tokenValido))
@@ -286,12 +286,12 @@ class AuthControllerTest {
     @Test
     void changePassword_conContrasenaCorta_retorna400BadRequest() throws Exception {
         String tokenValido = "jwt.usuario.valido";
-        when(jwtService.esValido(tokenValido)).thenReturn(true);
-        when(jwtService.esAccessToken(tokenValido)).thenReturn(true);
-        when(jwtService.extraerPublicId(tokenValido)).thenReturn("user-pub-id-1");
-        when(jwtService.extraerRoles(tokenValido)).thenReturn(List.of("ROLE_PACIENTE"));
+        when(jwtService.isValid(tokenValido)).thenReturn(true);
+        when(jwtService.isAccessToken(tokenValido)).thenReturn(true);
+        when(jwtService.extractPublicId(tokenValido)).thenReturn("user-pub-id-1");
+        when(jwtService.extractRoles(tokenValido)).thenReturn(List.of("ROLE_PACIENTE"));
 
-        CambiarPasswordRequest request = new CambiarPasswordRequest("PasswordActual123*", "corta");
+        ChangePasswordRequest request = new ChangePasswordRequest("PasswordActual123*", "corta");
 
         mockMvc.perform(post("/api/v1/auth/change-password")
                         .cookie(new Cookie("access_token", tokenValido))
@@ -303,22 +303,22 @@ class AuthControllerTest {
     }
 
     @Test
-    void forgotPassword_datosValidos_retorna200OkConMensajeGenericoSinAutenticacion() throws Exception {
-        SolicitarRecuperacionRequest request = new SolicitarRecuperacionRequest("paciente@hospital.com");
-        when(authService.solicitarRecuperacionPassword(any(SolicitarRecuperacionRequest.class), anyString()))
-                .thenReturn(SolicitarRecuperacionResponse.defaultResponse());
+    void forgotPassword_validData_returns200OkWithMessageGenericWithoutAutenticacion() throws Exception {
+        RequestPasswordResetRequest request = new RequestPasswordResetRequest("paciente@hospital.com");
+        when(authService.requestPasswordReset(any(RequestPasswordResetRequest.class), anyString()))
+                .thenReturn(RequestPasswordResetResponse.defaultResponse());
 
         mockMvc.perform(post("/api/v1/auth/forgot-password")
                         .header("X-Requested-With", "XMLHttpRequest")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.mensaje").value(SolicitarRecuperacionResponse.MENSAJE_DEFAULT));
+                .andExpect(jsonPath("$.mensaje").value(RequestPasswordResetResponse.DEFAULT_MESSAGE));
     }
 
     @Test
-    void forgotPassword_emailInvalido_retorna400BadRequest() throws Exception {
-        SolicitarRecuperacionRequest request = new SolicitarRecuperacionRequest("correo-no-valido");
+    void forgotPassword_emailInvalid_returns400BadRequest() throws Exception {
+        RequestPasswordResetRequest request = new RequestPasswordResetRequest("correo-no-valido");
 
         mockMvc.perform(post("/api/v1/auth/forgot-password")
                         .header("X-Requested-With", "XMLHttpRequest")
@@ -329,26 +329,26 @@ class AuthControllerTest {
     }
 
     @Test
-    void resetPassword_datosValidos_retorna200OkSinAutenticacion() throws Exception {
-        RestablecerPasswordRequest request = new RestablecerPasswordRequest(
+    void resetPassword_validData_returns200OkWithoutAutenticacion() throws Exception {
+        ResetPasswordRequest request = new ResetPasswordRequest(
                 "paciente@hospital.com",
                 "123456",
                 "NuevaClaveSegura123*"
         );
-        when(authService.restablecerPassword(any(RestablecerPasswordRequest.class), anyString()))
-                .thenReturn(RestablecerPasswordResponse.defaultResponse());
+        when(authService.resetPassword(any(ResetPasswordRequest.class), anyString()))
+                .thenReturn(ResetPasswordResponse.defaultResponse());
 
         mockMvc.perform(post("/api/v1/auth/reset-password")
                         .header("X-Requested-With", "XMLHttpRequest")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.mensaje").value(RestablecerPasswordResponse.MENSAJE_DEFAULT));
+                .andExpect(jsonPath("$.mensaje").value(ResetPasswordResponse.DEFAULT_MESSAGE));
     }
 
     @Test
-    void resetPassword_codigoInvalido_retorna400BadRequest() throws Exception {
-        RestablecerPasswordRequest request = new RestablecerPasswordRequest(
+    void resetPassword_codeInvalid_returns400BadRequest() throws Exception {
+        ResetPasswordRequest request = new ResetPasswordRequest(
                 "paciente@hospital.com",
                 "1234", // menos de 6 dígitos
                 "NuevaClaveSegura123*"
@@ -364,7 +364,7 @@ class AuthControllerTest {
 
     @Test
     void resetPassword_passwordCorta_retorna400BadRequest() throws Exception {
-        RestablecerPasswordRequest request = new RestablecerPasswordRequest(
+        ResetPasswordRequest request = new ResetPasswordRequest(
                 "paciente@hospital.com",
                 "123456",
                 "corta" // menos de 10 caracteres
@@ -383,9 +383,9 @@ class AuthControllerTest {
     // -------------------------------------------------------------------------
 
     @Test
-    void login_conMfaHabilitado_retorna200ConMfaRequeridoYSinCookiesDeSesion() throws Exception {
+    void login_withMfaEnabled_returns200WithMfaRequiredAndWithoutCookiesOfSession() throws Exception {
         LoginRequest request = new LoginRequest("dr.garcia@hospital.com", "PasswordSeguro123*");
-        AuthSessionResponse session = AuthSessionResponse.mfaRequerido(
+        AuthSessionResponse session = AuthSessionResponse.mfaRequired(
                 "usr-medico-1",
                 "dr.garcia@hospital.com",
                 List.of("ROLE_PROFESIONAL"),
@@ -407,14 +407,14 @@ class AuthControllerTest {
     }
 
     @Test
-    void setupMfa_conTokenValido_retorna200ConSecretYQrUri() throws Exception {
+    void setupMfa_withTokenValid_returns200WithSecretAndQrUri() throws Exception {
         String tokenValido = "jwt.usuario.valido";
         String userPubId = "usr-medico-1";
 
-        when(jwtService.esValido(tokenValido)).thenReturn(true);
-        when(jwtService.esAccessToken(tokenValido)).thenReturn(true);
-        when(jwtService.extraerPublicId(tokenValido)).thenReturn(userPubId);
-        when(jwtService.extraerRoles(tokenValido)).thenReturn(List.of("ROLE_PROFESIONAL"));
+        when(jwtService.isValid(tokenValido)).thenReturn(true);
+        when(jwtService.isAccessToken(tokenValido)).thenReturn(true);
+        when(jwtService.extractPublicId(tokenValido)).thenReturn(userPubId);
+        when(jwtService.extractRoles(tokenValido)).thenReturn(List.of("ROLE_PROFESIONAL"));
 
         MfaSetupResponse mockResponse = new MfaSetupResponse(
                 "JBSWY3DPEHPK3PXP",
@@ -442,15 +442,15 @@ class AuthControllerTest {
     }
 
     @Test
-    void verifyMfa_conCodigoValido_retorna200ConCodigosRespaldo() throws Exception {
+    void verifyMfa_withCodeValid_returns200WithCodesBackup() throws Exception {
         String tokenValido = "jwt.usuario.valido";
         String userPubId = "usr-medico-1";
         MfaVerifyRequest request = new MfaVerifyRequest("123456");
 
-        when(jwtService.esValido(tokenValido)).thenReturn(true);
-        when(jwtService.esAccessToken(tokenValido)).thenReturn(true);
-        when(jwtService.extraerPublicId(tokenValido)).thenReturn(userPubId);
-        when(jwtService.extraerRoles(tokenValido)).thenReturn(List.of("ROLE_PROFESIONAL"));
+        when(jwtService.isValid(tokenValido)).thenReturn(true);
+        when(jwtService.isAccessToken(tokenValido)).thenReturn(true);
+        when(jwtService.extractPublicId(tokenValido)).thenReturn(userPubId);
+        when(jwtService.extractRoles(tokenValido)).thenReturn(List.of("ROLE_PROFESIONAL"));
 
         MfaVerifyResponse mockResponse = new MfaVerifyResponse(
                 true,
@@ -472,10 +472,10 @@ class AuthControllerTest {
     }
 
     @Test
-    void verifyMfa_conCodigoInvalido_retorna400BadRequest() throws Exception {
+    void verifyMfa_withCodeInvalid_returns400BadRequest() throws Exception {
         String tokenValido = "jwt.usuario.valido";
-        when(jwtService.esValido(tokenValido)).thenReturn(true);
-        when(jwtService.esAccessToken(tokenValido)).thenReturn(true);
+        when(jwtService.isValid(tokenValido)).thenReturn(true);
+        when(jwtService.isAccessToken(tokenValido)).thenReturn(true);
 
         MfaVerifyRequest request = new MfaVerifyRequest("123"); // longitud inválida
 
@@ -489,7 +489,7 @@ class AuthControllerTest {
     }
 
     @Test
-    void authenticateMfa_conDatosValidos_retorna200YCookiesDeSesion() throws Exception {
+    void authenticateMfa_withDataValid_returns200AndCookiesOfSession() throws Exception {
         MfaAuthenticateRequest request = new MfaAuthenticateRequest("challenge-jwt-valido", "123456");
         AuthSessionResponse session = new AuthSessionResponse(
                 "usr-medico-1",
@@ -500,7 +500,7 @@ class AuthControllerTest {
         );
         AuthTokens tokens = new AuthTokens("access.jwt.valido", "refresh.raw.valido", session);
 
-        when(authService.autenticarMfa(any(MfaAuthenticateRequest.class), anyString())).thenReturn(tokens);
+        when(authService.authenticateMfa(any(MfaAuthenticateRequest.class), anyString())).thenReturn(tokens);
 
         mockMvc.perform(post("/api/v1/auth/mfa/authenticate")
                         .header("X-Requested-With", "XMLHttpRequest")
@@ -515,11 +515,11 @@ class AuthControllerTest {
     }
 
     @Test
-    void authenticateMfa_desafioExpiradoOInvalido_retorna401Unauthorized() throws Exception {
+    void authenticateMfa_challengeExpiredOrInvalid_returns401Unauthorized() throws Exception {
         MfaAuthenticateRequest request = new MfaAuthenticateRequest("challenge-jwt-invalido", "123456");
 
-        when(authService.autenticarMfa(any(MfaAuthenticateRequest.class), anyString()))
-                .thenThrow(new TokenInvalidoException("El desafio de autenticacion MFA ha expirado o es invalido."));
+        when(authService.authenticateMfa(any(MfaAuthenticateRequest.class), anyString()))
+                .thenThrow(new InvalidTokenException("El desafio de autenticacion MFA ha expirado o es invalido."));
 
         mockMvc.perform(post("/api/v1/auth/mfa/authenticate")
                         .header("X-Requested-With", "XMLHttpRequest")

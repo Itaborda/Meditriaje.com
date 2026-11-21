@@ -14,7 +14,7 @@ public interface EmailService {
      * @param cuerpoHtml        Contenido en formato HTML
      * @return {@link ResultadoEnvio} con el resultado explícito del intento.
      */
-    ResultadoEnvio enviarCorreoHtml(String destinatarioEmail, String asunto, String cuerpoHtml);
+    EmailSendResult sendHtmlEmail(String destinatarioEmail, String asunto, String cuerpoHtml);
 
     /**
      * Envía el correo con el código de 6 dígitos para recuperación de contraseña.
@@ -25,7 +25,7 @@ public interface EmailService {
      * @param minutosExpiracion  Tiempo de validez en minutos
      * @return {@link ResultadoEnvio} con el resultado explícito del intento.
      */
-    ResultadoEnvio enviarCodigoRecuperacion(String destinatarioEmail, String destinatarioNombre, String codigo, int minutosExpiracion);
+    EmailSendResult sendRecoveryCode(String destinatarioEmail, String destinatarioNombre, String codigo, int minutosExpiracion);
 
     /**
      * Envía las credenciales iniciales de acceso para un usuario o profesional recién creado.
@@ -36,5 +36,5 @@ public interface EmailService {
      * @param passwordTemporal   Contraseña temporal generada
      * @return {@link ResultadoEnvio} con el resultado explícito del intento.
      */
-    ResultadoEnvio enviarCredencialesIniciales(String destinatarioEmail, String destinatarioNombre, String rol, String passwordTemporal);
+    EmailSendResult sendInitialCredentials(String destinatarioEmail, String destinatarioNombre, String rol, String passwordTemporal);
 }

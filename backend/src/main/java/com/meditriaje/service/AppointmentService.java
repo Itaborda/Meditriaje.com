@@ -1,33 +1,33 @@
 package com.meditriaje.service;
 
-import com.meditriaje.dto.affiliation.ReprogramarCitaRequest;
+import com.meditriaje.dto.affiliation.RescheduleAppointmentRequest;
 import com.meditriaje.dto.admin.SlotResponse;
-import com.meditriaje.dto.appointment.CancelarCitaRequest;
-import com.meditriaje.dto.appointment.CitaResponse;
-import com.meditriaje.dto.appointment.ReservarCitaRequest;
-import com.meditriaje.exception.AccesoNoAutorizadoException;
-import com.meditriaje.exception.CitaNoDisponibleException;
-import com.meditriaje.exception.ConflictoOperacionException;
-import com.meditriaje.exception.DatosInvalidosException;
-import com.meditriaje.exception.RecursoNoEncontradoException;
-import com.meditriaje.model.AccionAuditable;
-import com.meditriaje.model.Cita;
-import com.meditriaje.model.CitaStateMachine;
-import com.meditriaje.model.DisponibilidadSlot;
-import com.meditriaje.model.EstadoCita;
-import com.meditriaje.model.EventoAuditoria;
-import com.meditriaje.model.Paciente;
-import com.meditriaje.model.Profesional;
-import com.meditriaje.model.ResultadoAuditoria;
-import com.meditriaje.model.Triaje;
-import com.meditriaje.model.Usuario;
-import com.meditriaje.repository.AtencionRepository;
-import com.meditriaje.repository.CitaRepository;
-import com.meditriaje.repository.DisponibilidadSlotRepository;
-import com.meditriaje.repository.PacienteRepository;
-import com.meditriaje.repository.ProfesionalRepository;
-import com.meditriaje.repository.TriajeRepository;
-import com.meditriaje.repository.UsuarioRepository;
+import com.meditriaje.dto.appointment.CancelAppointmentRequest;
+import com.meditriaje.dto.appointment.AppointmentResponse;
+import com.meditriaje.dto.appointment.BookAppointmentRequest;
+import com.meditriaje.exception.UnauthorizedAccessException;
+import com.meditriaje.exception.AppointmentUnavailableException;
+import com.meditriaje.exception.OperationConflictException;
+import com.meditriaje.exception.InvalidDataException;
+import com.meditriaje.exception.ResourceNotFoundException;
+import com.meditriaje.model.AuditableAction;
+import com.meditriaje.model.Appointment;
+import com.meditriaje.model.AppointmentStateMachine;
+import com.meditriaje.model.AvailabilitySlot;
+import com.meditriaje.model.AppointmentStatus;
+import com.meditriaje.model.AuditEvent;
+import com.meditriaje.model.Patient;
+import com.meditriaje.model.Professional;
+import com.meditriaje.model.AuditResult;
+import com.meditriaje.model.Triage;
+import com.meditriaje.model.User;
+import com.meditriaje.repository.ClinicalAttentionRepository;
+import com.meditriaje.repository.AppointmentRepository;
+import com.meditriaje.repository.AvailabilitySlotRepository;
+import com.meditriaje.repository.PatientRepository;
+import com.meditriaje.repository.ProfessionalRepository;
+import com.meditriaje.repository.TriageRepository;
+import com.meditriaje.repository.UserRepository;
 import com.meditriaje.dto.common.PaginatedResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -55,36 +55,36 @@ import java.util.stream.Collectors;
 @Service
 public class AppointmentService {
 
-    public static final ZoneId ZONE_BOGOTA = ZoneId.of("America/Bogota");
+    public static final ZoneId BOGOTA_ZONE = ZoneId.of("America/Bogota");
 
-    private final UsuarioRepository usuarioRepository;
-    private final PacienteRepository pacienteRepository;
-    private final DisponibilidadSlotRepository disponibilidadSlotRepository;
-    private final ProfesionalRepository profesionalRepository;
-    private final CitaRepository citaRepository;
-    private final TriajeRepository triajeRepository;
-    private final AuditoriaService auditoriaService;
+    private final UserRepository userRepository;
+    private final PatientRepository patientRepository;
+    private final AvailabilitySlotRepository availabilitySlotRepository;
+    private final ProfessionalRepository professionalRepository;
+    private final AppointmentRepository appointmentRepository;
+    private final TriageRepository triageRepository;
+    private final AuditService auditService;
     private final AppointmentNotificationService appointmentNotificationService;
-    private final AtencionRepository atencionRepository;
+    private final ClinicalAttentionRepository attentionRepository;
     private final Clock clock;
 
     public AppointmentService(
-            UsuarioRepository usuarioRepository,
-            PacienteRepository pacienteRepository,
-            DisponibilidadSlotRepository disponibilidadSlotRepository,
-            ProfesionalRepository profesionalRepository,
-            CitaRepository citaRepository,
-            TriajeRepository triajeRepository,
-            AuditoriaService auditoriaService
+            UserRepository userRepository,
+            PatientRepository patientRepository,
+            AvailabilitySlotRepository availabilitySlotRepository,
+            ProfessionalRepository professionalRepository,
+            AppointmentRepository appointmentRepository,
+            TriageRepository triageRepository,
+            AuditService auditService
     ) {
         this(
-                usuarioRepository,
-                pacienteRepository,
-                disponibilidadSlotRepository,
-                profesionalRepository,
-                citaRepository,
-                triajeRepository,
-                auditoriaService,
+                userRepository,
+                patientRepository,
+                availabilitySlotRepository,
+                professionalRepository,
+                appointmentRepository,
+                triageRepository,
+                auditService,
                 null,
                 null,
                 Clock.systemUTC()
@@ -92,23 +92,23 @@ public class AppointmentService {
     }
 
     public AppointmentService(
-            UsuarioRepository usuarioRepository,
-            PacienteRepository pacienteRepository,
-            DisponibilidadSlotRepository disponibilidadSlotRepository,
-            ProfesionalRepository profesionalRepository,
-            CitaRepository citaRepository,
-            TriajeRepository triajeRepository,
-            AuditoriaService auditoriaService,
+            UserRepository userRepository,
+            PatientRepository patientRepository,
+            AvailabilitySlotRepository availabilitySlotRepository,
+            ProfessionalRepository professionalRepository,
+            AppointmentRepository appointmentRepository,
+            TriageRepository triageRepository,
+            AuditService auditService,
             Clock clock
     ) {
         this(
-                usuarioRepository,
-                pacienteRepository,
-                disponibilidadSlotRepository,
-                profesionalRepository,
-                citaRepository,
-                triajeRepository,
-                auditoriaService,
+                userRepository,
+                patientRepository,
+                availabilitySlotRepository,
+                professionalRepository,
+                appointmentRepository,
+                triageRepository,
+                auditService,
                 null,
                 null,
                 clock
@@ -116,23 +116,23 @@ public class AppointmentService {
     }
 
     public AppointmentService(
-            UsuarioRepository usuarioRepository,
-            PacienteRepository pacienteRepository,
-            DisponibilidadSlotRepository disponibilidadSlotRepository,
-            ProfesionalRepository profesionalRepository,
-            CitaRepository citaRepository,
-            TriajeRepository triajeRepository,
-            AuditoriaService auditoriaService,
+            UserRepository userRepository,
+            PatientRepository patientRepository,
+            AvailabilitySlotRepository availabilitySlotRepository,
+            ProfessionalRepository professionalRepository,
+            AppointmentRepository appointmentRepository,
+            TriageRepository triageRepository,
+            AuditService auditService,
             AppointmentNotificationService appointmentNotificationService
     ) {
         this(
-                usuarioRepository,
-                pacienteRepository,
-                disponibilidadSlotRepository,
-                profesionalRepository,
-                citaRepository,
-                triajeRepository,
-                auditoriaService,
+                userRepository,
+                patientRepository,
+                availabilitySlotRepository,
+                professionalRepository,
+                appointmentRepository,
+                triageRepository,
+                auditService,
                 appointmentNotificationService,
                 null,
                 Clock.systemUTC()
@@ -140,24 +140,24 @@ public class AppointmentService {
     }
 
     public AppointmentService(
-            UsuarioRepository usuarioRepository,
-            PacienteRepository pacienteRepository,
-            DisponibilidadSlotRepository disponibilidadSlotRepository,
-            ProfesionalRepository profesionalRepository,
-            CitaRepository citaRepository,
-            TriajeRepository triajeRepository,
-            AuditoriaService auditoriaService,
+            UserRepository userRepository,
+            PatientRepository patientRepository,
+            AvailabilitySlotRepository availabilitySlotRepository,
+            ProfessionalRepository professionalRepository,
+            AppointmentRepository appointmentRepository,
+            TriageRepository triageRepository,
+            AuditService auditService,
             AppointmentNotificationService appointmentNotificationService,
             Clock clock
     ) {
         this(
-                usuarioRepository,
-                pacienteRepository,
-                disponibilidadSlotRepository,
-                profesionalRepository,
-                citaRepository,
-                triajeRepository,
-                auditoriaService,
+                userRepository,
+                patientRepository,
+                availabilitySlotRepository,
+                professionalRepository,
+                appointmentRepository,
+                triageRepository,
+                auditService,
                 appointmentNotificationService,
                 null,
                 clock
@@ -166,26 +166,26 @@ public class AppointmentService {
 
     @Autowired
     public AppointmentService(
-            UsuarioRepository usuarioRepository,
-            PacienteRepository pacienteRepository,
-            DisponibilidadSlotRepository disponibilidadSlotRepository,
-            ProfesionalRepository profesionalRepository,
-            CitaRepository citaRepository,
-            TriajeRepository triajeRepository,
-            AuditoriaService auditoriaService,
+            UserRepository userRepository,
+            PatientRepository patientRepository,
+            AvailabilitySlotRepository availabilitySlotRepository,
+            ProfessionalRepository professionalRepository,
+            AppointmentRepository appointmentRepository,
+            TriageRepository triageRepository,
+            AuditService auditService,
             AppointmentNotificationService appointmentNotificationService,
-            AtencionRepository atencionRepository,
+            ClinicalAttentionRepository attentionRepository,
             Clock clock
     ) {
-        this.usuarioRepository = Objects.requireNonNull(usuarioRepository, "UsuarioRepository no puede ser nulo");
-        this.pacienteRepository = Objects.requireNonNull(pacienteRepository, "PacienteRepository no puede ser nulo");
-        this.disponibilidadSlotRepository = Objects.requireNonNull(disponibilidadSlotRepository, "DisponibilidadSlotRepository no puede ser nulo");
-        this.profesionalRepository = Objects.requireNonNull(profesionalRepository, "ProfesionalRepository no puede ser nulo");
-        this.citaRepository = Objects.requireNonNull(citaRepository, "CitaRepository no puede ser nulo");
-        this.triajeRepository = Objects.requireNonNull(triajeRepository, "TriajeRepository no puede ser nulo");
-        this.auditoriaService = Objects.requireNonNull(auditoriaService, "AuditoriaService no puede ser nulo");
+        this.userRepository = Objects.requireNonNull(userRepository, "UsuarioRepository no puede ser nulo");
+        this.patientRepository = Objects.requireNonNull(patientRepository, "PacienteRepository no puede ser nulo");
+        this.availabilitySlotRepository = Objects.requireNonNull(availabilitySlotRepository, "DisponibilidadSlotRepository no puede ser nulo");
+        this.professionalRepository = Objects.requireNonNull(professionalRepository, "ProfesionalRepository no puede ser nulo");
+        this.appointmentRepository = Objects.requireNonNull(appointmentRepository, "CitaRepository no puede ser nulo");
+        this.triageRepository = Objects.requireNonNull(triageRepository, "TriajeRepository no puede ser nulo");
+        this.auditService = Objects.requireNonNull(auditService, "AuditoriaService no puede ser nulo");
         this.appointmentNotificationService = appointmentNotificationService;
-        this.atencionRepository = atencionRepository;
+        this.attentionRepository = attentionRepository;
         this.clock = Objects.requireNonNull(clock, "Clock no puede ser nulo");
     }
 
@@ -198,61 +198,61 @@ public class AppointmentService {
      * @return {@link CitaResponse} con los datos consolidados de la cita programada.
      */
     @Transactional
-    public CitaResponse reservarCita(ReservarCitaRequest request, String usuarioAutenticadoPublicId, String ipOrigen) {
+    public AppointmentResponse bookAppointment(BookAppointmentRequest request, String usuarioAutenticadoPublicId, String ipOrigen) {
         Objects.requireNonNull(request, "El request de reserva no puede ser nulo");
         Objects.requireNonNull(usuarioAutenticadoPublicId, "El usuario público no puede ser nulo");
 
         // 1. Obtener usuario autenticado
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
 
         // 2. Obtener paciente vinculado al usuario (autenticado != autorizado, ADR-002)
-        Paciente paciente = pacienteRepository.buscarPorUsuarioId(usuario.id())
-                .orElseThrow(() -> new AccesoNoAutorizadoException("Solo pacientes registrados pueden agendar citas."));
+        Patient paciente = patientRepository.findByUserId(usuario.id())
+                .orElseThrow(() -> new UnauthorizedAccessException("Solo pacientes registrados pueden agendar citas."));
 
         // 3. Buscar slot de disponibilidad por publicId
-        DisponibilidadSlot slot = disponibilidadSlotRepository.buscarEntidadPorPublicId(request.slotPublicId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Slot de disponibilidad no encontrado."));
+        AvailabilitySlot slot = availabilitySlotRepository.findEntityByPublicId(request.slotPublicId())
+                .orElseThrow(() -> new ResourceNotFoundException("Slot de disponibilidad no encontrado."));
 
         // 4. Validar que el horario no esté en el pasado
-        if (slot.fechaHoraInicio().isBefore(Instant.now(clock))) {
-            throw new DatosInvalidosException("No es posible agendar una cita en un horario pasado.");
+        if (slot.startDateTime().isBefore(Instant.now(clock))) {
+            throw new InvalidDataException("No es posible agendar una cita en un horario pasado.");
         }
 
         // 5. Validar correspondencia profesional-especialidad del slot
-        Profesional profesional = profesionalRepository.buscarPorId(slot.profesionalId())
-                .orElseThrow(() -> new DatosInvalidosException("El profesional no corresponde a la especialidad del slot."));
+        Professional profesional = professionalRepository.findById(slot.professionalId())
+                .orElseThrow(() -> new InvalidDataException("El profesional no corresponde a la especialidad del slot."));
 
-        if (!Objects.equals(profesional.especialidadId(), slot.especialidadId())) {
-            throw new DatosInvalidosException("El profesional no corresponde a la especialidad del slot.");
+        if (!Objects.equals(profesional.specialtyId(), slot.specialtyId())) {
+            throw new InvalidDataException("El profesional no corresponde a la especialidad del slot.");
         }
 
         // 6. Validar vinculación opcional con triaje clínico (ADR-009, HU-04, M5.4)
         Long triajeId = null;
-        if (request.triajePublicId() != null && !request.triajePublicId().isBlank()) {
-            Triaje triaje = triajeRepository.buscarEntidadPorPublicId(request.triajePublicId().trim())
-                    .orElseThrow(() -> new RecursoNoEncontradoException("Triaje no encontrado."));
+        if (request.triagePublicId() != null && !request.triagePublicId().isBlank()) {
+            Triage triaje = triageRepository.findEntityByPublicId(request.triagePublicId().trim())
+                    .orElseThrow(() -> new ResourceNotFoundException("Triaje no encontrado."));
 
-            if (!Objects.equals(triaje.pacienteId(), paciente.id())) {
-                throw new DatosInvalidosException("El triaje no corresponde al paciente de la cita.");
+            if (!Objects.equals(triaje.patientId(), paciente.id())) {
+                throw new InvalidDataException("El triaje no corresponde al paciente de la cita.");
             }
 
-            if (triaje.esEmergencia()) {
-                throw new DatosInvalidosException("No se permite agendar cita para un triaje clasificado como emergencia.");
+            if (triaje.isEmergency()) {
+                throw new InvalidDataException("No se permite agendar cita para un triaje clasificado como emergencia.");
             }
 
             triajeId = triaje.id();
         }
 
         // 7. Intentar reservar atómicamente el slot (cambio de estado LIBRE -> OCUPADO)
-        int filas = disponibilidadSlotRepository.reservarSlot(slot.id());
+        int filas = availabilitySlotRepository.reserveSlot(slot.id());
         if (filas == 0) {
-            throw new CitaNoDisponibleException("El slot de atencion ya ha sido reservado o no esta disponible.");
+            throw new AppointmentUnavailableException("El slot de atencion ya ha sido reservado o no esta disponible.");
         }
 
         // 8. Insertar la cita en estado PROGRAMADA y manejar restricción de concurrencia
         String citaPublicId = UUID.randomUUID().toString();
-        Cita cita = new Cita(
+        Appointment cita = new Appointment(
                 null,
                 citaPublicId,
                 slot.id(),
@@ -267,28 +267,28 @@ public class AppointmentService {
 
         Long citaIdGenerado;
         try {
-            citaIdGenerado = citaRepository.crear(cita);
-        } catch (DataIntegrityViolationException ex) {
-            throw new CitaNoDisponibleException("El slot de atencion ya cuenta con una cita activa.");
+            citaIdGenerado = appointmentRepository.create(cita);
+        } catch (DataIntegrityViolationException | OperationConflictException ex) {
+            throw new AppointmentUnavailableException("El slot de atencion ya cuenta con una cita activa.");
         }
 
         // 8. Auditar evento exitoso inmutable
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.RESERVA_CITA,
+                AuditableAction.RESERVA_CITA,
                 "CITA",
                 citaPublicId,
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
         // 9. Retornar vista consolidada de la cita
-        CitaResponse response = citaRepository.buscarPorPublicId(citaPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Cita no encontrada tras creacion."));
+        AppointmentResponse response = appointmentRepository.findByPublicId(citaPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cita no encontrada tras creacion."));
 
         // 10. Despachar notificación asíncrona/desacoplada de confirmación por correo (ADR-015)
         if (appointmentNotificationService != null) {
-            appointmentNotificationService.enviarConfirmacionReserva(citaIdGenerado, paciente.id(), usuario.email(), response);
+            appointmentNotificationService.sendBookingConfirmation(citaIdGenerado, paciente.id(), usuario.email(), response);
         }
 
         return response;
@@ -306,9 +306,9 @@ public class AppointmentService {
      * @return {@link CitaResponse} con los datos consolidados de la cita cancelada.
      */
     @Transactional
-    public CitaResponse cancelarCita(
+    public AppointmentResponse cancelAppointment(
             String citaPublicId,
-            CancelarCitaRequest request,
+            CancelAppointmentRequest request,
             String usuarioAutenticadoPublicId,
             Collection<? extends GrantedAuthority> authorities,
             String ipOrigen
@@ -317,30 +317,30 @@ public class AppointmentService {
         Objects.requireNonNull(usuarioAutenticadoPublicId, "El usuario público no puede ser nulo");
 
         // 1. Obtener usuario autenticado
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
 
         // 2. Obtener cita por citaPublicId
-        Cita cita = citaRepository.buscarEntidadPorPublicId(citaPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Cita no encontrada."));
+        Appointment cita = appointmentRepository.findEntityByPublicId(citaPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cita no encontrada."));
 
         // 2.1 Si existe una atención ligada a la cita (abierta o cerrada), no se puede cancelar (Decisión D2)
-        if (atencionRepository != null && atencionRepository.existePorCitaId(cita.id())) {
-            throw new ConflictoOperacionException("No es posible cancelar una cita que ya cuenta con una atencion clinica vinculada.");
+        if (attentionRepository != null && attentionRepository.existsByAppointmentId(cita.id())) {
+            throw new OperationConflictException("No es posible cancelar una cita que ya cuenta con una atencion clinica vinculada.");
         }
 
         // 3. Validar transición de estado según CitaStateMachine
-        EstadoCita estadoActual;
+        AppointmentStatus estadoActual;
         try {
-            estadoActual = EstadoCita.valueOf(cita.estado());
+            estadoActual = AppointmentStatus.valueOf(cita.status());
         } catch (IllegalArgumentException | NullPointerException ex) {
-            throw new DatosInvalidosException("Estado de cita no reconocido: " + cita.estado());
+            throw new InvalidDataException("Estado de cita no reconocido: " + cita.status());
         }
-        CitaStateMachine.validarTransicion(estadoActual, EstadoCita.CANCELADA);
+        AppointmentStateMachine.validateTransition(estadoActual, AppointmentStatus.CANCELADA);
 
         // 4. Obtener slot
-        DisponibilidadSlot slot = disponibilidadSlotRepository.buscarPorId(cita.slotId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Slot de disponibilidad no encontrado."));
+        AvailabilitySlot slot = availabilitySlotRepository.findById(cita.slotId())
+                .orElseThrow(() -> new ResourceNotFoundException("Slot de disponibilidad no encontrado."));
 
         // 5. Reglas de Autorización y Anticipación (ADR-006, HU-05, HU-09)
         Set<String> roles = authorities != null
@@ -351,56 +351,56 @@ public class AppointmentService {
             // Administrador puede cancelar cualquier cita activa sin restricción de 2 horas.
         } else if (roles.contains("ROLE_PROFESIONAL")) {
             // Validar que el slot pertenezca al profesional autenticado
-            Profesional profesional = profesionalRepository.buscarPorUsuarioId(usuario.id())
-                    .orElseThrow(() -> new AccesoNoAutorizadoException("El profesional no tiene autorizacion para cancelar citas de otro colega."));
+            Professional profesional = professionalRepository.findByUserId(usuario.id())
+                    .orElseThrow(() -> new UnauthorizedAccessException("El profesional no tiene autorizacion para cancelar citas de otro colega."));
 
-            if (!Objects.equals(slot.profesionalId(), profesional.id())) {
-                throw new AccesoNoAutorizadoException("El profesional no tiene autorizacion para cancelar citas de otro colega.");
+            if (!Objects.equals(slot.professionalId(), profesional.id())) {
+                throw new UnauthorizedAccessException("El profesional no tiene autorizacion para cancelar citas de otro colega.");
             }
             // No aplica la regla de las 2 horas para profesionales
         } else if (roles.contains("ROLE_PACIENTE")) {
             // Validar que la cita le pertenezca
-            Paciente paciente = pacienteRepository.buscarPorUsuarioId(usuario.id())
-                    .orElseThrow(() -> new AccesoNoAutorizadoException("Solo pacientes registrados pueden cancelar citas."));
+            Patient paciente = patientRepository.findByUserId(usuario.id())
+                    .orElseThrow(() -> new UnauthorizedAccessException("Solo pacientes registrados pueden cancelar citas."));
 
-            if (!Objects.equals(cita.pacienteId(), paciente.id())) {
-                throw new AccesoNoAutorizadoException("No tiene autorizacion para cancelar una cita ajena.");
+            if (!Objects.equals(cita.patientId(), paciente.id())) {
+                throw new UnauthorizedAccessException("No tiene autorizacion para cancelar una cita ajena.");
             }
 
             // Regla de las 2 horas (ADR-006, HU-05): la cancelación por paciente debe realizarse con al menos 2 horas de anticipación
-            Instant limiteCancelacion = slot.fechaHoraInicio().minus(2, ChronoUnit.HOURS);
+            Instant limiteCancelacion = slot.startDateTime().minus(2, ChronoUnit.HOURS);
             if (Instant.now(clock).isAfter(limiteCancelacion)) {
-                throw new DatosInvalidosException("La cancelacion por parte del paciente solo esta permitida hasta 2 horas antes de la cita.");
+                throw new InvalidDataException("La cancelacion por parte del paciente solo esta permitida hasta 2 horas antes de la cita.");
             }
         } else {
-            throw new AccesoNoAutorizadoException("No tiene autorizacion para cancelar citas.");
+            throw new UnauthorizedAccessException("No tiene autorizacion para cancelar citas.");
         }
 
         // 6. Actualizar la cita a CANCELADA y registrar motivo
-        String motivoCancelacion = request != null ? request.motivo() : null;
-        citaRepository.actualizarEstado(cita.id(), EstadoCita.CANCELADA.name(), motivoCancelacion);
+        String motivoCancelacion = request != null ? request.reason() : null;
+        appointmentRepository.updateStatus(cita.id(), AppointmentStatus.CANCELADA.name(), motivoCancelacion);
 
         // 7. Liberar el slot de disponibilidad: pasar el slot a 'LIBRE'
-        disponibilidadSlotRepository.liberarSlot(cita.slotId());
+        availabilitySlotRepository.releaseSlot(cita.slotId());
 
         // 8. Auditar evento exitoso inmutable
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.CANCELACION_CITA,
+                AuditableAction.CANCELACION_CITA,
                 "CITA",
                 cita.publicId(),
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
         // 9. Retornar CitaResponse actualizado
-        CitaResponse response = citaRepository.buscarPorPublicId(cita.publicId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Cita no encontrada tras cancelacion."));
+        AppointmentResponse response = appointmentRepository.findByPublicId(cita.publicId())
+                .orElseThrow(() -> new ResourceNotFoundException("Cita no encontrada tras cancelacion."));
 
         // 10. Despachar notificación asíncrona/desacoplada de cancelación por correo (ADR-015)
         if (appointmentNotificationService != null) {
-            String emailDestinatario = appointmentNotificationService.resolverEmailPaciente(cita.pacienteId());
-            appointmentNotificationService.enviarNotificacionCancelacion(cita.id(), cita.pacienteId(), emailDestinatario, response, motivoCancelacion);
+            String emailDestinatario = appointmentNotificationService.resolvePatientEmail(cita.patientId());
+            appointmentNotificationService.sendCancellationNotification(cita.id(), cita.patientId(), emailDestinatario, response, motivoCancelacion);
         }
 
         return response;
@@ -428,7 +428,7 @@ public class AppointmentService {
      * @return {@link CitaResponse} con los datos consolidados de la cita actualizada.
      */
     @Transactional
-    public CitaResponse marcarNoAsistio(
+    public AppointmentResponse markNoShow(
             String citaPublicId,
             String usuarioAutenticadoPublicId,
             Collection<? extends GrantedAuthority> authorities,
@@ -438,12 +438,12 @@ public class AppointmentService {
         Objects.requireNonNull(usuarioAutenticadoPublicId, "El usuario público no puede ser nulo");
 
         // 1. Obtener usuario autenticado
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
 
         // 2. Obtener cita por citaPublicId
-        Cita cita = citaRepository.buscarEntidadPorPublicId(citaPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Cita no encontrada."));
+        Appointment cita = appointmentRepository.findEntityByPublicId(citaPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cita no encontrada."));
 
         // 3. Reglas de Autorización (D4, T5)
         Set<String> roles = authorities != null
@@ -454,55 +454,55 @@ public class AppointmentService {
         boolean esProf = roles.contains("ROLE_PROFESIONAL");
 
         if (!esAdmin && !esProf) {
-            throw new AccesoNoAutorizadoException("No tiene autorizacion para marcar inasistencia de citas.");
+            throw new UnauthorizedAccessException("No tiene autorizacion para marcar inasistencia de citas.");
         }
 
         // 4. Obtener slot de disponibilidad
-        DisponibilidadSlot slot = disponibilidadSlotRepository.buscarPorId(cita.slotId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Slot de disponibilidad no encontrado."));
+        AvailabilitySlot slot = availabilitySlotRepository.findById(cita.slotId())
+                .orElseThrow(() -> new ResourceNotFoundException("Slot de disponibilidad no encontrado."));
 
         // Si es profesional y no es admin, validar que sea el profesional dueño de la cita
         if (!esAdmin) {
-            Profesional profesional = profesionalRepository.buscarPorUsuarioId(usuario.id())
-                    .orElseThrow(() -> new AccesoNoAutorizadoException("El profesional no tiene autorizacion para marcar inasistencia de citas de otro colega."));
+            Professional profesional = professionalRepository.findByUserId(usuario.id())
+                    .orElseThrow(() -> new UnauthorizedAccessException("El profesional no tiene autorizacion para marcar inasistencia de citas de otro colega."));
 
-            if (!Objects.equals(slot.profesionalId(), profesional.id())) {
-                throw new AccesoNoAutorizadoException("El profesional no tiene autorizacion para marcar inasistencia de citas de otro colega.");
+            if (!Objects.equals(slot.professionalId(), profesional.id())) {
+                throw new UnauthorizedAccessException("El profesional no tiene autorizacion para marcar inasistencia de citas de otro colega.");
             }
         }
 
         // 5. Validar estado de la cita: solo desde PROGRAMADA (D4, T5)
-        if (!EstadoCita.PROGRAMADA.name().equals(cita.estado())) {
-            throw new ConflictoOperacionException("Solo es posible marcar inasistencia para citas en estado PROGRAMADA (estado actual: " + cita.estado() + ").");
+        if (!AppointmentStatus.PROGRAMADA.name().equals(cita.status())) {
+            throw new OperationConflictException("Solo es posible marcar inasistencia para citas en estado PROGRAMADA (estado actual: " + cita.status() + ").");
         }
 
         // 6. Validar que no exista atención clínica ligada (D2, D4, T5)
-        if (atencionRepository != null && atencionRepository.existePorCitaId(cita.id())) {
-            throw new ConflictoOperacionException("No es posible marcar inasistencia para una cita que ya cuenta con una atencion clinica vinculada.");
+        if (attentionRepository != null && attentionRepository.existsByAppointmentId(cita.id())) {
+            throw new OperationConflictException("No es posible marcar inasistencia para una cita que ya cuenta con una atencion clinica vinculada.");
         }
 
         // 7. Validar temporalidad: now >= inicio del slot (D4, T5)
         Instant now = Instant.now(clock);
-        if (now.isBefore(slot.fechaHoraInicio())) {
-            throw new DatosInvalidosException("No es posible marcar inasistencia antes de la hora de inicio programada de la cita.");
+        if (now.isBefore(slot.startDateTime())) {
+            throw new InvalidDataException("No es posible marcar inasistencia antes de la hora de inicio programada de la cita.");
         }
 
         // 8. Actualizar la cita a NO_ASISTIO (el slot NO se libera, ya que el horario ya transcurrió)
-        citaRepository.actualizarEstado(cita.id(), EstadoCita.NO_ASISTIO.name(), null);
+        appointmentRepository.updateStatus(cita.id(), AppointmentStatus.NO_ASISTIO.name(), null);
 
         // 9. Auditar evento inmutable
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.CITA_NO_ASISTIO,
+                AuditableAction.CITA_NO_ASISTIO,
                 "CITA",
                 cita.publicId(),
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
         // 10. Retornar CitaResponse actualizado
-        return citaRepository.buscarPorPublicId(cita.publicId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Cita no encontrada tras actualizar inasistencia."));
+        return appointmentRepository.findByPublicId(cita.publicId())
+                .orElseThrow(() -> new ResourceNotFoundException("Cita no encontrada tras actualizar inasistencia."));
     }
 
     /**
@@ -516,7 +516,7 @@ public class AppointmentService {
      * @return {@link PaginatedResponse} conteniendo la lista de citas {@link CitaResponse}.
      */
     @Transactional(readOnly = true)
-    public PaginatedResponse<CitaResponse> obtenerMiAgenda(
+    public PaginatedResponse<AppointmentResponse> getMyAgenda(
             String usuarioAutenticadoPublicId,
             LocalDate fecha,
             String estado,
@@ -526,39 +526,39 @@ public class AppointmentService {
         Objects.requireNonNull(usuarioAutenticadoPublicId, "El usuario público no puede ser nulo");
 
         if (page < 0) {
-            throw new DatosInvalidosException("El número de página no puede ser menor a 0.");
+            throw new InvalidDataException("El número de página no puede ser menor a 0.");
         }
         if (size < 1 || size > 100) {
-            throw new DatosInvalidosException("El tamaño de página debe estar entre 1 y 100.");
+            throw new InvalidDataException("El tamaño de página debe estar entre 1 y 100.");
         }
 
         String estadoFiltro = null;
         if (estado != null && !estado.isBlank()) {
             estadoFiltro = estado.trim().toUpperCase(Locale.ROOT);
             try {
-                EstadoCita.valueOf(estadoFiltro);
+                AppointmentStatus.valueOf(estadoFiltro);
             } catch (IllegalArgumentException ex) {
-                throw new DatosInvalidosException("Estado de cita no válido: " + estado);
+                throw new InvalidDataException("Estado de cita no válido: " + estado);
             }
         }
 
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
 
-        Profesional profesional = profesionalRepository.buscarPorUsuarioId(usuario.id())
-                .orElseThrow(() -> new AccesoNoAutorizadoException("Solo profesionales registrados pueden consultar su agenda."));
+        Professional profesional = professionalRepository.findByUserId(usuario.id())
+                .orElseThrow(() -> new UnauthorizedAccessException("Solo profesionales registrados pueden consultar su agenda."));
 
         Instant fechaDesde = null;
         Instant fechaHasta = null;
 
         if (fecha != null) {
-            ZonedDateTime startOfDay = fecha.atStartOfDay(ZONE_BOGOTA);
-            ZonedDateTime endOfDay = fecha.atTime(23, 59, 59, 999_999_999).atZone(ZONE_BOGOTA);
+            ZonedDateTime startOfDay = fecha.atStartOfDay(BOGOTA_ZONE);
+            ZonedDateTime endOfDay = fecha.atTime(23, 59, 59, 999_999_999).atZone(BOGOTA_ZONE);
             fechaDesde = startOfDay.toInstant();
             fechaHasta = endOfDay.toInstant();
         }
 
-        List<CitaResponse> citas = citaRepository.listarAgendaProfesional(
+        List<AppointmentResponse> citas = appointmentRepository.listProfessionalAgenda(
                 profesional.id(),
                 fechaDesde,
                 fechaHasta,
@@ -566,7 +566,7 @@ public class AppointmentService {
                 page,
                 size
         );
-        int total = citaRepository.contarAgendaProfesional(
+        int total = appointmentRepository.countProfessionalAgenda(
                 profesional.id(),
                 fechaDesde,
                 fechaHasta,
@@ -585,7 +585,7 @@ public class AppointmentService {
      * @return {@link PaginatedResponse} conteniendo la lista de citas {@link CitaResponse}.
      */
     @Transactional(readOnly = true)
-    public PaginatedResponse<CitaResponse> obtenerMisCitas(
+    public PaginatedResponse<AppointmentResponse> getMyAppointments(
             String usuarioAutenticadoPublicId,
             int page,
             int size
@@ -593,20 +593,20 @@ public class AppointmentService {
         Objects.requireNonNull(usuarioAutenticadoPublicId, "El usuario público no puede ser nulo");
 
         if (page < 0) {
-            throw new DatosInvalidosException("El número de página no puede ser menor a 0.");
+            throw new InvalidDataException("El número de página no puede ser menor a 0.");
         }
         if (size < 1 || size > 100) {
-            throw new DatosInvalidosException("El tamaño de página debe estar entre 1 y 100.");
+            throw new InvalidDataException("El tamaño de página debe estar entre 1 y 100.");
         }
 
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
 
-        Paciente paciente = pacienteRepository.buscarPorUsuarioId(usuario.id())
-                .orElseThrow(() -> new AccesoNoAutorizadoException("Solo pacientes registrados pueden consultar sus citas."));
+        Patient paciente = patientRepository.findByUserId(usuario.id())
+                .orElseThrow(() -> new UnauthorizedAccessException("Solo pacientes registrados pueden consultar sus citas."));
 
-        List<CitaResponse> citas = citaRepository.listarPorPacienteId(paciente.id(), page, size);
-        int total = citaRepository.contarPorPacienteId(paciente.id());
+        List<AppointmentResponse> citas = appointmentRepository.listByPatientId(paciente.id(), page, size);
+        int total = appointmentRepository.countByPatientId(paciente.id());
 
         return PaginatedResponse.of(citas, page, size, (long) total);
     }
@@ -621,9 +621,9 @@ public class AppointmentService {
      * 5. Registro de auditoría inmutable CITA_REPROGRAMADA.
      */
     @Transactional
-    public CitaResponse reprogramarCita(
+    public AppointmentResponse rescheduleAppointment(
             String citaPublicId,
-            ReprogramarCitaRequest request,
+            RescheduleAppointmentRequest request,
             String usuarioAutenticadoPublicId,
             Collection<? extends GrantedAuthority> authorities,
             String ipOrigen
@@ -632,26 +632,26 @@ public class AppointmentService {
         Objects.requireNonNull(request, "El request de reprogramación no puede ser nulo");
         Objects.requireNonNull(usuarioAutenticadoPublicId, "El usuario público no puede ser nulo");
 
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
 
-        Cita citaOriginal = citaRepository.buscarEntidadPorPublicId(citaPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Cita no encontrada."));
+        Appointment citaOriginal = appointmentRepository.findEntityByPublicId(citaPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cita no encontrada."));
 
-        if (atencionRepository != null && atencionRepository.existePorCitaId(citaOriginal.id())) {
-            throw new ConflictoOperacionException("No es posible reprogramar una cita que ya cuenta con una atencion clinica vinculada.");
+        if (attentionRepository != null && attentionRepository.existsByAppointmentId(citaOriginal.id())) {
+            throw new OperationConflictException("No es posible reprogramar una cita que ya cuenta con una atencion clinica vinculada.");
         }
 
-        EstadoCita estadoActual;
+        AppointmentStatus estadoActual;
         try {
-            estadoActual = EstadoCita.valueOf(citaOriginal.estado());
+            estadoActual = AppointmentStatus.valueOf(citaOriginal.status());
         } catch (IllegalArgumentException | NullPointerException ex) {
-            throw new DatosInvalidosException("Estado de cita no reconocido: " + citaOriginal.estado());
+            throw new InvalidDataException("Estado de cita no reconocido: " + citaOriginal.status());
         }
-        CitaStateMachine.validarTransicion(estadoActual, EstadoCita.REPROGRAMADA);
+        AppointmentStateMachine.validateTransition(estadoActual, AppointmentStatus.REPROGRAMADA);
 
-        DisponibilidadSlot slotOriginal = disponibilidadSlotRepository.buscarPorId(citaOriginal.slotId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Slot original no encontrado."));
+        AvailabilitySlot slotOriginal = availabilitySlotRepository.findById(citaOriginal.slotId())
+                .orElseThrow(() -> new ResourceNotFoundException("Slot original no encontrado."));
 
         Set<String> roles = authorities != null
                 ? authorities.stream().map(GrantedAuthority::getAuthority).collect(Collectors.toSet())
@@ -660,65 +660,65 @@ public class AppointmentService {
         if (roles.contains("ROLE_ADMINISTRADOR")) {
             // Administrador autorizado
         } else if (roles.contains("ROLE_PROFESIONAL")) {
-            Profesional profesional = profesionalRepository.buscarPorUsuarioId(usuario.id())
-                    .orElseThrow(() -> new AccesoNoAutorizadoException("El profesional no tiene autorizacion para reprogramar citas de otro colega."));
-            if (!Objects.equals(slotOriginal.profesionalId(), profesional.id())) {
-                throw new AccesoNoAutorizadoException("El profesional no tiene autorizacion para reprogramar citas de otro colega.");
+            Professional profesional = professionalRepository.findByUserId(usuario.id())
+                    .orElseThrow(() -> new UnauthorizedAccessException("El profesional no tiene autorizacion para reprogramar citas de otro colega."));
+            if (!Objects.equals(slotOriginal.professionalId(), profesional.id())) {
+                throw new UnauthorizedAccessException("El profesional no tiene autorizacion para reprogramar citas de otro colega.");
             }
         } else if (roles.contains("ROLE_PACIENTE")) {
-            Paciente paciente = pacienteRepository.buscarPorUsuarioId(usuario.id())
-                    .orElseThrow(() -> new AccesoNoAutorizadoException("Solo pacientes registrados pueden reprogramar citas."));
-            if (!Objects.equals(citaOriginal.pacienteId(), paciente.id())) {
-                throw new AccesoNoAutorizadoException("No tiene autorizacion para reprogramar una cita ajena.");
+            Patient paciente = patientRepository.findByUserId(usuario.id())
+                    .orElseThrow(() -> new UnauthorizedAccessException("Solo pacientes registrados pueden reprogramar citas."));
+            if (!Objects.equals(citaOriginal.patientId(), paciente.id())) {
+                throw new UnauthorizedAccessException("No tiene autorizacion para reprogramar una cita ajena.");
             }
             // Regla de las 2 horas de anticipación
-            Instant limite = slotOriginal.fechaHoraInicio().minus(2, ChronoUnit.HOURS);
+            Instant limite = slotOriginal.startDateTime().minus(2, ChronoUnit.HOURS);
             if (Instant.now(clock).isAfter(limite)) {
-                throw new DatosInvalidosException("La reprogramacion por parte del paciente solo esta permitida hasta 2 horas antes de la cita.");
+                throw new InvalidDataException("La reprogramacion por parte del paciente solo esta permitida hasta 2 horas antes de la cita.");
             }
         } else {
-            throw new AccesoNoAutorizadoException("No tiene autorizacion para reprogramar citas.");
+            throw new UnauthorizedAccessException("No tiene autorizacion para reprogramar citas.");
         }
 
         // Resolver el nuevo slot
-        DisponibilidadSlot nuevoSlot;
-        if (request.nuevoSlotPublicId() != null && !request.nuevoSlotPublicId().isBlank()) {
-            nuevoSlot = disponibilidadSlotRepository.buscarEntidadPorPublicId(request.nuevoSlotPublicId().trim())
-                    .orElseThrow(() -> new RecursoNoEncontradoException("Nuevo slot de disponibilidad no encontrado: " + request.nuevoSlotPublicId()));
-        } else if (request.nuevaFecha() != null && request.nuevaHora() != null) {
-            Instant nuevoInicio = request.nuevaFecha().atTime(request.nuevaHora()).atZone(ZONE_BOGOTA).toInstant();
+        AvailabilitySlot nuevoSlot;
+        if (request.newSlotPublicId() != null && !request.newSlotPublicId().isBlank()) {
+            nuevoSlot = availabilitySlotRepository.findEntityByPublicId(request.newSlotPublicId().trim())
+                    .orElseThrow(() -> new ResourceNotFoundException("Nuevo slot de disponibilidad no encontrado: " + request.newSlotPublicId()));
+        } else if (request.newDate() != null && request.newTime() != null) {
+            Instant nuevoInicio = request.newDate().atTime(request.newTime()).atZone(BOGOTA_ZONE).toInstant();
             Instant nuevoFin = nuevoInicio.plus(30, ChronoUnit.MINUTES);
-            List<SlotResponse> slots = disponibilidadSlotRepository.listar(0, 10, null, null, null, nuevoInicio.minusSeconds(60), nuevoFin.plusSeconds(60), "LIBRE");
+            List<SlotResponse> slots = availabilitySlotRepository.list(0, 10, null, null, null, nuevoInicio.minusSeconds(60), nuevoFin.plusSeconds(60), "LIBRE");
             SlotResponse coincidente = slots.stream().findFirst()
-                    .orElseThrow(() -> new CitaNoDisponibleException("No se encontro slot disponible en el horario solicitado."));
-            nuevoSlot = disponibilidadSlotRepository.buscarEntidadPorPublicId(coincidente.publicId())
-                    .orElseThrow(() -> new RecursoNoEncontradoException("Slot de disponibilidad no encontrado."));
+                    .orElseThrow(() -> new AppointmentUnavailableException("No se encontro slot disponible en el horario solicitado."));
+            nuevoSlot = availabilitySlotRepository.findEntityByPublicId(coincidente.publicId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Slot de disponibilidad no encontrado."));
         } else {
-            throw new DatosInvalidosException("Debe proporcionar nuevoSlotPublicId o nuevaFecha y nuevaHora.");
+            throw new InvalidDataException("Debe proporcionar nuevoSlotPublicId o nuevaFecha y nuevaHora.");
         }
 
         if (Objects.equals(nuevoSlot.id(), slotOriginal.id())) {
-            throw new DatosInvalidosException("El nuevo slot no puede ser identico al slot actual.");
+            throw new InvalidDataException("El nuevo slot no puede ser identico al slot actual.");
         }
 
-        if (nuevoSlot.fechaHoraInicio().isBefore(Instant.now(clock))) {
-            throw new DatosInvalidosException("No es posible reprogramar una cita en un horario pasado.");
+        if (nuevoSlot.startDateTime().isBefore(Instant.now(clock))) {
+            throw new InvalidDataException("No es posible reprogramar una cita en un horario pasado.");
         }
 
         // 1. Reservar nuevo slot con compare-and-set
-        int reservado = disponibilidadSlotRepository.reservarSlot(nuevoSlot.id());
+        int reservado = availabilitySlotRepository.reserveSlot(nuevoSlot.id());
         if (reservado == 0) {
-            throw new CitaNoDisponibleException("El nuevo slot de atencion ya ha sido reservado o no esta disponible.");
+            throw new AppointmentUnavailableException("El nuevo slot de atencion ya ha sido reservado o no esta disponible.");
         }
 
         // 2. Insertar nueva cita enlazada
         String nuevaCitaPublicId = UUID.randomUUID().toString();
-        Cita nuevaCita = new Cita(
+        Appointment nuevaCita = new Appointment(
                 null,
                 nuevaCitaPublicId,
                 nuevoSlot.id(),
-                citaOriginal.pacienteId(),
-                citaOriginal.triajeId(),
+                citaOriginal.patientId(),
+                citaOriginal.triageId(),
                 citaOriginal.id(), // CITA_ORIGEN_ID
                 "PROGRAMADA",
                 null,
@@ -728,41 +728,41 @@ public class AppointmentService {
 
         Long nuevaCitaId;
         try {
-            nuevaCitaId = citaRepository.crear(nuevaCita);
-        } catch (DataIntegrityViolationException ex) {
-            disponibilidadSlotRepository.liberarSlot(nuevoSlot.id());
-            throw new CitaNoDisponibleException("El nuevo slot de atencion ya cuenta con una cita activa.");
+            nuevaCitaId = appointmentRepository.create(nuevaCita);
+        } catch (DataIntegrityViolationException | OperationConflictException ex) {
+            availabilitySlotRepository.releaseSlot(nuevoSlot.id());
+            throw new AppointmentUnavailableException("El nuevo slot de atencion ya cuenta con una cita activa.");
         }
 
         // 3. Transicionar cita original a REPROGRAMADA
-        String motivo = request.motivo() != null && !request.motivo().isBlank()
-                ? request.motivo()
+        String motivo = request.reason() != null && !request.reason().isBlank()
+                ? request.reason()
                 : "Reprogramada hacia nueva cita: " + nuevaCitaPublicId;
-        citaRepository.actualizarEstado(citaOriginal.id(), EstadoCita.REPROGRAMADA.name(), motivo);
+        appointmentRepository.updateStatus(citaOriginal.id(), AppointmentStatus.REPROGRAMADA.name(), motivo);
 
         // 4. Liberar slot original
-        disponibilidadSlotRepository.liberarSlot(citaOriginal.slotId());
+        availabilitySlotRepository.releaseSlot(citaOriginal.slotId());
 
         // 5. Auditar evento exitoso inmutable
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.CITA_REPROGRAMADA,
+                AuditableAction.CITA_REPROGRAMADA,
                 "CITA",
                 nuevaCitaPublicId,
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
         // 6. Retornar vista consolidada de la nueva cita
-        CitaResponse response = citaRepository.buscarPorPublicId(nuevaCitaPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Cita reprogramada no encontrada tras creacion."));
+        AppointmentResponse response = appointmentRepository.findByPublicId(nuevaCitaPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cita reprogramada no encontrada tras creacion."));
 
         if (appointmentNotificationService != null) {
-            Paciente paciente = pacienteRepository.buscarPorId(citaOriginal.pacienteId()).orElse(null);
+            Patient paciente = patientRepository.findById(citaOriginal.patientId()).orElse(null);
             if (paciente != null) {
-                Usuario uPac = usuarioRepository.buscarPorId(paciente.usuarioId()).orElse(null);
+                User uPac = userRepository.findById(paciente.userId()).orElse(null);
                 if (uPac != null) {
-                    appointmentNotificationService.enviarConfirmacionReserva(nuevaCitaId, paciente.id(), uPac.email(), response);
+                    appointmentNotificationService.sendBookingConfirmation(nuevaCitaId, paciente.id(), uPac.email(), response);
                 }
             }
         }

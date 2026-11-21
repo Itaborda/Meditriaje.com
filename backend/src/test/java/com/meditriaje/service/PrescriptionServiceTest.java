@@ -1,28 +1,28 @@
 package com.meditriaje.service;
 
 import com.meditriaje.dto.common.PaginatedResponse;
-import com.meditriaje.dto.prescription.CrearRecetaDetalleRequest;
-import com.meditriaje.dto.prescription.CrearRecetaRequest;
-import com.meditriaje.dto.prescription.MedicamentoResponse;
-import com.meditriaje.dto.prescription.RecetaDetalleResponse;
-import com.meditriaje.dto.prescription.RecetaResponse;
-import com.meditriaje.exception.AccesoNoAutorizadoException;
-import com.meditriaje.exception.DatosInvalidosException;
-import com.meditriaje.exception.RecursoNoEncontradoException;
-import com.meditriaje.model.AccionAuditable;
-import com.meditriaje.model.Atencion;
-import com.meditriaje.model.EventoAuditoria;
-import com.meditriaje.model.Medicamento;
-import com.meditriaje.model.Paciente;
-import com.meditriaje.model.Profesional;
-import com.meditriaje.model.Receta;
-import com.meditriaje.model.Usuario;
-import com.meditriaje.repository.AtencionRepository;
-import com.meditriaje.repository.MedicamentoRepository;
-import com.meditriaje.repository.PacienteRepository;
-import com.meditriaje.repository.ProfesionalRepository;
-import com.meditriaje.repository.RecetaRepository;
-import com.meditriaje.repository.UsuarioRepository;
+import com.meditriaje.dto.prescription.CreatePrescriptionDetailRequest;
+import com.meditriaje.dto.prescription.CreatePrescriptionRequest;
+import com.meditriaje.dto.prescription.MedicationResponse;
+import com.meditriaje.dto.prescription.PrescriptionDetailResponse;
+import com.meditriaje.dto.prescription.PrescriptionResponse;
+import com.meditriaje.exception.UnauthorizedAccessException;
+import com.meditriaje.exception.InvalidDataException;
+import com.meditriaje.exception.ResourceNotFoundException;
+import com.meditriaje.model.AuditableAction;
+import com.meditriaje.model.ClinicalAttention;
+import com.meditriaje.model.AuditEvent;
+import com.meditriaje.model.Medication;
+import com.meditriaje.model.Patient;
+import com.meditriaje.model.Professional;
+import com.meditriaje.model.Prescription;
+import com.meditriaje.model.User;
+import com.meditriaje.repository.ClinicalAttentionRepository;
+import com.meditriaje.repository.MedicationRepository;
+import com.meditriaje.repository.PatientRepository;
+import com.meditriaje.repository.ProfessionalRepository;
+import com.meditriaje.repository.PrescriptionRepository;
+import com.meditriaje.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -57,28 +57,28 @@ import static org.mockito.Mockito.when;
 class PrescriptionServiceTest {
 
     @Mock
-    private UsuarioRepository usuarioRepository;
+    private UserRepository userRepository;
 
     @Mock
-    private ProfesionalRepository profesionalRepository;
+    private ProfessionalRepository professionalRepository;
 
     @Mock
-    private PacienteRepository pacienteRepository;
+    private PatientRepository patientRepository;
 
     @Mock
-    private AtencionRepository atencionRepository;
+    private ClinicalAttentionRepository attentionRepository;
 
     @Mock
-    private MedicamentoRepository medicamentoRepository;
+    private MedicationRepository medicationRepository;
 
     @Mock
-    private RecetaRepository recetaRepository;
+    private PrescriptionRepository prescriptionRepository;
 
     @Mock
-    private AccesoClinicoService accesoClinicoService;
+    private ClinicalAccessService clinicalAccessService;
 
     @Mock
-    private AuditoriaService auditoriaService;
+    private AuditService auditService;
 
     private final Clock fixedClock = Clock.fixed(Instant.parse("2026-10-03T10:00:00Z"), ZoneId.of("America/Bogota"));
 
@@ -95,26 +95,26 @@ class PrescriptionServiceTest {
     @BeforeEach
     void setUp() {
         service = new PrescriptionService(
-                usuarioRepository,
-                profesionalRepository,
-                pacienteRepository,
-                atencionRepository,
-                medicamentoRepository,
-                recetaRepository,
-                accesoClinicoService,
-                auditoriaService,
+                userRepository,
+                professionalRepository,
+                patientRepository,
+                attentionRepository,
+                medicationRepository,
+                prescriptionRepository,
+                clinicalAccessService,
+                auditService,
                 fixedClock
         );
     }
 
     @Test
     @DisplayName("emitirReceta - Emisión exitosa con snapshot de medicamentos y auditoría obligatoria CREACION_RECETA")
-    void emitirReceta_exito_emiteRecetaYAudita() {
-        Usuario usuario = new Usuario(1L, USUARIO_PROF_UUID, "dr.carlos@test.com", "hash", "ACTIVO", 0, null, Instant.now());
-        Profesional profesional = new Profesional(PROFESIONAL_ID, 1L, "prof-uuid", 1L, "RM-12345", "Carlos", "Gomez", Instant.now(), null);
-        Atencion atencion = new Atencion(ATENCION_ID, "atencion-uuid", 100L, PACIENTE_ID, PROFESIONAL_ID, "CERRADA");
+    void issuePrescription_success_issuesPrescriptionAndAudits() {
+        User usuario = new User(1L, USUARIO_PROF_UUID, "dr.carlos@test.com", "hash", "ACTIVO", 0, null, Instant.now());
+        Professional profesional = new Professional(PROFESIONAL_ID, 1L, "prof-uuid", 1L, "RM-12345", "Carlos", "Gomez", Instant.now(), null);
+        ClinicalAttention atencion = new ClinicalAttention(ATENCION_ID, "atencion-uuid", 100L, PACIENTE_ID, PROFESIONAL_ID, "CERRADA");
 
-        Medicamento med = new Medicamento(
+        Medication med = new Medication(
                 50L,
                 "med-uuid-1",
                 "MED-ACE-500",
@@ -125,7 +125,7 @@ class PrescriptionServiceTest {
                 "ACTIVO"
         );
 
-        CrearRecetaDetalleRequest detalleReq = new CrearRecetaDetalleRequest(
+        CreatePrescriptionDetailRequest detalleReq = new CreatePrescriptionDetailRequest(
                 "med-uuid-1",
                 "500 mg",
                 "Cada 8 horas",
@@ -133,15 +133,15 @@ class PrescriptionServiceTest {
                 15,
                 "Tomar despues de comidas"
         );
-        CrearRecetaRequest request = new CrearRecetaRequest("atencion-uuid", 30, List.of(detalleReq));
+        CreatePrescriptionRequest request = new CreatePrescriptionRequest("atencion-uuid", 30, List.of(detalleReq));
 
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PROF_UUID)).thenReturn(Optional.of(usuario));
-        when(profesionalRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.of(profesional));
-        when(atencionRepository.buscarEntidadPorPublicId("atencion-uuid")).thenReturn(Optional.of(atencion));
-        when(medicamentoRepository.buscarPorPublicId("med-uuid-1")).thenReturn(Optional.of(med));
-        when(recetaRepository.crearReceta(any(Receta.class))).thenReturn(555L);
+        when(userRepository.findByPublicId(USUARIO_PROF_UUID)).thenReturn(Optional.of(usuario));
+        when(professionalRepository.findByUserId(1L)).thenReturn(Optional.of(profesional));
+        when(attentionRepository.findEntityByPublicId("atencion-uuid")).thenReturn(Optional.of(atencion));
+        when(medicationRepository.findByPublicId("med-uuid-1")).thenReturn(Optional.of(med));
+        when(prescriptionRepository.createPrescription(any(Prescription.class))).thenReturn(555L);
 
-        RecetaDetalleResponse detalleResp = new RecetaDetalleResponse(
+        PrescriptionDetailResponse detalleResp = new PrescriptionDetailResponse(
                 "med-uuid-1",
                 "MED-ACE-500",
                 "Acetaminofen",
@@ -154,7 +154,7 @@ class PrescriptionServiceTest {
                 15,
                 "Tomar despues de comidas"
         );
-        RecetaResponse recetaResponse = new RecetaResponse(
+        PrescriptionResponse recetaResponse = new PrescriptionResponse(
                 "receta-uuid-1",
                 "atencion-uuid",
                 "pac-uuid",
@@ -166,36 +166,36 @@ class PrescriptionServiceTest {
                 Instant.now(),
                 List.of(detalleResp)
         );
-        when(recetaRepository.buscarPorPublicId(anyString())).thenReturn(Optional.of(recetaResponse));
+        when(prescriptionRepository.findByPublicId(anyString())).thenReturn(Optional.of(recetaResponse));
 
-        RecetaResponse resultado = service.emitirReceta(request, USUARIO_PROF_UUID, "192.168.1.1");
+        PrescriptionResponse resultado = service.issuePrescription(request, USUARIO_PROF_UUID, "192.168.1.1");
 
         assertThat(resultado).isNotNull();
         assertThat(resultado.publicId()).isEqualTo("receta-uuid-1");
-        assertThat(resultado.detalles()).hasSize(1);
-        assertThat(resultado.detalles().get(0).nombreComercial()).isEqualTo("Acetaminofen");
+        assertThat(resultado.details()).hasSize(1);
+        assertThat(resultado.details().get(0).brandName()).isEqualTo("Acetaminofen");
 
         // Verificar que los detalles persistidos congelan el snapshot
-        verify(recetaRepository).guardarDetalles(eq(555L), anyList());
+        verify(prescriptionRepository).saveDetails(eq(555L), anyList());
 
         // Verificar auditoría inmutable
-        ArgumentCaptor<EventoAuditoria> eventoCaptor = ArgumentCaptor.forClass(EventoAuditoria.class);
-        verify(auditoriaService).auditar(eventoCaptor.capture());
-        EventoAuditoria evento = eventoCaptor.getValue();
-        assertThat(evento.accion()).isEqualTo(AccionAuditable.CREACION_RECETA);
-        assertThat(evento.tipoRecurso()).isEqualTo("RECETA");
-        assertThat(evento.usuarioId()).isEqualTo(1L);
-        assertThat(evento.ipOrigen()).isEqualTo("192.168.1.1");
+        ArgumentCaptor<AuditEvent> eventoCaptor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).audit(eventoCaptor.capture());
+        AuditEvent evento = eventoCaptor.getValue();
+        assertThat(evento.action()).isEqualTo(AuditableAction.CREACION_RECETA);
+        assertThat(evento.resourceType()).isEqualTo("RECETA");
+        assertThat(evento.userId()).isEqualTo(1L);
+        assertThat(evento.sourceIp()).isEqualTo("192.168.1.1");
     }
 
     @Test
     @DisplayName("emitirReceta - Rechazo cuando medicamento no existe o no está activo")
-    void emitirReceta_medicamentoInactivoOInexistente_lanzaExcepcion() {
-        Usuario usuario = new Usuario(1L, USUARIO_PROF_UUID, "dr.carlos@test.com", "hash", "ACTIVO", 0, null, Instant.now());
-        Profesional profesional = new Profesional(PROFESIONAL_ID, 1L, "prof-uuid", 1L, "RM-12345", "Carlos", "Gomez", Instant.now(), null);
-        Atencion atencion = new Atencion(ATENCION_ID, "atencion-uuid", 100L, PACIENTE_ID, PROFESIONAL_ID, "CERRADA");
+    void issuePrescription_medicationInactiveOrInexistente_throwsException() {
+        User usuario = new User(1L, USUARIO_PROF_UUID, "dr.carlos@test.com", "hash", "ACTIVO", 0, null, Instant.now());
+        Professional profesional = new Professional(PROFESIONAL_ID, 1L, "prof-uuid", 1L, "RM-12345", "Carlos", "Gomez", Instant.now(), null);
+        ClinicalAttention atencion = new ClinicalAttention(ATENCION_ID, "atencion-uuid", 100L, PACIENTE_ID, PROFESIONAL_ID, "CERRADA");
 
-        Medicamento medInactivo = new Medicamento(
+        Medication medInactivo = new Medication(
                 50L,
                 "med-inactivo-uuid",
                 "MED-INA-100",
@@ -206,7 +206,7 @@ class PrescriptionServiceTest {
                 "INACTIVO"
         );
 
-        CrearRecetaDetalleRequest detalleReq = new CrearRecetaDetalleRequest(
+        CreatePrescriptionDetailRequest detalleReq = new CreatePrescriptionDetailRequest(
                 "med-inactivo-uuid",
                 "100 mg",
                 "Cada 12 horas",
@@ -214,29 +214,29 @@ class PrescriptionServiceTest {
                 6,
                 null
         );
-        CrearRecetaRequest request = new CrearRecetaRequest("atencion-uuid", 30, List.of(detalleReq));
+        CreatePrescriptionRequest request = new CreatePrescriptionRequest("atencion-uuid", 30, List.of(detalleReq));
 
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PROF_UUID)).thenReturn(Optional.of(usuario));
-        when(profesionalRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.of(profesional));
-        when(atencionRepository.buscarEntidadPorPublicId("atencion-uuid")).thenReturn(Optional.of(atencion));
-        when(medicamentoRepository.buscarPorPublicId("med-inactivo-uuid")).thenReturn(Optional.of(medInactivo));
+        when(userRepository.findByPublicId(USUARIO_PROF_UUID)).thenReturn(Optional.of(usuario));
+        when(professionalRepository.findByUserId(1L)).thenReturn(Optional.of(profesional));
+        when(attentionRepository.findEntityByPublicId("atencion-uuid")).thenReturn(Optional.of(atencion));
+        when(medicationRepository.findByPublicId("med-inactivo-uuid")).thenReturn(Optional.of(medInactivo));
 
-        assertThatThrownBy(() -> service.emitirReceta(request, USUARIO_PROF_UUID, "127.0.0.1"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> service.issuePrescription(request, USUARIO_PROF_UUID, "127.0.0.1"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("no existe o no se encuentra activo");
 
-        verify(recetaRepository, never()).crearReceta(any());
-        verify(auditoriaService, never()).auditar(any());
+        verify(prescriptionRepository, never()).createPrescription(any());
+        verify(auditService, never()).audit(any());
     }
 
     @Test
     @DisplayName("emitirReceta - Si falla el guardado de detalles, propaga excepción para rollback transaccional sin auditar éxito")
-    void emitirReceta_falloEnDetalles_propagaExcepcionParaRollback() {
-        Usuario usuario = new Usuario(1L, USUARIO_PROF_UUID, "dr.carlos@test.com", "hash", "ACTIVO", 0, null, Instant.now());
-        Profesional profesional = new Profesional(PROFESIONAL_ID, 1L, "prof-uuid", 1L, "RM-12345", "Carlos", "Gomez", Instant.now(), null);
-        Atencion atencion = new Atencion(ATENCION_ID, "atencion-uuid", 100L, PACIENTE_ID, PROFESIONAL_ID, "CERRADA");
+    void issuePrescription_failureInDetails_propagatesExcepcionForRollback() {
+        User usuario = new User(1L, USUARIO_PROF_UUID, "dr.carlos@test.com", "hash", "ACTIVO", 0, null, Instant.now());
+        Professional profesional = new Professional(PROFESIONAL_ID, 1L, "prof-uuid", 1L, "RM-12345", "Carlos", "Gomez", Instant.now(), null);
+        ClinicalAttention atencion = new ClinicalAttention(ATENCION_ID, "atencion-uuid", 100L, PACIENTE_ID, PROFESIONAL_ID, "CERRADA");
 
-        Medicamento med = new Medicamento(
+        Medication med = new Medication(
                 50L,
                 "med-uuid-1",
                 "MED-ACE-500",
@@ -247,7 +247,7 @@ class PrescriptionServiceTest {
                 "ACTIVO"
         );
 
-        CrearRecetaDetalleRequest detalleReq = new CrearRecetaDetalleRequest(
+        CreatePrescriptionDetailRequest detalleReq = new CreatePrescriptionDetailRequest(
                 "med-uuid-1",
                 "500 mg",
                 "Cada 8 horas",
@@ -255,82 +255,82 @@ class PrescriptionServiceTest {
                 9,
                 "Tomar con agua"
         );
-        CrearRecetaRequest request = new CrearRecetaRequest("atencion-uuid", 30, List.of(detalleReq));
+        CreatePrescriptionRequest request = new CreatePrescriptionRequest("atencion-uuid", 30, List.of(detalleReq));
 
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PROF_UUID)).thenReturn(Optional.of(usuario));
-        when(profesionalRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.of(profesional));
-        when(atencionRepository.buscarEntidadPorPublicId("atencion-uuid")).thenReturn(Optional.of(atencion));
-        when(medicamentoRepository.buscarPorPublicId("med-uuid-1")).thenReturn(Optional.of(med));
-        when(recetaRepository.crearReceta(any())).thenReturn(101L);
+        when(userRepository.findByPublicId(USUARIO_PROF_UUID)).thenReturn(Optional.of(usuario));
+        when(professionalRepository.findByUserId(1L)).thenReturn(Optional.of(profesional));
+        when(attentionRepository.findEntityByPublicId("atencion-uuid")).thenReturn(Optional.of(atencion));
+        when(medicationRepository.findByPublicId("med-uuid-1")).thenReturn(Optional.of(med));
+        when(prescriptionRepository.createPrescription(any())).thenReturn(101L);
         doThrow(new org.springframework.dao.DataIntegrityViolationException("Fallo en constraint de clave foránea"))
-                .when(recetaRepository).guardarDetalles(eq(101L), anyList());
+                .when(prescriptionRepository).saveDetails(eq(101L), anyList());
 
-        assertThatThrownBy(() -> service.emitirReceta(request, USUARIO_PROF_UUID, "127.0.0.1"))
+        assertThatThrownBy(() -> service.issuePrescription(request, USUARIO_PROF_UUID, "127.0.0.1"))
                 .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class)
                 .hasMessageContaining("Fallo en constraint");
 
-        verify(auditoriaService, never()).auditar(any());
+        verify(auditService, never()).audit(any());
     }
 
     @Test
     @DisplayName("emitirReceta - Rechazo si usuario autenticado no está registrado como profesional")
-    void emitirReceta_usuarioNoProfesional_lanza403() {
-        Usuario usuario = new Usuario(2L, "usr-pac-1", "paciente@test.com", "hash", "ACTIVO", 0, null, Instant.now());
-        when(usuarioRepository.buscarPorPublicId("usr-pac-1")).thenReturn(Optional.of(usuario));
-        when(profesionalRepository.buscarPorUsuarioId(2L)).thenReturn(Optional.empty());
+    void issuePrescription_userNotProfessional_throws403() {
+        User usuario = new User(2L, "usr-pac-1", "paciente@test.com", "hash", "ACTIVO", 0, null, Instant.now());
+        when(userRepository.findByPublicId("usr-pac-1")).thenReturn(Optional.of(usuario));
+        when(professionalRepository.findByUserId(2L)).thenReturn(Optional.empty());
 
-        CrearRecetaRequest request = new CrearRecetaRequest("atencion-uuid", 30, List.of(
-                new CrearRecetaDetalleRequest("med-uuid-1", "500 mg", "8h", 3, 9, null)
+        CreatePrescriptionRequest request = new CreatePrescriptionRequest("atencion-uuid", 30, List.of(
+                new CreatePrescriptionDetailRequest("med-uuid-1", "500 mg", "8h", 3, 9, null)
         ));
 
-        assertThatThrownBy(() -> service.emitirReceta(request, "usr-pac-1", "127.0.0.1"))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+        assertThatThrownBy(() -> service.issuePrescription(request, "usr-pac-1", "127.0.0.1"))
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessageContaining("Usuario no registrado como profesional asistencial");
     }
 
     @Test
     @DisplayName("emitirReceta - Médico no autor valida relación asistencial y es rechazado si no la tiene")
-    void emitirReceta_medicoNoAutorSinRelacion_lanza403() {
-        Usuario usuario = new Usuario(1L, USUARIO_PROF_UUID, "dr.otro@test.com", "hash", "ACTIVO", 0, null, Instant.now());
-        Profesional profesional = new Profesional(PROFESIONAL_ID, 1L, "prof-uuid", 1L, "RM-12345", "Otro", "Medico", Instant.now(), null);
+    void issuePrescription_nonAuthorPhysicianWithoutRelationship_throws403() {
+        User usuario = new User(1L, USUARIO_PROF_UUID, "dr.otro@test.com", "hash", "ACTIVO", 0, null, Instant.now());
+        Professional profesional = new Professional(PROFESIONAL_ID, 1L, "prof-uuid", 1L, "RM-12345", "Otro", "Medico", Instant.now(), null);
         // La atención fue realizada por otro profesional (ID 99L)
-        Atencion atencion = new Atencion(ATENCION_ID, "atencion-uuid", 100L, PACIENTE_ID, 99L, "CERRADA");
+        ClinicalAttention atencion = new ClinicalAttention(ATENCION_ID, "atencion-uuid", 100L, PACIENTE_ID, 99L, "CERRADA");
 
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PROF_UUID)).thenReturn(Optional.of(usuario));
-        when(profesionalRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.of(profesional));
-        when(atencionRepository.buscarEntidadPorPublicId("atencion-uuid")).thenReturn(Optional.of(atencion));
+        when(userRepository.findByPublicId(USUARIO_PROF_UUID)).thenReturn(Optional.of(usuario));
+        when(professionalRepository.findByUserId(1L)).thenReturn(Optional.of(profesional));
+        when(attentionRepository.findEntityByPublicId("atencion-uuid")).thenReturn(Optional.of(atencion));
 
-        doThrow(new AccesoNoAutorizadoException("El profesional no cuenta con una relacion asistencial activa con el paciente."))
-                .when(accesoClinicoService).validarRelacionAsistencial(PROFESIONAL_ID, PACIENTE_ID);
+        doThrow(new UnauthorizedAccessException("El profesional no cuenta con una relacion asistencial activa con el paciente."))
+                .when(clinicalAccessService).validateCareRelationship(PROFESIONAL_ID, PACIENTE_ID);
 
-        CrearRecetaRequest request = new CrearRecetaRequest("atencion-uuid", 30, List.of(
-                new CrearRecetaDetalleRequest("med-uuid-1", "500 mg", "8h", 3, 9, null)
+        CreatePrescriptionRequest request = new CreatePrescriptionRequest("atencion-uuid", 30, List.of(
+                new CreatePrescriptionDetailRequest("med-uuid-1", "500 mg", "8h", 3, 9, null)
         ));
 
-        assertThatThrownBy(() -> service.emitirReceta(request, USUARIO_PROF_UUID, "127.0.0.1"))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+        assertThatThrownBy(() -> service.issuePrescription(request, USUARIO_PROF_UUID, "127.0.0.1"))
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessageContaining("relacion asistencial activa");
 
-        verify(recetaRepository, never()).crearReceta(any());
+        verify(prescriptionRepository, never()).createPrescription(any());
     }
 
     @Test
     @DisplayName("obtenerPorPublicId - Profesional autor consulta exitosamente")
-    void obtenerPorPublicId_medicoAutor_exito() {
-        Receta receta = new Receta(555L, "receta-uuid-1", ATENCION_ID, PACIENTE_ID, PROFESIONAL_ID, 30, Instant.now());
-        Usuario usuario = new Usuario(1L, USUARIO_PROF_UUID, "dr.carlos@test.com", "hash", "ACTIVO", 0, null, Instant.now());
-        Profesional profesional = new Profesional(PROFESIONAL_ID, 1L, "prof-uuid", 1L, "RM-12345", "Carlos", "Gomez", Instant.now(), null);
+    void getByPublicId_authorPhysician_success() {
+        Prescription receta = new Prescription(555L, "receta-uuid-1", ATENCION_ID, PACIENTE_ID, PROFESIONAL_ID, 30, Instant.now());
+        User usuario = new User(1L, USUARIO_PROF_UUID, "dr.carlos@test.com", "hash", "ACTIVO", 0, null, Instant.now());
+        Professional profesional = new Professional(PROFESIONAL_ID, 1L, "prof-uuid", 1L, "RM-12345", "Carlos", "Gomez", Instant.now(), null);
 
-        RecetaResponse recetaResponse = new RecetaResponse(
+        PrescriptionResponse recetaResponse = new PrescriptionResponse(
                 "receta-uuid-1", "atencion-uuid", "pac-uuid", "Juan", "prof-uuid", "Carlos", "General", 30, Instant.now(), List.of()
         );
 
-        when(recetaRepository.buscarEntidadPorPublicId("receta-uuid-1")).thenReturn(Optional.of(receta));
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PROF_UUID)).thenReturn(Optional.of(usuario));
-        when(profesionalRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.of(profesional));
-        when(recetaRepository.buscarPorPublicId("receta-uuid-1")).thenReturn(Optional.of(recetaResponse));
+        when(prescriptionRepository.findEntityByPublicId("receta-uuid-1")).thenReturn(Optional.of(receta));
+        when(userRepository.findByPublicId(USUARIO_PROF_UUID)).thenReturn(Optional.of(usuario));
+        when(professionalRepository.findByUserId(1L)).thenReturn(Optional.of(profesional));
+        when(prescriptionRepository.findByPublicId("receta-uuid-1")).thenReturn(Optional.of(recetaResponse));
 
-        RecetaResponse resp = service.obtenerPorPublicId(
+        PrescriptionResponse resp = service.getByPublicId(
                 "receta-uuid-1",
                 USUARIO_PROF_UUID,
                 List.of(new SimpleGrantedAuthority("ROLE_PROFESIONAL"))
@@ -338,91 +338,89 @@ class PrescriptionServiceTest {
 
         assertThat(resp).isNotNull();
         assertThat(resp.publicId()).isEqualTo("receta-uuid-1");
-        verify(accesoClinicoService, never()).validarRelacionAsistencial(anyLong(), anyLong());
+        verify(clinicalAccessService, never()).validateCareRelationship(anyLong(), anyLong());
     }
 
     @Test
     @DisplayName("obtenerPorPublicId - Profesional no autor con relación activa consulta exitosamente")
-    void obtenerPorPublicId_medicoNoAutorConRelacion_exito() {
-        Receta receta = new Receta(555L, "receta-uuid-1", ATENCION_ID, PACIENTE_ID, 99L, 30, Instant.now());
-        Usuario usuario = new Usuario(1L, USUARIO_PROF_UUID, "dr.carlos@test.com", "hash", "ACTIVO", 0, null, Instant.now());
-        Profesional profesional = new Profesional(PROFESIONAL_ID, 1L, "prof-uuid", 1L, "RM-12345", "Carlos", "Gomez", Instant.now(), null);
+    void getByPublicId_nonAuthorPhysicianWithRelationship_success() {
+        Prescription receta = new Prescription(555L, "receta-uuid-1", ATENCION_ID, PACIENTE_ID, 99L, 30, Instant.now());
+        User usuario = new User(1L, USUARIO_PROF_UUID, "dr.carlos@test.com", "hash", "ACTIVO", 0, null, Instant.now());
+        Professional profesional = new Professional(PROFESIONAL_ID, 1L, "prof-uuid", 1L, "RM-12345", "Carlos", "Gomez", Instant.now(), null);
 
-        RecetaResponse recetaResponse = new RecetaResponse(
+        PrescriptionResponse recetaResponse = new PrescriptionResponse(
                 "receta-uuid-1", "atencion-uuid", "pac-uuid", "Juan", "prof-uuid-99", "Otro", "General", 30, Instant.now(), List.of()
         );
 
-        when(recetaRepository.buscarEntidadPorPublicId("receta-uuid-1")).thenReturn(Optional.of(receta));
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PROF_UUID)).thenReturn(Optional.of(usuario));
-        when(profesionalRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.of(profesional));
-        doNothing().when(accesoClinicoService).validarRelacionAsistencial(PROFESIONAL_ID, PACIENTE_ID);
-        when(recetaRepository.buscarPorPublicId("receta-uuid-1")).thenReturn(Optional.of(recetaResponse));
+        when(prescriptionRepository.findEntityByPublicId("receta-uuid-1")).thenReturn(Optional.of(receta));
+        when(userRepository.findByPublicId(USUARIO_PROF_UUID)).thenReturn(Optional.of(usuario));
+        when(professionalRepository.findByUserId(1L)).thenReturn(Optional.of(profesional));
+        doNothing().when(clinicalAccessService).validateCareRelationship(PROFESIONAL_ID, PACIENTE_ID);
+        when(prescriptionRepository.findByPublicId("receta-uuid-1")).thenReturn(Optional.of(recetaResponse));
 
-        RecetaResponse resp = service.obtenerPorPublicId(
+        PrescriptionResponse resp = service.getByPublicId(
                 "receta-uuid-1",
                 USUARIO_PROF_UUID,
                 List.of(new SimpleGrantedAuthority("ROLE_PROFESIONAL"))
         );
 
         assertThat(resp).isNotNull();
-        verify(accesoClinicoService).validarRelacionAsistencial(PROFESIONAL_ID, PACIENTE_ID);
+        verify(clinicalAccessService).validateCareRelationship(PROFESIONAL_ID, PACIENTE_ID);
     }
 
     @Test
     @DisplayName("obtenerPorPublicId - Administrador es rechazado categóricamente (ADR-007)")
-    void obtenerPorPublicId_admin_lanza403() {
-        Receta receta = new Receta(555L, "receta-uuid-1", ATENCION_ID, PACIENTE_ID, PROFESIONAL_ID, 30, Instant.now());
-        when(recetaRepository.buscarEntidadPorPublicId("receta-uuid-1")).thenReturn(Optional.of(receta));
-
-        assertThatThrownBy(() -> service.obtenerPorPublicId(
+    void getByPublicId_admin_throws403() {
+        assertThatThrownBy(() -> service.getByPublicId(
                 "receta-uuid-1",
                 USUARIO_ADMIN_UUID,
                 List.of(new SimpleGrantedAuthority("ROLE_ADMINISTRADOR"))
-        )).isInstanceOf(AccesoNoAutorizadoException.class)
+        )).isInstanceOf(UnauthorizedAccessException.class)
           .hasMessageContaining("El personal administrativo no tiene acceso a recetas ni contenido clinico");
 
-        verify(recetaRepository, never()).buscarPorPublicId(anyString());
+        verify(prescriptionRepository, never()).findEntityByPublicId(anyString());
+        verify(prescriptionRepository, never()).findByPublicId(anyString());
     }
 
     @Test
     @DisplayName("obtenerPorPublicId - Paciente ajeno es rechazado (403)")
-    void obtenerPorPublicId_pacienteAjeno_lanza403() {
-        Receta receta = new Receta(555L, "receta-uuid-1", ATENCION_ID, PACIENTE_ID, PROFESIONAL_ID, 30, Instant.now());
-        Usuario usuario = new Usuario(2L, USUARIO_PACIENTE_UUID, "paciente@test.com", "hash", "ACTIVO", 0, null, Instant.now());
+    void getByPublicId_otherPatient_throws403() {
+        Prescription receta = new Prescription(555L, "receta-uuid-1", ATENCION_ID, PACIENTE_ID, PROFESIONAL_ID, 30, Instant.now());
+        User usuario = new User(2L, USUARIO_PACIENTE_UUID, "paciente@test.com", "hash", "ACTIVO", 0, null, Instant.now());
         // Paciente con ID distinto (999L != PACIENTE_ID)
-        Paciente paciente = new Paciente(999L, 2L, "pac-uuid-ajeno", "CC", "12345", "Pedro", "Gomez", LocalDate.of(1990, 1, 1), null);
+        Patient paciente = new Patient(999L, 2L, "pac-uuid-ajeno", "CC", "12345", "Pedro", "Gomez", LocalDate.of(1990, 1, 1), null);
 
-        when(recetaRepository.buscarEntidadPorPublicId("receta-uuid-1")).thenReturn(Optional.of(receta));
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PACIENTE_UUID)).thenReturn(Optional.of(usuario));
-        when(pacienteRepository.buscarPorUsuarioId(2L)).thenReturn(Optional.of(paciente));
+        when(prescriptionRepository.findEntityByPublicId("receta-uuid-1")).thenReturn(Optional.of(receta));
+        when(userRepository.findByPublicId(USUARIO_PACIENTE_UUID)).thenReturn(Optional.of(usuario));
+        when(patientRepository.findByUserId(2L)).thenReturn(Optional.of(paciente));
 
-        assertThatThrownBy(() -> service.obtenerPorPublicId(
+        assertThatThrownBy(() -> service.getByPublicId(
                 "receta-uuid-1",
                 USUARIO_PACIENTE_UUID,
                 List.of(new SimpleGrantedAuthority("ROLE_PACIENTE"))
-        )).isInstanceOf(AccesoNoAutorizadoException.class)
+        )).isInstanceOf(UnauthorizedAccessException.class)
           .hasMessageContaining("No tiene autorizacion para acceder a la receta de otro paciente");
 
-        verify(recetaRepository, never()).buscarPorPublicId(anyString());
+        verify(prescriptionRepository, never()).findByPublicId(anyString());
     }
 
     @Test
     @DisplayName("obtenerPorPublicId - Paciente dueño consulta su propia receta (200)")
-    void obtenerPorPublicId_pacientePropio_exito() {
-        Receta receta = new Receta(555L, "receta-uuid-1", ATENCION_ID, PACIENTE_ID, PROFESIONAL_ID, 30, Instant.now());
-        Usuario usuario = new Usuario(2L, USUARIO_PACIENTE_UUID, "paciente@test.com", "hash", "ACTIVO", 0, null, Instant.now());
-        Paciente paciente = new Paciente(PACIENTE_ID, 2L, "pac-uuid-propio", "CC", "12345", "Juan", "Perez", LocalDate.of(1990, 1, 1), null);
+    void getByPublicId_ownPatient_success() {
+        Prescription receta = new Prescription(555L, "receta-uuid-1", ATENCION_ID, PACIENTE_ID, PROFESIONAL_ID, 30, Instant.now());
+        User usuario = new User(2L, USUARIO_PACIENTE_UUID, "paciente@test.com", "hash", "ACTIVO", 0, null, Instant.now());
+        Patient paciente = new Patient(PACIENTE_ID, 2L, "pac-uuid-propio", "CC", "12345", "Juan", "Perez", LocalDate.of(1990, 1, 1), null);
 
-        RecetaResponse recetaResponse = new RecetaResponse(
+        PrescriptionResponse recetaResponse = new PrescriptionResponse(
                 "receta-uuid-1", "atencion-uuid", "pac-uuid-propio", "Juan Perez", "prof-uuid", "Carlos Gomez", "General", 30, Instant.now(), List.of()
         );
 
-        when(recetaRepository.buscarEntidadPorPublicId("receta-uuid-1")).thenReturn(Optional.of(receta));
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PACIENTE_UUID)).thenReturn(Optional.of(usuario));
-        when(pacienteRepository.buscarPorUsuarioId(2L)).thenReturn(Optional.of(paciente));
-        when(recetaRepository.buscarPorPublicId("receta-uuid-1")).thenReturn(Optional.of(recetaResponse));
+        when(prescriptionRepository.findEntityByPublicId("receta-uuid-1")).thenReturn(Optional.of(receta));
+        when(userRepository.findByPublicId(USUARIO_PACIENTE_UUID)).thenReturn(Optional.of(usuario));
+        when(patientRepository.findByUserId(2L)).thenReturn(Optional.of(paciente));
+        when(prescriptionRepository.findByPublicId("receta-uuid-1")).thenReturn(Optional.of(recetaResponse));
 
-        RecetaResponse resp = service.obtenerPorPublicId(
+        PrescriptionResponse resp = service.getByPublicId(
                 "receta-uuid-1",
                 USUARIO_PACIENTE_UUID,
                 List.of(new SimpleGrantedAuthority("ROLE_PACIENTE"))
@@ -434,15 +432,15 @@ class PrescriptionServiceTest {
 
     @Test
     @DisplayName("listarCatalogo - Paginación segura y retorno de datos")
-    void listarCatalogo_retornaPagina() {
-        MedicamentoResponse med = new MedicamentoResponse(
+    void listCatalog_returnsPage() {
+        MedicationResponse med = new MedicationResponse(
                 "med-uuid-1", "MED-ACE-500", "Acetaminofen", "Acetaminofen", "Tableta", "500 mg", "ACTIVO"
         );
-        when(medicamentoRepository.listarActivos(eq("aceta"), eq(0), eq(10)))
+        when(medicationRepository.listActive(eq("aceta"), eq(0), eq(10)))
                 .thenReturn(List.of(med));
-        when(medicamentoRepository.contarActivos("aceta")).thenReturn(1);
+        when(medicationRepository.countActive("aceta")).thenReturn(1);
 
-        PaginatedResponse<MedicamentoResponse> resp = service.listarCatalogo("aceta", 0, 10);
+        PaginatedResponse<MedicationResponse> resp = service.listCatalog("aceta", 0, 10);
 
         assertThat(resp).isNotNull();
         assertThat(resp.content()).hasSize(1);
@@ -452,66 +450,66 @@ class PrescriptionServiceTest {
 
     @Test
     @DisplayName("obtenerMisRecetas - Paciente autenticado consulta sus recetas exitosamente y audita CONSULTA_HISTORIA")
-    void obtenerMisRecetas_exito() {
-        Usuario usuario = new Usuario(2L, USUARIO_PACIENTE_UUID, "paciente@test.com", "hash", "ACTIVO", 0, null, Instant.now());
-        Paciente paciente = new Paciente(PACIENTE_ID, 2L, "pac-uuid-propio", "CC", "12345", "Juan", "Perez", LocalDate.of(1990, 1, 1), null);
+    void getMyPrescriptions_success() {
+        User usuario = new User(2L, USUARIO_PACIENTE_UUID, "paciente@test.com", "hash", "ACTIVO", 0, null, Instant.now());
+        Patient paciente = new Patient(PACIENTE_ID, 2L, "pac-uuid-propio", "CC", "12345", "Juan", "Perez", LocalDate.of(1990, 1, 1), null);
 
-        RecetaResponse recetaResponse = new RecetaResponse(
+        PrescriptionResponse recetaResponse = new PrescriptionResponse(
                 "receta-uuid-1", "atencion-uuid", "pac-uuid-propio", "Juan Perez", "prof-uuid", "Carlos Gomez", "General", 30, Instant.now(), List.of()
         );
 
-        when(usuarioRepository.buscarPorPublicId(USUARIO_PACIENTE_UUID)).thenReturn(Optional.of(usuario));
-        when(pacienteRepository.buscarPorUsuarioId(2L)).thenReturn(Optional.of(paciente));
-        when(recetaRepository.listarPorPacienteId(PACIENTE_ID, 0, 10)).thenReturn(List.of(recetaResponse));
-        when(recetaRepository.contarPorPacienteId(PACIENTE_ID)).thenReturn(1);
+        when(userRepository.findByPublicId(USUARIO_PACIENTE_UUID)).thenReturn(Optional.of(usuario));
+        when(patientRepository.findByUserId(2L)).thenReturn(Optional.of(paciente));
+        when(prescriptionRepository.listByPatientId(PACIENTE_ID, 0, 10)).thenReturn(List.of(recetaResponse));
+        when(prescriptionRepository.countByPatientId(PACIENTE_ID)).thenReturn(1);
 
-        PaginatedResponse<RecetaResponse> resp = service.obtenerMisRecetas(USUARIO_PACIENTE_UUID, 0, 10, "192.168.1.50");
+        PaginatedResponse<PrescriptionResponse> resp = service.getMyPrescriptions(USUARIO_PACIENTE_UUID, 0, 10, "192.168.1.50");
 
         assertThat(resp).isNotNull();
         assertThat(resp.content()).hasSize(1);
         assertThat(resp.totalElements()).isEqualTo(1L);
         assertThat(resp.content().get(0).publicId()).isEqualTo("receta-uuid-1");
 
-        ArgumentCaptor<EventoAuditoria> captor = ArgumentCaptor.forClass(EventoAuditoria.class);
-        verify(auditoriaService).auditar(captor.capture());
-        EventoAuditoria evento = captor.getValue();
-        assertThat(evento.accion()).isEqualTo(AccionAuditable.CONSULTA_HISTORIA);
-        assertThat(evento.tipoRecurso()).isEqualTo("RECETA");
-        assertThat(evento.recursoPublicId()).isEqualTo("pac-uuid-propio");
-        assertThat(evento.ipOrigen()).isEqualTo("192.168.1.50");
+        ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).audit(captor.capture());
+        AuditEvent evento = captor.getValue();
+        assertThat(evento.action()).isEqualTo(AuditableAction.CONSULTA_HISTORIA);
+        assertThat(evento.resourceType()).isEqualTo("RECETA");
+        assertThat(evento.resourcePublicId()).isEqualTo("pac-uuid-propio");
+        assertThat(evento.sourceIp()).isEqualTo("192.168.1.50");
     }
 
     @Test
     @DisplayName("obtenerMisRecetas - Falla si usuario autenticado no existe")
-    void obtenerMisRecetas_rechazaSiUsuarioNoExiste() {
-        when(usuarioRepository.buscarPorPublicId("uuid-inexistente")).thenReturn(Optional.empty());
+    void getMyPrescriptions_rejectsWhenUserNotFound() {
+        when(userRepository.findByPublicId("uuid-inexistente")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.obtenerMisRecetas("uuid-inexistente", 0, 10, "127.0.0.1"))
-                .isInstanceOf(RecursoNoEncontradoException.class)
+        assertThatThrownBy(() -> service.getMyPrescriptions("uuid-inexistente", 0, 10, "127.0.0.1"))
+                .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("Usuario autenticado no encontrado");
     }
 
     @Test
     @DisplayName("obtenerMisRecetas - Falla si usuario no está registrado como paciente")
-    void obtenerMisRecetas_rechazaSiUsuarioNoEsPaciente() {
-        Usuario usuario = new Usuario(10L, "uuid-no-paciente", "otro@test.com", "hash", "ACTIVO", 0, null, Instant.now());
-        when(usuarioRepository.buscarPorPublicId("uuid-no-paciente")).thenReturn(Optional.of(usuario));
-        when(pacienteRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.empty());
+    void getMyPrescriptions_rejectsWhenUserNotPatient() {
+        User usuario = new User(10L, "uuid-no-paciente", "otro@test.com", "hash", "ACTIVO", 0, null, Instant.now());
+        when(userRepository.findByPublicId("uuid-no-paciente")).thenReturn(Optional.of(usuario));
+        when(patientRepository.findByUserId(10L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.obtenerMisRecetas("uuid-no-paciente", 0, 10, "127.0.0.1"))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+        assertThatThrownBy(() -> service.getMyPrescriptions("uuid-no-paciente", 0, 10, "127.0.0.1"))
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessageContaining("Usuario no registrado como paciente");
     }
 
     @Test
     @DisplayName("obtenerMisRecetas - Falla si usuarioAutenticadoPublicId es nulo o blanco")
-    void obtenerMisRecetas_rechazaSiUsuarioNuloOBlanco() {
-        assertThatThrownBy(() -> service.obtenerMisRecetas(null, 0, 10, "127.0.0.1"))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+    void getMyPrescriptions_rejectsWhenUserNullOrBlank() {
+        assertThatThrownBy(() -> service.getMyPrescriptions(null, 0, 10, "127.0.0.1"))
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessageContaining("Usuario no autenticado");
 
-        assertThatThrownBy(() -> service.obtenerMisRecetas("   ", 0, 10, "127.0.0.1"))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+        assertThatThrownBy(() -> service.getMyPrescriptions("   ", 0, 10, "127.0.0.1"))
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessageContaining("Usuario no autenticado");
     }
 }

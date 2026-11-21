@@ -1,21 +1,21 @@
 package com.meditriaje.service;
 
-import com.meditriaje.dto.emergency.AccesoQrResponse;
-import com.meditriaje.dto.emergency.GenerarQrRequest;
-import com.meditriaje.dto.emergency.GenerarQrResponse;
-import com.meditriaje.dto.emergency.VerificarQrResponse;
-import com.meditriaje.exception.AccesoNoAutorizadoException;
-import com.meditriaje.exception.RecursoNoEncontradoException;
-import com.meditriaje.model.AccesoTemporalQr;
-import com.meditriaje.model.AccionAuditable;
-import com.meditriaje.model.EstadoAccesoQr;
-import com.meditriaje.model.EventoAuditoria;
-import com.meditriaje.model.Paciente;
-import com.meditriaje.model.ResultadoAuditoria;
-import com.meditriaje.model.Usuario;
-import com.meditriaje.repository.AccesoTemporalQrRepository;
-import com.meditriaje.repository.PacienteRepository;
-import com.meditriaje.repository.UsuarioRepository;
+import com.meditriaje.dto.emergency.QrAccessResponse;
+import com.meditriaje.dto.emergency.GenerateQrRequest;
+import com.meditriaje.dto.emergency.GenerateQrResponse;
+import com.meditriaje.dto.emergency.VerifyQrResponse;
+import com.meditriaje.exception.UnauthorizedAccessException;
+import com.meditriaje.exception.ResourceNotFoundException;
+import com.meditriaje.model.TemporaryQrAccess;
+import com.meditriaje.model.AuditableAction;
+import com.meditriaje.model.QrAccessStatus;
+import com.meditriaje.model.AuditEvent;
+import com.meditriaje.model.Patient;
+import com.meditriaje.model.AuditResult;
+import com.meditriaje.model.User;
+import com.meditriaje.repository.TemporaryQrAccessRepository;
+import com.meditriaje.repository.PatientRepository;
+import com.meditriaje.repository.UserRepository;
 import com.meditriaje.security.TokenHashUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -38,47 +38,47 @@ import java.util.UUID;
 @Service
 public class EmergencyQrService {
 
-    public static final int VIGENCIA_MINUTOS = 15;
-    public static final int MAX_ACCESOS_PERMITIDOS = 3;
+    public static final int VALIDITY_MINUTES = 15;
+    public static final int MAX_ALLOWED_ACCESSES = 3;
 
-    private final AccesoTemporalQrRepository accesoTemporalQrRepository;
-    private final PacienteRepository pacienteRepository;
-    private final UsuarioRepository usuarioRepository;
-    private final AuditoriaService auditoriaService;
+    private final TemporaryQrAccessRepository temporaryQrAccessRepository;
+    private final PatientRepository patientRepository;
+    private final UserRepository userRepository;
+    private final AuditService auditService;
     private final PasswordEncoder passwordEncoder;
     private final Clock clock;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Autowired
     public EmergencyQrService(
-            AccesoTemporalQrRepository accesoTemporalQrRepository,
-            PacienteRepository pacienteRepository,
-            UsuarioRepository usuarioRepository,
-            AuditoriaService auditoriaService,
+            TemporaryQrAccessRepository temporaryQrAccessRepository,
+            PatientRepository patientRepository,
+            UserRepository userRepository,
+            AuditService auditService,
             PasswordEncoder passwordEncoder
     ) {
         this(
-                accesoTemporalQrRepository,
-                pacienteRepository,
-                usuarioRepository,
-                auditoriaService,
+                temporaryQrAccessRepository,
+                patientRepository,
+                userRepository,
+                auditService,
                 passwordEncoder,
                 Clock.systemUTC()
         );
     }
 
     public EmergencyQrService(
-            AccesoTemporalQrRepository accesoTemporalQrRepository,
-            PacienteRepository pacienteRepository,
-            UsuarioRepository usuarioRepository,
-            AuditoriaService auditoriaService,
+            TemporaryQrAccessRepository temporaryQrAccessRepository,
+            PatientRepository patientRepository,
+            UserRepository userRepository,
+            AuditService auditService,
             PasswordEncoder passwordEncoder,
             Clock clock
     ) {
-        this.accesoTemporalQrRepository = Objects.requireNonNull(accesoTemporalQrRepository, "accesoTemporalQrRepository no puede ser nulo");
-        this.pacienteRepository = Objects.requireNonNull(pacienteRepository, "pacienteRepository no puede ser nulo");
-        this.usuarioRepository = Objects.requireNonNull(usuarioRepository, "usuarioRepository no puede ser nulo");
-        this.auditoriaService = Objects.requireNonNull(auditoriaService, "auditoriaService no puede ser nulo");
+        this.temporaryQrAccessRepository = Objects.requireNonNull(temporaryQrAccessRepository, "accesoTemporalQrRepository no puede ser nulo");
+        this.patientRepository = Objects.requireNonNull(patientRepository, "pacienteRepository no puede ser nulo");
+        this.userRepository = Objects.requireNonNull(userRepository, "usuarioRepository no puede ser nulo");
+        this.auditService = Objects.requireNonNull(auditService, "auditoriaService no puede ser nulo");
         this.passwordEncoder = Objects.requireNonNull(passwordEncoder, "passwordEncoder no puede ser nulo");
         this.clock = Objects.requireNonNull(clock, "clock no puede ser nulo");
     }
@@ -87,12 +87,12 @@ public class EmergencyQrService {
      * Genera un nuevo token temporal criptográfico de 256 bits y registra el acceso QR para el paciente autenticado.
      */
     @Transactional
-    public GenerarQrResponse generarAccesoQr(GenerarQrRequest request, String usuarioAutenticadoPublicId, String ipOrigen) {
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado."));
+    public GenerateQrResponse generateQrAccess(GenerateQrRequest request, String usuarioAutenticadoPublicId, String ipOrigen) {
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
 
-        Paciente paciente = pacienteRepository.buscarPorUsuarioId(usuario.id())
-                .orElseThrow(() -> new AccesoNoAutorizadoException("Solo pacientes registrados pueden generar accesos QR de emergencia."));
+        Patient paciente = patientRepository.findByUserId(usuario.id())
+                .orElseThrow(() -> new UnauthorizedAccessException("Solo pacientes registrados pueden generar accesos QR de emergencia."));
 
         // Generar token criptográfico opaco de 256 bits (32 bytes)
         byte[] tokenBytes = new byte[32];
@@ -107,15 +107,15 @@ public class EmergencyQrService {
         }
 
         Instant now = Instant.now(clock);
-        Instant expiraAt = now.plus(VIGENCIA_MINUTOS, ChronoUnit.MINUTES);
+        Instant expiraAt = now.plus(VALIDITY_MINUTES, ChronoUnit.MINUTES);
         String publicId = UUID.randomUUID().toString();
 
-        boolean incluirAlergias = request != null ? request.getIncluirAlergias() : true;
-        boolean incluirMedicamentos = request != null ? request.getIncluirMedicamentos() : true;
-        boolean incluirAtenciones = request != null ? request.getIncluirAtenciones() : true;
-        boolean incluirContacto = request != null ? request.getIncluirContacto() : true;
+        boolean incluirAlergias = request != null ? request.getIncludeAllergies() : true;
+        boolean incluirMedicamentos = request != null ? request.getIncludeMedications() : true;
+        boolean incluirAtenciones = request != null ? request.getIncludeAttentions() : true;
+        boolean incluirContacto = request != null ? request.getIncludeContact() : true;
 
-        AccesoTemporalQr nuevo = new AccesoTemporalQr(
+        TemporaryQrAccess nuevo = new TemporaryQrAccess(
                 null,
                 publicId,
                 paciente.id(),
@@ -125,7 +125,7 @@ public class EmergencyQrService {
                 incluirMedicamentos,
                 incluirAtenciones,
                 incluirContacto,
-                MAX_ACCESOS_PERMITIDOS,
+                MAX_ALLOWED_ACCESSES,
                 0,
                 false,
                 expiraAt,
@@ -133,25 +133,25 @@ public class EmergencyQrService {
                 now
         );
 
-        accesoTemporalQrRepository.crear(nuevo);
+        temporaryQrAccessRepository.create(nuevo);
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.GENERACION_QR_EMERGENCIA,
+                AuditableAction.GENERACION_QR_EMERGENCIA,
                 "ACCESO_TEMPORAL_QR",
                 publicId,
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
         String qrUrl = "#/emergency-summary/" + token;
 
-        return new GenerarQrResponse(
+        return new GenerateQrResponse(
                 publicId,
                 token,
                 qrUrl,
                 expiraAt,
-                MAX_ACCESOS_PERMITIDOS,
+                MAX_ALLOWED_ACCESSES,
                 pinHash != null,
                 incluirAlergias,
                 incluirMedicamentos,
@@ -165,29 +165,29 @@ public class EmergencyQrService {
      * Lista los accesos QR generados por el paciente autenticado con su estado temporal resuelto.
      */
     @Transactional(readOnly = true)
-    public List<AccesoQrResponse> listarMisAccesosQr(String usuarioAutenticadoPublicId) {
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado."));
+    public List<QrAccessResponse> listMyQrAccesses(String usuarioAutenticadoPublicId) {
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
 
-        Paciente paciente = pacienteRepository.buscarPorUsuarioId(usuario.id())
-                .orElseThrow(() -> new AccesoNoAutorizadoException("Solo pacientes registrados pueden consultar sus accesos QR."));
+        Patient paciente = patientRepository.findByUserId(usuario.id())
+                .orElseThrow(() -> new UnauthorizedAccessException("Solo pacientes registrados pueden consultar sus accesos QR."));
 
-        List<AccesoTemporalQr> accesos = accesoTemporalQrRepository.listarPorPacienteId(paciente.id());
+        List<TemporaryQrAccess> accesos = temporaryQrAccessRepository.listByPatientId(paciente.id());
         Instant now = Instant.now(clock);
 
         return accesos.stream()
-                .map(a -> new AccesoQrResponse(
+                .map(a -> new QrAccessResponse(
                         a.publicId(),
-                        a.resolverEstado(now).name(),
-                        a.maxAccesos(),
-                        a.accesosRealizados(),
-                        a.revocado(),
-                        a.requierePin(),
-                        a.incluirAlergias(),
-                        a.incluirMedicamentos(),
-                        a.incluirAtenciones(),
-                        a.incluirContacto(),
-                        a.expiraAt(),
+                        a.resolveStatus(now).name(),
+                        a.maxAccesses(),
+                        a.accessCount(),
+                        a.revoked(),
+                        a.requiresPin(),
+                        a.includeAllergies(),
+                        a.includeMedications(),
+                        a.includeAttentions(),
+                        a.includeContact(),
+                        a.expiresAt(),
                         a.createdAt()
                 ))
                 .toList();
@@ -197,28 +197,28 @@ public class EmergencyQrService {
      * Revoca inmediatamente un acceso temporal QR a solicitud de su titular.
      */
     @Transactional
-    public void revocarAccesoQr(String publicId, String usuarioAutenticadoPublicId, String ipOrigen) {
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado."));
+    public void revokeQrAccess(String publicId, String usuarioAutenticadoPublicId, String ipOrigen) {
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
 
-        Paciente paciente = pacienteRepository.buscarPorUsuarioId(usuario.id())
-                .orElseThrow(() -> new AccesoNoAutorizadoException("Solo pacientes registrados pueden revocar accesos QR."));
+        Patient paciente = patientRepository.findByUserId(usuario.id())
+                .orElseThrow(() -> new UnauthorizedAccessException("Solo pacientes registrados pueden revocar accesos QR."));
 
-        AccesoTemporalQr acceso = accesoTemporalQrRepository.buscarPorPublicId(publicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Acceso temporal QR no encontrado."));
+        TemporaryQrAccess acceso = temporaryQrAccessRepository.findByPublicId(publicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Acceso temporal QR no encontrado."));
 
-        if (!acceso.pacienteId().equals(paciente.id())) {
-            throw new AccesoNoAutorizadoException("No tiene autorizacion para revocar un acceso QR ajeno.");
+        if (!acceso.patientId().equals(paciente.id())) {
+            throw new UnauthorizedAccessException("No tiene autorizacion para revocar un acceso QR ajeno.");
         }
 
-        accesoTemporalQrRepository.revocar(publicId, paciente.id());
+        temporaryQrAccessRepository.revoke(publicId, paciente.id());
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.REVOCACION_QR_EMERGENCIA,
+                AuditableAction.REVOCACION_QR_EMERGENCIA,
                 "ACCESO_TEMPORAL_QR",
                 publicId,
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
     }
@@ -227,28 +227,28 @@ public class EmergencyQrService {
      * Verifica la validez pública de un token QR escaneado (indica vigencia y si requiere PIN).
      */
     @Transactional(readOnly = true)
-    public VerificarQrResponse verificarTokenPublico(String token) {
+    public VerifyQrResponse verifyPublicToken(String token) {
         if (token == null || token.isBlank()) {
-            return new VerificarQrResponse(false, false, EstadoAccesoQr.EXPIRADO.name(), null);
+            return new VerifyQrResponse(false, false, QrAccessStatus.EXPIRADO.name(), null);
         }
 
         String tokenHash = TokenHashUtil.hash(token.trim());
-        Optional<AccesoTemporalQr> accesoOpt = accesoTemporalQrRepository.buscarPorTokenHash(tokenHash);
+        Optional<TemporaryQrAccess> accesoOpt = temporaryQrAccessRepository.findByTokenHash(tokenHash);
 
         if (accesoOpt.isEmpty()) {
-            return new VerificarQrResponse(false, false, EstadoAccesoQr.EXPIRADO.name(), null);
+            return new VerifyQrResponse(false, false, QrAccessStatus.EXPIRADO.name(), null);
         }
 
-        AccesoTemporalQr acceso = accesoOpt.get();
+        TemporaryQrAccess acceso = accesoOpt.get();
         Instant now = Instant.now(clock);
-        EstadoAccesoQr estado = acceso.resolverEstado(now);
-        boolean valido = (estado == EstadoAccesoQr.ACTIVO);
+        QrAccessStatus estado = acceso.resolveStatus(now);
+        boolean valido = (estado == QrAccessStatus.ACTIVO);
 
-        return new VerificarQrResponse(
+        return new VerifyQrResponse(
                 valido,
-                acceso.requierePin(),
+                acceso.requiresPin(),
                 estado.name(),
-                acceso.expiraAt()
+                acceso.expiresAt()
         );
     }
 }

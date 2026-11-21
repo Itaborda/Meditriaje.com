@@ -1,19 +1,19 @@
 package com.meditriaje.service;
 
-import com.meditriaje.dto.appointment.CitaResponse;
-import com.meditriaje.dto.appointment.ReservarCitaRequest;
-import com.meditriaje.exception.CitaNoDisponibleException;
-import com.meditriaje.model.Cita;
-import com.meditriaje.model.DisponibilidadSlot;
-import com.meditriaje.model.Paciente;
-import com.meditriaje.model.Profesional;
-import com.meditriaje.model.Usuario;
-import com.meditriaje.repository.CitaRepository;
-import com.meditriaje.repository.DisponibilidadSlotRepository;
-import com.meditriaje.repository.PacienteRepository;
-import com.meditriaje.repository.ProfesionalRepository;
-import com.meditriaje.repository.TriajeRepository;
-import com.meditriaje.repository.UsuarioRepository;
+import com.meditriaje.dto.appointment.AppointmentResponse;
+import com.meditriaje.dto.appointment.BookAppointmentRequest;
+import com.meditriaje.exception.AppointmentUnavailableException;
+import com.meditriaje.model.Appointment;
+import com.meditriaje.model.AvailabilitySlot;
+import com.meditriaje.model.Patient;
+import com.meditriaje.model.Professional;
+import com.meditriaje.model.User;
+import com.meditriaje.repository.AppointmentRepository;
+import com.meditriaje.repository.AvailabilitySlotRepository;
+import com.meditriaje.repository.PatientRepository;
+import com.meditriaje.repository.ProfessionalRepository;
+import com.meditriaje.repository.TriageRepository;
+import com.meditriaje.repository.UserRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
@@ -63,42 +63,42 @@ class AppointmentConcurrencyTest {
     private static final Instant TIEMPO_FIJO = Instant.parse("2026-10-10T10:00:00Z");
 
     @Mock
-    private UsuarioRepository usuarioRepository;
+    private UserRepository userRepository;
     @Mock
-    private PacienteRepository pacienteRepository;
+    private PatientRepository patientRepository;
     @Mock
-    private DisponibilidadSlotRepository disponibilidadSlotRepository;
+    private AvailabilitySlotRepository availabilitySlotRepository;
     @Mock
-    private ProfesionalRepository profesionalRepository;
+    private ProfessionalRepository professionalRepository;
     @Mock
-    private CitaRepository citaRepository;
+    private AppointmentRepository appointmentRepository;
     @Mock
-    private TriajeRepository triajeRepository;
+    private TriageRepository triageRepository;
     @Mock
-    private AuditoriaService auditoriaService;
+    private AuditService auditService;
 
     @Test
     @DisplayName("M4.4: 12 hilos concurrentes compitiendo por el mismo slot -> exactamente 1 gana y 11 reciben CitaNoDisponible")
-    void concurrencia_doceHilosMismoSlot_exactamenteUnoTieneExito() throws Exception {
-        ejecutarPruebaConcurrencia();
+    void concurrencia_doceHilosSameSlot_exactamenteOneHasExito() throws Exception {
+        runConcurrencyTest();
     }
 
     @RepeatedTest(value = 5, name = "Repetición {currentRepetition} de {totalRepetitions} - Determinismo de concurrencia M4.4")
     @DisplayName("M4.4: Repetición para garantizar ausencia total de flakiness en concurrencia")
     void concurrencia_repetida_mantieneDeterminismo() throws Exception {
-        ejecutarPruebaConcurrencia();
+        runConcurrencyTest();
     }
 
-    private void ejecutarPruebaConcurrencia() throws Exception {
+    private void runConcurrencyTest() throws Exception {
         Clock clock = Clock.fixed(TIEMPO_FIJO, ZoneOffset.UTC);
         AppointmentService service = new AppointmentService(
-                usuarioRepository,
-                pacienteRepository,
-                disponibilidadSlotRepository,
-                profesionalRepository,
-                citaRepository,
-                triajeRepository,
-                auditoriaService,
+                userRepository,
+                patientRepository,
+                availabilitySlotRepository,
+                professionalRepository,
+                appointmentRepository,
+                triageRepository,
+                auditService,
                 clock
         );
 
@@ -107,7 +107,7 @@ class AppointmentConcurrencyTest {
         Long profId = 200L;
         Long espId = 10L;
 
-        DisponibilidadSlot slot = new DisponibilidadSlot(
+        AvailabilitySlot slot = new AvailabilitySlot(
                 slotId,
                 slotPublicId,
                 profId,
@@ -119,34 +119,34 @@ class AppointmentConcurrencyTest {
                 "LIBRE"
         );
 
-        Profesional profesional = new Profesional(
+        Professional profesional = new Professional(
                 profId, 50L, "prof-uuid", espId, "RM-12345", "Dra. Laura", "Pérez", TIEMPO_FIJO, null
         );
 
-        when(disponibilidadSlotRepository.buscarEntidadPorPublicId(slotPublicId)).thenReturn(Optional.of(slot));
-        when(profesionalRepository.buscarPorId(profId)).thenReturn(Optional.of(profesional));
+        when(availabilitySlotRepository.findEntityByPublicId(slotPublicId)).thenReturn(Optional.of(slot));
+        when(professionalRepository.findById(profId)).thenReturn(Optional.of(profesional));
 
         // Modelado atómico fiel de la base de datos:
         // 1. UPDATE DISPONIBILIDAD_SLOT SET ESTADO = 'OCUPADO' WHERE ID = ? AND ESTADO = 'LIBRE'
         AtomicReference<String> estadoSlotEnBd = new AtomicReference<>("LIBRE");
-        when(disponibilidadSlotRepository.reservarSlot(slotId)).thenAnswer(inv -> {
+        when(availabilitySlotRepository.reserveSlot(slotId)).thenAnswer(inv -> {
             boolean gano = estadoSlotEnBd.compareAndSet("LIBRE", "OCUPADO");
             return gano ? 1 : 0;
         });
 
         // 2. Índice funcional único UQ_CITA_SLOT_ACTIVA: sólo una cita activa por slot
         Set<Long> slotsConCitaActiva = ConcurrentHashMap.newKeySet();
-        when(citaRepository.crear(any(Cita.class))).thenAnswer(inv -> {
-            Cita c = inv.getArgument(0);
+        when(appointmentRepository.create(any(Appointment.class))).thenAnswer(inv -> {
+            Appointment c = inv.getArgument(0);
             if (!slotsConCitaActiva.add(c.slotId())) {
                 throw new DataIntegrityViolationException("ORA-00001: unique constraint (MEDITRIAJE_OWNER.UQ_CITA_SLOT_ACTIVA) violated");
             }
             return 999L;
         });
 
-        lenient().when(citaRepository.buscarPorPublicId(anyString())).thenAnswer(inv -> {
+        lenient().when(appointmentRepository.findByPublicId(anyString())).thenAnswer(inv -> {
             String pubId = inv.getArgument(0);
-            return Optional.of(new CitaResponse(
+            return Optional.of(new AppointmentResponse(
                     pubId,
                     slotPublicId,
                     "pac-uuid",
@@ -174,16 +174,16 @@ class AppointmentConcurrencyTest {
             Long usuarioId = (long) (1000 + i);
             Long pacienteId = (long) (2000 + i);
 
-            Usuario u = new Usuario(
+            User u = new User(
                     usuarioId, userPubId, "pac" + i + "@mail.com", "hash", "ACTIVO", 0, null, TIEMPO_FIJO, false
             );
-            Paciente p = new Paciente(
+            Patient p = new Patient(
                     pacienteId, usuarioId, "pac-pub-" + i, "CC", "100000" + i, "Paciente" + i, "Prueba",
                     java.time.LocalDate.of(1990, 1, 1), "3000000000", TIEMPO_FIJO, null
             );
 
-            when(usuarioRepository.buscarPorPublicId(userPubId)).thenReturn(Optional.of(u));
-            when(pacienteRepository.buscarPorUsuarioId(usuarioId)).thenReturn(Optional.of(p));
+            when(userRepository.findByPublicId(userPubId)).thenReturn(Optional.of(u));
+            when(patientRepository.findByUserId(usuarioId)).thenReturn(Optional.of(p));
         }
 
         // Ejecución concurrente
@@ -196,7 +196,7 @@ class AppointmentConcurrencyTest {
         AtomicInteger citasNoDisponibles = new AtomicInteger(0);
         AtomicInteger otrosErrores = new AtomicInteger(0);
 
-        ReservarCitaRequest request = new ReservarCitaRequest(slotPublicId, null);
+        BookAppointmentRequest request = new BookAppointmentRequest(slotPublicId, null);
 
         List<Future<?>> futures = new ArrayList<>();
         for (int i = 0; i < NUM_HILOS; i++) {
@@ -205,9 +205,9 @@ class AppointmentConcurrencyTest {
                 readyLatch.countDown();
                 try {
                     startLatch.await(); // Barrera de inicio simultáneo
-                    service.reservarCita(request, "user-pac-" + index, "192.168.1." + index);
+                    service.bookAppointment(request, "user-pac-" + index, "192.168.1." + index);
                     exitos.incrementAndGet();
-                } catch (CitaNoDisponibleException e) {
+                } catch (AppointmentUnavailableException e) {
                     citasNoDisponibles.incrementAndGet();
                 } catch (Throwable t) {
                     otrosErrores.incrementAndGet();

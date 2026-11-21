@@ -21,7 +21,7 @@ public class EmailTemplateService {
 
     private static final Logger log = LoggerFactory.getLogger(EmailTemplateService.class);
     private final ResourceLoader resourceLoader;
-    private final Map<String, String> cachePlantillas = new ConcurrentHashMap<>();
+    private final Map<String, String> templateCache = new ConcurrentHashMap<>();
 
     public EmailTemplateService(ResourceLoader resourceLoader) {
         this.resourceLoader = Objects.requireNonNull(resourceLoader, "resourceLoader no puede ser nulo");
@@ -34,8 +34,8 @@ public class EmailTemplateService {
      * @param variables     Mapa de variables a interpolar
      * @return Contenido HTML renderizado
      */
-    public String renderizar(String rutaPlantilla, Map<String, String> variables) {
-        String plantilla = cachePlantillas.computeIfAbsent(rutaPlantilla, this::cargarDesdeClasspath);
+    public String render(String rutaPlantilla, Map<String, String> variables) {
+        String plantilla = templateCache.computeIfAbsent(rutaPlantilla, this::loadFromClasspath);
         String resultado = plantilla;
         if (variables != null) {
             for (Map.Entry<String, String> entry : variables.entrySet()) {
@@ -47,7 +47,7 @@ public class EmailTemplateService {
         return resultado;
     }
 
-    private String cargarDesdeClasspath(String ruta) {
+    private String loadFromClasspath(String ruta) {
         Resource resource = resourceLoader.getResource("classpath:" + ruta);
         try (InputStream is = resource.getInputStream()) {
             return new String(is.readAllBytes(), StandardCharsets.UTF_8);

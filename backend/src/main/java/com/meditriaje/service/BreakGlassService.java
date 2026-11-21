@@ -1,21 +1,21 @@
 package com.meditriaje.service;
 
-import com.meditriaje.dto.clinical.AccesoBreakGlassResponse;
-import com.meditriaje.dto.clinical.ActivarBreakGlassRequest;
-import com.meditriaje.exception.AccesoNoAutorizadoException;
-import com.meditriaje.exception.DatosInvalidosException;
-import com.meditriaje.exception.RecursoNoEncontradoException;
-import com.meditriaje.model.AccesoBreakGlass;
-import com.meditriaje.model.AccionAuditable;
-import com.meditriaje.model.EventoAuditoria;
-import com.meditriaje.model.Paciente;
-import com.meditriaje.model.Profesional;
-import com.meditriaje.model.ResultadoAuditoria;
-import com.meditriaje.model.Usuario;
+import com.meditriaje.dto.clinical.BreakGlassAccessResponse;
+import com.meditriaje.dto.clinical.ActivateBreakGlassRequest;
+import com.meditriaje.exception.UnauthorizedAccessException;
+import com.meditriaje.exception.InvalidDataException;
+import com.meditriaje.exception.ResourceNotFoundException;
+import com.meditriaje.model.BreakGlassAccess;
+import com.meditriaje.model.AuditableAction;
+import com.meditriaje.model.AuditEvent;
+import com.meditriaje.model.Patient;
+import com.meditriaje.model.Professional;
+import com.meditriaje.model.AuditResult;
+import com.meditriaje.model.User;
 import com.meditriaje.repository.BreakGlassRepository;
-import com.meditriaje.repository.PacienteRepository;
-import com.meditriaje.repository.ProfesionalRepository;
-import com.meditriaje.repository.UsuarioRepository;
+import com.meditriaje.repository.PatientRepository;
+import com.meditriaje.repository.ProfessionalRepository;
+import com.meditriaje.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,47 +35,47 @@ import java.util.UUID;
 @Service
 public class BreakGlassService {
 
-    public static final ZoneId ZONE_BOGOTA = ZoneId.of("America/Bogota");
-    public static final int VIGENCIA_HORAS = 24;
+    public static final ZoneId BOGOTA_ZONE = ZoneId.of("America/Bogota");
+    public static final int VALIDITY_HOURS = 24;
 
-    private final UsuarioRepository usuarioRepository;
-    private final ProfesionalRepository profesionalRepository;
-    private final PacienteRepository pacienteRepository;
+    private final UserRepository userRepository;
+    private final ProfessionalRepository professionalRepository;
+    private final PatientRepository patientRepository;
     private final BreakGlassRepository breakGlassRepository;
-    private final AuditoriaService auditoriaService;
+    private final AuditService auditService;
     private final Clock clock;
 
     @Autowired
     public BreakGlassService(
-            UsuarioRepository usuarioRepository,
-            ProfesionalRepository profesionalRepository,
-            PacienteRepository pacienteRepository,
+            UserRepository userRepository,
+            ProfessionalRepository professionalRepository,
+            PatientRepository patientRepository,
             BreakGlassRepository breakGlassRepository,
-            AuditoriaService auditoriaService
+            AuditService auditService
     ) {
         this(
-                usuarioRepository,
-                profesionalRepository,
-                pacienteRepository,
+                userRepository,
+                professionalRepository,
+                patientRepository,
                 breakGlassRepository,
-                auditoriaService,
-                Clock.system(ZONE_BOGOTA)
+                auditService,
+                Clock.system(BOGOTA_ZONE)
         );
     }
 
     public BreakGlassService(
-            UsuarioRepository usuarioRepository,
-            ProfesionalRepository profesionalRepository,
-            PacienteRepository pacienteRepository,
+            UserRepository userRepository,
+            ProfessionalRepository professionalRepository,
+            PatientRepository patientRepository,
             BreakGlassRepository breakGlassRepository,
-            AuditoriaService auditoriaService,
+            AuditService auditService,
             Clock clock
     ) {
-        this.usuarioRepository = Objects.requireNonNull(usuarioRepository, "usuarioRepository no puede ser nulo");
-        this.profesionalRepository = Objects.requireNonNull(profesionalRepository, "profesionalRepository no puede ser nulo");
-        this.pacienteRepository = Objects.requireNonNull(pacienteRepository, "pacienteRepository no puede ser nulo");
+        this.userRepository = Objects.requireNonNull(userRepository, "usuarioRepository no puede ser nulo");
+        this.professionalRepository = Objects.requireNonNull(professionalRepository, "profesionalRepository no puede ser nulo");
+        this.patientRepository = Objects.requireNonNull(patientRepository, "pacienteRepository no puede ser nulo");
         this.breakGlassRepository = Objects.requireNonNull(breakGlassRepository, "breakGlassRepository no puede ser nulo");
-        this.auditoriaService = Objects.requireNonNull(auditoriaService, "auditoriaService no puede ser nulo");
+        this.auditService = Objects.requireNonNull(auditService, "auditoriaService no puede ser nulo");
         this.clock = Objects.requireNonNull(clock, "clock no puede ser nulo");
     }
 
@@ -88,96 +88,96 @@ public class BreakGlassService {
      * @return DTO con la información de la autorización creada y su vigencia
      */
     @Transactional
-    public AccesoBreakGlassResponse activarBreakGlass(
-            ActivarBreakGlassRequest request,
+    public BreakGlassAccessResponse activateBreakGlass(
+            ActivateBreakGlassRequest request,
             String usuarioAutenticadoPublicId,
             String ipOrigen
     ) {
         Objects.requireNonNull(request, "request no puede ser nulo");
         if (usuarioAutenticadoPublicId == null || usuarioAutenticadoPublicId.isBlank()) {
-            throw new AccesoNoAutorizadoException("Usuario no autenticado.");
+            throw new UnauthorizedAccessException("Usuario no autenticado.");
         }
 
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
 
-        Profesional profesional = profesionalRepository.buscarPorUsuarioId(usuario.id())
-                .orElseThrow(() -> new AccesoNoAutorizadoException("Usuario no registrado como profesional asistencial."));
+        Professional profesional = professionalRepository.findByUserId(usuario.id())
+                .orElseThrow(() -> new UnauthorizedAccessException("Usuario no registrado como profesional asistencial."));
 
-        Paciente paciente = pacienteRepository.buscarPorPublicId(request.pacientePublicId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado."));
+        Patient paciente = patientRepository.findByPublicId(request.patientPublicId())
+                .orElseThrow(() -> new ResourceNotFoundException("Paciente no encontrado."));
 
-        if (request.motivo() == null || request.motivo().trim().length() < 20) {
-            throw new DatosInvalidosException("El motivo de justificacion de emergencia debe contener al menos 20 caracteres.");
+        if (request.reason() == null || request.reason().trim().length() < 20) {
+            throw new InvalidDataException("El motivo de justificacion de emergencia debe contener al menos 20 caracteres.");
         }
 
         Instant ahora = clock.instant();
-        Instant expiracion = ahora.plus(VIGENCIA_HORAS, ChronoUnit.HOURS);
+        Instant expiracion = ahora.plus(VALIDITY_HOURS, ChronoUnit.HOURS);
         String publicId = UUID.randomUUID().toString();
 
-        AccesoBreakGlass acceso = new AccesoBreakGlass(
+        BreakGlassAccess acceso = new BreakGlassAccess(
                 null,
                 publicId,
                 profesional.id(),
                 paciente.id(),
-                request.motivo().trim(),
+                request.reason().trim(),
                 expiracion,
                 ahora
         );
 
-        breakGlassRepository.registrarAcceso(acceso);
+        breakGlassRepository.recordAccess(acceso);
 
         // Auditoría reforzada e inmutable (ADR-011, ADR-017)
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.ACCESO_BREAK_GLASS,
+                AuditableAction.ACCESO_BREAK_GLASS,
                 "PACIENTE",
                 paciente.publicId(),
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
-        return breakGlassRepository.buscarPorPublicId(publicId, ahora)
+        return breakGlassRepository.findByPublicId(publicId, ahora)
                 .orElseThrow(() -> new IllegalStateException("Error al recuperar el acceso break-glass recién registrado."));
     }
 
     /**
      * Lista los accesos Break-Glass activos (no expirados) del profesional autenticado.
      */
-    public List<AccesoBreakGlassResponse> listarMisAccesosActivos(String usuarioAutenticadoPublicId) {
+    public List<BreakGlassAccessResponse> listMyActiveAccesses(String usuarioAutenticadoPublicId) {
         if (usuarioAutenticadoPublicId == null || usuarioAutenticadoPublicId.isBlank()) {
-            throw new AccesoNoAutorizadoException("Usuario no autenticado.");
+            throw new UnauthorizedAccessException("Usuario no autenticado.");
         }
 
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
 
-        Profesional profesional = profesionalRepository.buscarPorUsuarioId(usuario.id())
-                .orElseThrow(() -> new AccesoNoAutorizadoException("Usuario no registrado como profesional asistencial."));
+        Professional profesional = professionalRepository.findByUserId(usuario.id())
+                .orElseThrow(() -> new UnauthorizedAccessException("Usuario no registrado como profesional asistencial."));
 
-        return breakGlassRepository.listarActivosPorProfesional(profesional.id(), clock.instant());
+        return breakGlassRepository.listActiveByProfessional(profesional.id(), clock.instant());
     }
 
     /**
      * Consulta el detalle de un acceso Break-Glass por su ID público.
      */
-    public AccesoBreakGlassResponse obtenerPorPublicId(String publicId, String usuarioAutenticadoPublicId) {
+    public BreakGlassAccessResponse getByPublicId(String publicId, String usuarioAutenticadoPublicId) {
         if (usuarioAutenticadoPublicId == null || usuarioAutenticadoPublicId.isBlank()) {
-            throw new AccesoNoAutorizadoException("Usuario no autenticado.");
+            throw new UnauthorizedAccessException("Usuario no autenticado.");
         }
 
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
 
-        Profesional profesional = profesionalRepository.buscarPorUsuarioId(usuario.id())
-                .orElseThrow(() -> new AccesoNoAutorizadoException("Usuario no registrado como profesional asistencial."));
+        Professional profesional = professionalRepository.findByUserId(usuario.id())
+                .orElseThrow(() -> new UnauthorizedAccessException("Usuario no registrado como profesional asistencial."));
 
         Instant ahora = clock.instant();
-        AccesoBreakGlassResponse response = breakGlassRepository.buscarPorPublicId(publicId, ahora)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Registro de acceso Break-Glass no encontrado."));
+        BreakGlassAccessResponse response = breakGlassRepository.findByPublicId(publicId, ahora)
+                .orElseThrow(() -> new ResourceNotFoundException("Registro de acceso Break-Glass no encontrado."));
 
-        if (!response.profesionalPublicId().equals(profesional.publicId())) {
-            throw new AccesoNoAutorizadoException("No tiene autorizacion para consultar el acceso break-glass de otro profesional.");
+        if (!response.professionalPublicId().equals(profesional.publicId())) {
+            throw new UnauthorizedAccessException("No tiene autorizacion para consultar el acceso break-glass de otro profesional.");
         }
 
         return response;
