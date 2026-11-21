@@ -177,11 +177,11 @@ export async function professionalAgendaView(container) {
 
           return `
             <div class="card p-4" style="border-left: 4px solid ${canStart ? 'var(--primary)' : 'var(--border)'};">
-              <div class="flex flex-wrap items-center justify-between gap-3">
-                <div class="flex items-start gap-4">
+              <div class="flex flex-wrap items-center justify-between gap-4">
+                <div class="flex sm-row items-start gap-4 flex-1 min-w-0">
                   <!-- Horario y Día -->
-                  <div style="min-width: 7.5rem;">
-                    <span class="text-lg font-bold block text-primary">${horaInicio} ${horaFin ? `<span class="text-xs text-muted font-normal block">– ${horaFin}</span>` : ''}</span>
+                  <div style="min-width: 7.5rem; flex-shrink: 0;">
+                    <span class="text-lg font-bold block text-primary tabular-nums">${horaInicio} ${horaFin ? `<span class="text-xs text-muted font-normal block tabular-nums">– ${horaFin}</span>` : ''}</span>
                     <span class="text-xs text-muted font-medium block capitalize mt-0.5">${fechaCita}</span>
                     <span class="badge ${isTele ? 'badge--rescheduled' : 'badge--neutral'} text-xs mt-1" style="font-size: 11px;">
                       ${isTele ? 'Telemedicina' : (esc(c.sedeNombre) || 'Presencial')}
@@ -189,9 +189,9 @@ export async function professionalAgendaView(container) {
                   </div>
 
                   <!-- Paciente y Detalles -->
-                  <div class="flex-1 min-w-0">
+                  <div class="flex-1 min-w-0 w-full">
                     <div class="flex items-center gap-2">
-                      ${ui.icon('user', 'icon icon--sm text-primary')}
+                      ${ui.icon('user', 'icon icon--sm text-primary shrink-0')}
                       <span class="font-bold text-base block text-text">${esc(c.pacienteNombre)}</span>
                     </div>
                     <div class="flex flex-wrap items-center gap-2 mt-1.5">
@@ -211,7 +211,7 @@ export async function professionalAgendaView(container) {
                     <!-- Razón de la consulta / Triaje Clínico -->
                     <div class="mt-2 p-2.5" style="background-color: var(--surface-2); border-radius: var(--radius-sm); border-left: 3px solid var(--primary); max-width: 600px;">
                       <div class="text-xs text-muted font-bold uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                        ${ui.icon('info', 'icon icon--xs text-primary')}
+                        ${ui.icon('info', 'icon icon--xs text-primary shrink-0')}
                         <span>Razón de la consulta:</span>
                       </div>
                       <p class="text-xs text-text m-0 font-medium leading-relaxed">
@@ -222,12 +222,12 @@ export async function professionalAgendaView(container) {
                 </div>
 
                 <!-- Acciones -->
-                <div class="flex items-center gap-2">
+                <div class="flex flex-wrap items-center gap-2">
                   <a href="#/professional/patient-history/${esc(c.pacientePublicId)}" class="btn btn-secondary btn--sm" title="Consultar historia clínica del paciente">
                     ${ui.icon('file-text', 'icon icon--sm')}<span>Historial</span>
                   </a>
                   ${canNoShow ? `
-                    <button type="button" class="btn btn-secondary btn--sm btn-no-show" data-cita="${esc(c.publicId)}" style="color: var(--danger); border-color: var(--danger-bg);" title="Registrar que el paciente no se presentó a su cita médica">
+                    <button type="button" class="btn btn-secondary btn--sm btn-no-show" data-cita="${esc(c.publicId)}" style="color: var(--danger); border-color: var(--danger-border);" title="Registrar que el paciente no se presentó a su cita médica">
                       ${ui.icon('alert-circle', 'icon icon--sm')}<span>No asistió</span>
                     </button>` : ''}
                   ${canStart ? `

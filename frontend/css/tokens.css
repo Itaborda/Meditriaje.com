@@ -32,13 +32,19 @@
   --slate-900: #0F172A;
 
   /* ---------- Tokens semánticos (tema claro) ---------- */
-  --bg:            var(--slate-50);
+  --bg:            #F6F8FB;
   --surface:       #FFFFFF;
+  --surface-1:     var(--surface);
   --surface-2:     var(--slate-100);
+  --surface-subtle: var(--surface-2);
+  --card-bg:       var(--surface);
   --border:        var(--slate-200);
+  --border-color:  var(--border);
   --border-strong: var(--slate-300);
   --text:          var(--slate-900);
   --text-muted:    var(--slate-600);
+  --neutral-300:   var(--slate-300);
+  --on-teal-50:    var(--teal-900);
 
   --primary:        var(--teal-700);   /* botón primario, 5.5:1 con blanco */
   --primary-hover:  var(--teal-800);
@@ -50,9 +56,19 @@
 
   /* Estados */
   --success:      #15803D;  --success-bg: #DCFCE7;  --on-success-bg: #14532D;
-  --warning:      #B45309;  --warning-bg: #FEF3C7;  --on-warning-bg: #78350F;
-  --danger:       #B91C1C;  --danger-bg:  #FEE2E2;  --on-danger-bg:  #7F1D1D;
+  --warning:      #B45309;  --warning-bg: #FEF3C7;  --on-warning-bg: #78350F;  --warning-text: var(--on-warning-bg);
+  --danger:       #B91C1C;  --danger-bg:  #FEE2E2;  --on-danger-bg:  #7F1D1D;  --danger-border: #FCA5A5;  --color-danger: var(--danger);
   --info:         #1D4ED8;  --info-bg:    #DBEAFE;  --on-info-bg:    #1E3A8A;
+  --indigo-50:    #EEF2FF;  --indigo-600: #4F46E5;
+
+  /* Estados de calendario */
+  --cal-today-bg:       rgba(240, 253, 250, 0.72);
+  --cal-today-col-bg:   rgba(240, 253, 250, 0.35);
+  --cal-prog-bg:        #F0FDFA; --cal-prog-bd: var(--primary);
+  --cal-conf-bg:        var(--success-bg); --cal-conf-pill: #BBF7D0;
+  --cal-aten-bg:        var(--info-bg);    --cal-aten-pill: #BFDBFE;
+  --cal-canc-bg:        var(--danger-bg);  --cal-canc-bd: #FCA5A5;
+  --cal-reprog-bg:      #FAF5FF; --cal-reprog-bd: #9333EA; --cal-reprog-pill: #F3E8FF; --cal-reprog-fg: #6B21A8;
 
   /* Niveles de triaje I–V (siempre con icono + texto, nunca solo color) */
   --triage-1-bg: #FEE2E2; --triage-1-fg: #991B1B; --triage-1-bd: #DC2626;  /* I   Rojo     */
@@ -68,6 +84,7 @@
   --text-xs:  0.75rem;    /* 12 */
   --text-sm:  0.875rem;   /* 14 */
   --text-md:  1rem;       /* 16 (base) */
+  --text-base: var(--text-md);
   --text-lg:  1.125rem;   /* 18 */
   --text-xl:  1.25rem;    /* 20 */
   --text-2xl: 1.5rem;     /* 24 */
@@ -96,18 +113,24 @@
   --radius-xl: 20px;
   --radius-full: 9999px;
 
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05), 0 1px 1px rgba(15, 23, 42, 0.03);
   --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
   --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.12);
+  --shadow-xl: 0 20px 44px rgba(15, 23, 42, 0.16);
 
   /* ---------- Layout ---------- */
   --container: 72rem;       /* 1152 */
   --container-narrow: 40rem;/* 640, formularios y triaje */
   --touch-target: 2.75rem;  /* 44 px mínimo */
+  --navbar-height: 4rem;
+  --bottom-nav-height: 4rem;
 
   /* ---------- Movimiento ---------- */
   --ease: cubic-bezier(0.2, 0, 0, 1);
   --duration-fast: 120ms;
+  --duration: 200ms;
+  --duration-normal: 200ms;
+  --duration-slow: 300ms;
   /* ---------- Glassmorphism & Refraction Tokens ---------- */
   --glass-bg:            rgba(255, 255, 255, 0.78);
   --glass-bg-subtle:     rgba(255, 255, 255, 0.52);
@@ -125,11 +148,17 @@
 :root[data-theme="dark"] {
   --bg: #0B1220;
   --surface: #111B2E;
+  --surface-1: var(--surface);
   --surface-2: #17233A;
+  --surface-subtle: var(--surface-2);
+  --card-bg: var(--surface);
   --border: #263449;
-  --border-strong: #35476080;
+  --border-color: var(--border);
+  --border-strong: rgba(148, 163, 184, 0.35);
   --text: #E6EDF7;
   --text-muted: #9FB0C7;
+  --neutral-300: #334155;
+  --on-teal-50: var(--teal-100);
 
   --primary: #2DD4BF;
   --primary-hover: #5EEAD4;
@@ -140,9 +169,18 @@
   --focus: #38BDF8;
 
   --success: #4ADE80; --success-bg: #052E16; --on-success-bg: #BBF7D0;
-  --warning: #FBBF24; --warning-bg: #422006; --on-warning-bg: #FDE68A;
-  --danger:  #F87171; --danger-bg:  #450A0A; --on-danger-bg:  #FECACA;
+  --warning: #FBBF24; --warning-bg: #422006; --on-warning-bg: #FDE68A; --warning-text: var(--on-warning-bg);
+  --danger:  #F87171; --danger-bg:  #450A0A; --on-danger-bg:  #FECACA; --danger-border: #991B1B; --color-danger: var(--danger);
   --info:    #60A5FA; --info-bg:    #172554; --on-info-bg:    #BFDBFE;
+  --indigo-50: #1E1B4B; --indigo-600: #818CF8;
+
+  --cal-today-bg:       rgba(15, 42, 42, 0.8);
+  --cal-today-col-bg:   rgba(15, 42, 42, 0.38);
+  --cal-prog-bg:        #0D2829; --cal-prog-bd: var(--primary);
+  --cal-conf-bg:        var(--success-bg); --cal-conf-pill: #064E3B;
+  --cal-aten-bg:        var(--info-bg);    --cal-aten-pill: #1E3A8A;
+  --cal-canc-bg:        var(--danger-bg);  --cal-canc-bd: #7F1D1D;
+  --cal-reprog-bg:      #2E1065; --cal-reprog-bd: #C084FC; --cal-reprog-pill: #4C1D95; --cal-reprog-fg: #E9D5FF;
 
   --triage-1-bg: #450A0A; --triage-1-fg: #FECACA; --triage-1-bd: #F87171;
   --triage-2-bg: #431407; --triage-2-fg: #FED7AA; --triage-2-bd: #FB923C;
@@ -153,6 +191,7 @@
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
+  --shadow-xl: 0 20px 44px rgba(0, 0, 0, 0.68);
 
   /* ---------- Glassmorphism Dark Tokens ---------- */
   --glass-bg:            rgba(17, 27, 46, 0.78);
@@ -160,7 +199,7 @@
   --glass-border:        rgba(255, 255, 255, 0.12);
   --glass-border-subtle: rgba(38, 52, 73, 0.85);
   --glass-shadow:        0 8px 32px 0 rgba(0, 0, 0, 0.45);
-  --glass-shadow-glow:   0 16px 48px -12px rgba(45, 212, 191, 0.22);
+  --glass-shadow-glow:   0 16px 40px -12px rgba(0, 0, 0, 0.55);
   --glass-blur:          blur(16px);
   --glass-blur-sm:       blur(8px);
 
@@ -181,7 +220,19 @@ body {
   font-family: var(--font-sans);
   font-size: var(--text-md);
   line-height: var(--leading-normal);
+  caret-color: var(--primary);
   -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background-color: var(--primary-soft);
+  color: var(--primary);
+}
+
+/* Custom scrollbars themed from palette */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
 }
 
 h1, h2, h3, h4 {

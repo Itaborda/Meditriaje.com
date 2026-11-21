@@ -4,6 +4,7 @@
  */
 
 import { api, affiliationApi } from '../api.js';
+import { ui } from '../ui.js';
 
 export async function renderAffiliationImport(container) {
   container.innerHTML = `
@@ -18,7 +19,7 @@ export async function renderAffiliationImport(container) {
       <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem;">
         <div>
           <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
-            <span style="font-size: 1.25rem;" aria-hidden="true">📥</span>
+            ${ui.icon('download', 'icon icon--md text-primary')}
             <h2 style="font-size: 1.1rem; font-weight: 700; margin: 0; color: var(--text);">Plantilla Oficial de Afiliados (.xlsx)</h2>
           </div>
           <p style="margin: 0; font-size: 0.875rem; color: var(--text-muted);">
@@ -63,15 +64,15 @@ export async function renderAffiliationImport(container) {
         <div class="grid grid-cols-1 grid-cols-3-md gap-3 text-center mb-6">
           <div style="background: var(--surface-2); padding: 1rem; border-radius: var(--radius-md);">
             <div style="font-size: 0.85rem; color: var(--text-muted);">Total Filas</div>
-            <div id="stat-total" style="font-size: 1.75rem; font-weight: 700;">0</div>
+            <div id="stat-total" class="tabular-nums" style="font-size: 1.75rem; font-weight: 700;">0</div>
           </div>
-          <div style="background: var(--success-bg, #DCFCE7); color: var(--on-success-bg, #14532D); padding: 1rem; border-radius: var(--radius-md);">
+          <div style="background: var(--success-bg); color: var(--on-success-bg); padding: 1rem; border-radius: var(--radius-md);">
             <div style="font-size: 0.85rem;">Válidas</div>
-            <div id="stat-validas" style="font-size: 1.75rem; font-weight: 700;">0</div>
+            <div id="stat-validas" class="tabular-nums" style="font-size: 1.75rem; font-weight: 700;">0</div>
           </div>
-          <div style="background: var(--danger-bg, #FEE2E2); color: var(--on-danger-bg, #7F1D1D); padding: 1rem; border-radius: var(--radius-md);">
+          <div style="background: var(--danger-bg); color: var(--on-danger-bg); padding: 1rem; border-radius: var(--radius-md);">
             <div style="font-size: 0.85rem;">Con Errores</div>
-            <div id="stat-fallidas" style="font-size: 1.75rem; font-weight: 700;">0</div>
+            <div id="stat-fallidas" class="tabular-nums" style="font-size: 1.75rem; font-weight: 700;">0</div>
           </div>
         </div>
 

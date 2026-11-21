@@ -7,6 +7,7 @@
 
 import { emergencyApi } from '../api.js';
 import { auth } from '../auth.js';
+import { motion } from '../motion.js';
 import { router } from '../router.js';
 import { ui, esc } from '../ui.js';
 
@@ -20,17 +21,17 @@ let dashboardState = {
 function formatTriageBadge(nivel) {
   switch (nivel) {
     case 'I':
-      return `<span class="badge" style="background-color: var(--danger, #dc2626); color: #fff; font-weight: 700; padding: 4px 10px; border-radius: 9999px;">🔴 Nivel I — Reanimación</span>`;
+      return `<span class="badge badge--triage-i font-bold">${ui.icon('alert-triangle', 'icon icon--xs')} Nivel I — Reanimación</span>`;
     case 'II':
-      return `<span class="badge" style="background-color: #ea580c; color: #fff; font-weight: 700; padding: 4px 10px; border-radius: 9999px;">🟠 Nivel II — Emergencia</span>`;
+      return `<span class="badge badge--triage-ii font-bold">${ui.icon('alert-circle', 'icon icon--xs')} Nivel II — Emergencia</span>`;
     case 'III':
-      return `<span class="badge" style="background-color: #ca8a04; color: #fff; font-weight: 700; padding: 4px 10px; border-radius: 9999px;">🟡 Nivel III — Urgencia</span>`;
+      return `<span class="badge badge--triage-iii font-bold">${ui.icon('clock', 'icon icon--xs')} Nivel III — Urgencia</span>`;
     case 'IV':
-      return `<span class="badge" style="background-color: #16a34a; color: #fff; font-weight: 700; padding: 4px 10px; border-radius: 9999px;">🟢 Nivel IV — Prioritaria</span>`;
+      return `<span class="badge badge--triage-iv font-semibold">${ui.icon('activity', 'icon icon--xs')} Nivel IV — Prioritaria</span>`;
     case 'V':
-      return `<span class="badge" style="background-color: #2563eb; color: #fff; font-weight: 700; padding: 4px 10px; border-radius: 9999px;">🔵 Nivel V — No Urgente</span>`;
+      return `<span class="badge badge--triage-v font-semibold">${ui.icon('calendar', 'icon icon--xs')} Nivel V — No Urgente</span>`;
     default:
-      return `<span class="badge badge--scheduled" style="font-weight: 600; padding: 4px 10px; border-radius: 9999px;">⚪ Pendiente Triaje</span>`;
+      return `<span class="badge badge--scheduled font-semibold">${ui.icon('clock', 'icon icon--xs')} Pendiente Triaje</span>`;
   }
 }
 
@@ -91,46 +92,46 @@ export async function nursingDashboardView(container) {
       </div>
 
       <!-- Tarjetas de Resumen Operativo -->
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6" id="kpiCards">
-        <div class="card p-4 flex items-center justify-between">
+      <div class="grid grid-cols-1 grid-cols-2-sm grid-cols-4-lg gap-4 mb-6" id="kpiCards">
+        <div class="card p-4 flex flex-row items-center justify-between gap-3">
           <div>
             <div class="text-xs text-muted font-bold uppercase tracking-wider">En Espera Total</div>
-            <div class="text-2xl font-bold mt-1" id="kpiTotal">0</div>
+            <div class="text-2xl font-bold mt-1 tabular-nums" id="kpiTotal">0</div>
           </div>
-          <div style="color: var(--primary);">${ui.icon('users', 'icon icon--lg')}</div>
+          <div class="stat-icon-wrapper" aria-hidden="true">${ui.icon('users', 'icon icon--md')}</div>
         </div>
 
-        <div class="card p-4 flex items-center justify-between" style="border-left: 4px solid var(--danger, #dc2626);">
+        <div class="card p-4 flex flex-row items-center justify-between gap-3">
           <div>
             <div class="text-xs text-muted font-bold uppercase tracking-wider">Nivel I y II Críticos</div>
-            <div class="text-2xl font-bold mt-1 text-danger" id="kpiCriticos">0</div>
+            <div class="text-2xl font-bold mt-1 text-danger tabular-nums" id="kpiCriticos">0</div>
           </div>
-          <div style="color: var(--danger);">${ui.icon('alert-triangle', 'icon icon--lg')}</div>
+          <div class="stat-icon-wrapper" style="background-color: var(--danger-bg); color: var(--danger);" aria-hidden="true">${ui.icon('alert-triangle', 'icon icon--md')}</div>
         </div>
 
-        <div class="card p-4 flex items-center justify-between" style="border-left: 4px solid #ca8a04;">
+        <div class="card p-4 flex flex-row items-center justify-between gap-3">
           <div>
             <div class="text-xs text-muted font-bold uppercase tracking-wider">Pendientes de Triaje</div>
-            <div class="text-2xl font-bold mt-1" style="color: #ca8a04;" id="kpiPendientesTriaje">0</div>
+            <div class="text-2xl font-bold mt-1 text-warning tabular-nums" id="kpiPendientesTriaje">0</div>
           </div>
-          <div style="color: #ca8a04;">${ui.icon('clock', 'icon icon--lg')}</div>
+          <div class="stat-icon-wrapper" style="background-color: var(--warning-bg); color: var(--warning);" aria-hidden="true">${ui.icon('clock', 'icon icon--md')}</div>
         </div>
 
-        <div class="card p-4 flex items-center justify-between" style="border-left: 4px solid #6366f1;">
+        <div class="card p-4 flex flex-row items-center justify-between gap-3">
           <div>
             <div class="text-xs text-muted font-bold uppercase tracking-wider">Identidad Provisional (NN)</div>
-            <div class="text-2xl font-bold mt-1 text-indigo-600" id="kpiNN">0</div>
+            <div class="text-2xl font-bold mt-1 text-info tabular-nums" id="kpiNN">0</div>
           </div>
-          <div style="color: #6366f1;">${ui.icon('help-circle', 'icon icon--lg')}</div>
+          <div class="stat-icon-wrapper" style="background-color: var(--info-bg); color: var(--info);" aria-hidden="true">${ui.icon('help-circle', 'icon icon--md')}</div>
         </div>
       </div>
 
       <!-- Barra de Filtros y Estado -->
       <div class="card p-4 mb-6">
         <div class="flex flex-wrap items-center justify-between gap-4">
-          <div class="flex items-center gap-2">
+          <div class="flex flex-wrap items-center gap-2">
             <span class="text-sm font-semibold">Filtrar por estado:</span>
-            <select id="filterEstadoSelect" class="form-select form-input--sm" style="width: auto;">
+            <select id="filterEstadoSelect" class="form-select form-input--sm" style="width: auto; min-width: 210px;">
               <option value="">Todos los activos</option>
               <option value="REGISTRADO">Solo Registrados (sin triaje)</option>
               <option value="EN_TRIAJE">En Espera de Atención Médica</option>
@@ -146,8 +147,8 @@ export async function nursingDashboardView(container) {
       </div>
 
       <!-- Tabla de la Cola Priorizada -->
-      <div class="card overflow-hidden">
-        <div class="table-responsive">
+      <div class="card p-0 overflow-hidden">
+        <div class="table-container" style="border: none; border-radius: 0;">
           <table class="table" id="urgencyQueueTable" aria-label="Cola priorizada de urgencias">
             <thead>
               <tr>
@@ -171,6 +172,8 @@ export async function nursingDashboardView(container) {
 
     </div>
   `;
+
+  motion.staggerCards(container.querySelectorAll('#kpiCards > .card'), { root: container });
 
   // Hospital único: la cola es la del hospital (el servidor resuelve la sede)
   await loadQueue();
@@ -211,10 +214,10 @@ function updateKpis() {
   const pendientes = queue.filter(q => !q.nivelTriaje || q.nivelTriaje === 'PENDIENTE_VALORACION' || q.estado === 'REGISTRADO' || q.estadoEpisodio === 'REGISTRADO').length;
   const nn = queue.filter(q => q.codigoProvisional != null || q.esIdentidadProvisional || q.esNN).length;
 
-  document.getElementById('kpiTotal').textContent = total;
-  document.getElementById('kpiCriticos').textContent = criticos;
-  document.getElementById('kpiPendientesTriaje').textContent = pendientes;
-  document.getElementById('kpiNN').textContent = nn;
+  motion.animateCounter(document.getElementById('kpiTotal'), total);
+  motion.animateCounter(document.getElementById('kpiCriticos'), criticos);
+  motion.animateCounter(document.getElementById('kpiPendientesTriaje'), pendientes);
+  motion.animateCounter(document.getElementById('kpiNN'), nn);
 }
 
 function renderQueue() {
@@ -225,8 +228,8 @@ function renderQueue() {
     tbody.innerHTML = `
       <tr>
         <td colspan="7" class="text-center p-12 text-muted">
-          ${ui.icon('check-circle', 'icon icon--lg mb-2', { style: 'color: var(--primary);' })}
-          <p class="font-medium m-0">No hay pacientes en cola de urgencias para los filtros seleccionados.</p>
+          <div class="text-primary mb-2" style="display: inline-flex;">${ui.icon('check-circle', 'icon icon--lg')}</div>
+          <p class="font-medium m-0 mx-auto">No hay pacientes en cola de urgencias para los filtros seleccionados.</p>
         </td>
       </tr>
     `;

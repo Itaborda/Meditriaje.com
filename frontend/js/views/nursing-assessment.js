@@ -11,15 +11,15 @@ import { ui, esc } from '../ui.js';
 function formatTriageBadge(nivel) {
   switch (nivel) {
     case 'I':
-      return `<span class="badge" style="background-color: var(--danger, #dc2626); color: #fff; font-weight: 700; padding: 4px 10px; border-radius: 9999px;">🔴 Nivel I — Reanimación Inmediata</span>`;
+      return `<span class="badge badge--triage-i font-bold">${ui.icon('alert-triangle', 'icon icon--xs')} Nivel I — Reanimación Inmediata</span>`;
     case 'II':
-      return `<span class="badge" style="background-color: #ea580c; color: #fff; font-weight: 700; padding: 4px 10px; border-radius: 9999px;">🟠 Nivel II — Emergencia (< 30 min)</span>`;
+      return `<span class="badge badge--triage-ii font-bold">${ui.icon('alert-circle', 'icon icon--xs')} Nivel II — Emergencia (&lt; 30 min)</span>`;
     case 'III':
-      return `<span class="badge" style="background-color: #ca8a04; color: #fff; font-weight: 700; padding: 4px 10px; border-radius: 9999px;">🟡 Nivel III — Urgencia (< 120 min)</span>`;
+      return `<span class="badge badge--triage-iii font-bold">${ui.icon('clock', 'icon icon--xs')} Nivel III — Urgencia (&lt; 120 min)</span>`;
     case 'IV':
-      return `<span class="badge" style="background-color: #16a34a; color: #fff; font-weight: 700; padding: 4px 10px; border-radius: 9999px;">🟢 Nivel IV — Prioritaria (< 180 min)</span>`;
+      return `<span class="badge badge--triage-iv font-semibold">${ui.icon('activity', 'icon icon--xs')} Nivel IV — Prioritaria (&lt; 180 min)</span>`;
     case 'V':
-      return `<span class="badge" style="background-color: #2563eb; color: #fff; font-weight: 700; padding: 4px 10px; border-radius: 9999px;">🔵 Nivel V — No Urgente (< 240 min)</span>`;
+      return `<span class="badge badge--triage-v font-semibold">${ui.icon('calendar', 'icon icon--xs')} Nivel V — No Urgente (&lt; 240 min)</span>`;
     default:
       return `<span class="badge badge--scheduled">Pendiente</span>`;
   }

@@ -223,12 +223,11 @@ test.describe('Auditoría Accesibilidad WCAG 2.1 AA y Menú Lateral (Sidebar)', 
     const firstLink = sidebar.locator('.sidebar-link').first();
     await firstLink.focus();
 
-    // Por foco (:focus-within), el menú debe expandirse para permitir lectura accesible
-    const focusedBox = await sidebar.boundingBox();
-    expect(focusedBox).not.toBeNull();
-    if (focusedBox) {
-      expect(focusedBox.width).toBeGreaterThanOrEqual(240);
-    }
+    // Por foco (:focus-within), el menú debe expandirse tras la transición CSS para permitir lectura accesible
+    await expect.poll(
+      async () => (await sidebar.boundingBox())?.width ?? 0,
+      { timeout: 2000 }
+    ).toBeGreaterThanOrEqual(240);
 
     // Verificar atributo de página activa
     await expect(firstLink).toHaveAttribute('aria-current', 'page');

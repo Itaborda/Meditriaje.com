@@ -15,7 +15,7 @@ import { ui, esc } from '../ui.js';
 export function loginView(container, { queryParams } = {}) {
   container.innerHTML = `
     <div class="container-narrow" style="padding-top: var(--space-8); padding-bottom: var(--space-8);">
-      <div class="card" style="padding: var(--space-8);">
+      <div class="card auth-card">
         <div class="text-center mb-6">
          <img src="assets/images/logo-full.png" alt="MediTriaje" class="auth-logo" width="220" height="186">
           <h1 class="text-2xl font-bold mb-1">Iniciar Sesión</h1>
@@ -66,7 +66,7 @@ export function loginView(container, { queryParams } = {}) {
                 aria-label="Mostrar contraseña"
                 title="Mostrar u ocultar contraseña"
               >
-                ${ui.icon('search', 'icon icon--sm')}
+                ${ui.icon('eye', 'icon icon--sm')}
               </button>
             </div>
             <span class="form-error" id="passwordError" style="display: none;" role="alert"></span>
@@ -100,7 +100,7 @@ export function loginView(container, { queryParams } = {}) {
     isPasswordVisible = !isPasswordVisible;
     passwordInput.type = isPasswordVisible ? 'text' : 'password';
     toggleBtn.setAttribute('aria-label', isPasswordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña');
-    toggleBtn.innerHTML = ui.icon(isPasswordVisible ? 'x' : 'search', 'icon icon--sm');
+    toggleBtn.innerHTML = ui.icon(isPasswordVisible ? 'eye-off' : 'eye', 'icon icon--sm');
   });
 
   // Manejo del envío del formulario
@@ -340,7 +340,7 @@ Conocer, actualizar, rectificar y suprimir mis datos personales cuando proceda l
 export function registerView(container) {
   container.innerHTML = `
     <div class="container-narrow" style="padding-top: var(--space-6); padding-bottom: var(--space-8);">
-      <div class="card" style="padding: var(--space-8);">
+      <div class="card auth-card">
         <div class="text-center mb-6">
           <span class="badge badge--scheduled mb-2">Nuevo Paciente</span>
           <h1 class="text-2xl font-bold mb-1">Crear Cuenta</h1>
@@ -348,13 +348,13 @@ export function registerView(container) {
         </div>
 
         <!-- Indicador de pasos -->
-        <div class="flex items-center justify-between mb-6" style="border-bottom: 1px solid var(--border); padding-bottom: var(--space-4);">
-          <div id="stepTab1" class="flex items-center gap-2 font-medium" style="color: var(--primary);">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-6" style="border-bottom: 1px solid var(--border); padding-bottom: var(--space-4);">
+          <div id="stepTab1" class="flex items-center gap-2 font-medium text-sm" style="color: var(--primary);">
             <span class="badge badge--confirmed" style="border-radius: var(--radius-full); width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; padding: 0;">1</span>
             <span>Datos Personales</span>
           </div>
-          <div style="height: 2px; flex: 1; margin: 0 var(--space-3); background-color: var(--border);"></div>
-          <div id="stepTab2" class="flex items-center gap-2 font-medium text-muted">
+          <div style="height: 2px; flex: 1; min-width: 1rem; margin: 0 var(--space-2); background-color: var(--border);"></div>
+          <div id="stepTab2" class="flex items-center gap-2 font-medium text-sm text-muted">
             <span class="badge badge--neutral" style="border-radius: var(--radius-full); width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; padding: 0;">2</span>
             <span>Cuenta y Consentimiento</span>
           </div>
@@ -510,7 +510,7 @@ export function registerView(container) {
                   aria-label="Mostrar contraseña"
                   title="Mostrar u ocultar contraseña"
                 >
-                  ${ui.icon('search', 'icon icon--sm')}
+                  ${ui.icon('eye', 'icon icon--sm')}
                 </button>
               </div>
               
@@ -661,7 +661,7 @@ export function registerView(container) {
     isRegPassVisible = !isRegPassVisible;
     password.type = isRegPassVisible ? 'text' : 'password';
     toggleRegPass.setAttribute('aria-label', isRegPassVisible ? 'Ocultar contraseña' : 'Mostrar contraseña');
-    toggleRegPass.innerHTML = ui.icon(isRegPassVisible ? 'x' : 'search', 'icon icon--sm');
+    toggleRegPass.innerHTML = ui.icon(isRegPassVisible ? 'eye-off' : 'eye', 'icon icon--sm');
   });
 
   // =========================================================================

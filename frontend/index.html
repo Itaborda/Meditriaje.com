@@ -2,12 +2,12 @@
 <html lang="es" data-theme="light">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>MediTriaje 2.0 — Plataforma de Triaje, Citas e Historia Clínica</title>
   <link rel="icon" type="image/png" href="assets/images/favicon.png">
-  <link rel="stylesheet" href="css/tokens.css?v=2.0.4">
-  <link rel="stylesheet" href="css/base.css?v=2.0.4">
-  <link rel="stylesheet" href="css/components.css?v=2.0.4">
+  <link rel="stylesheet" href="css/tokens.css?v=2.0.7">
+  <link rel="stylesheet" href="css/base.css?v=2.0.7">
+  <link rel="stylesheet" href="css/components.css?v=2.0.7">
 </head>
 <body>
   <!-- Enlace accesible de salto al contenido -->
@@ -18,7 +18,7 @@
     <div class="container navbar-inner">
       <div class="flex items-center gap-2">
         <!-- Botón accesible para alternar barra lateral en móviles / responsive -->
-        <button id="sidebarToggleBtn" type="button" class="btn btn-ghost btn--sm btn--icon-only sidebar-toggle-btn" aria-label="Abrir menú lateral" aria-controls="app-sidebar" aria-expanded="false" title="Menú lateral" style="display: none;">
+        <button id="sidebarToggleBtn" type="button" class="btn btn-ghost btn--sm btn--icon-only sidebar-toggle-btn" aria-label="Abrir menú lateral" aria-controls="app-sidebar" aria-expanded="false" title="Menú lateral">
           <svg class="icon icon-menu" viewBox="0 0 24 24" aria-hidden="true">
             <line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>
           </svg>
@@ -26,16 +26,32 @@
 
         <a href="#/" class="navbar-brand" aria-label="Ir al inicio de MediTriaje 2.0">
           <img src="assets/images/logo-icon.png" alt="" class="brand-logo" width="32" height="28">
-          <span>MediTriaje</span>
+          <span class="navbar-brand-text">MediTriaje <span class="brand-version">2.0</span></span>
         </a>
+      </div>
+
+      <!-- Navegación pública de secciones de la Landing -->
+      <div id="nav-landing-links" class="nav-landing-links" aria-label="Secciones de inicio">
+        <button type="button" class="nav-landing-link is-active" data-landing-target="landing-top">Inicio</button>
+        <button type="button" class="nav-landing-link" data-landing-target="landing-funciones">Funciones</button>
+        <button type="button" class="nav-landing-link" data-landing-target="demo-simulador">Cómo funciona</button>
+        <button type="button" class="nav-landing-link" data-landing-target="landing-seguridad">Seguridad</button>
+        <button type="button" class="nav-landing-link" data-landing-target="landing-normativa">Normativa</button>
+        <button type="button" class="nav-landing-link" data-landing-target="landing-contacto">Contacto</button>
       </div>
 
       <!-- Acciones de Navegación y Sesión -->
       <nav aria-label="Navegación principal" class="flex items-center gap-3">
         <div id="nav-auth-links" class="flex items-center gap-2">
           <!-- Se actualiza dinámicamente según la sesión -->
-          <a href="#/login" class="nav-link font-medium">Iniciar sesión</a>
-          <a href="#/register" class="btn btn-primary btn--sm">Registrarme</a>
+          <a href="#/login" class="btn btn-secondary btn--sm nav-guest-login">
+            <svg class="icon icon--xs" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <span>Ingresar</span>
+          </a>
+          <a href="#/register" class="btn btn-primary btn--sm nav-guest-cta">
+            <svg class="icon icon--xs" viewBox="0 0 24 24" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            <span>Comenzar ahora</span>
+          </a>
         </div>
 
         <!-- Botón de Alternancia de Tema Claro / Oscuro -->
@@ -77,8 +93,8 @@
   </footer>
 
   <!-- Barra de Navegación Inferior Móvil (Para pacientes autenticados) -->
-  <nav class="bottom-nav" id="bottom-nav" style="display: none;" aria-label="Navegación móvil del paciente">
-    <a href="#/patient/dashboard" class="bottom-nav-item is-active">
+  <nav class="bottom-nav" id="bottom-nav" aria-label="Navegación móvil del paciente">
+    <a href="#/patient/dashboard" class="bottom-nav-item">
       <svg class="icon icon-hospital" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v4"/><path d="M14 14h-4"/><path d="M14 18h-4"/><path d="M14 8h-4"/><path d="M18 12h-4"/><path d="M6 12h4"/><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M10 22v-4h4v4"/></svg>
       <span>Inicio</span>
     </a>
@@ -110,6 +126,6 @@
   <script src="js/lib/qrcode.min.js"></script>
 
   <!-- Script Modular de la Aplicación -->
-  <script type="module" src="js/app.js?v=2.0.4"></script>
+  <script type="module" src="js/app.js?v=2.0.7"></script>
 </body>
 </html>

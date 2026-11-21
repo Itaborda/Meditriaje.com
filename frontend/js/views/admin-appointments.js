@@ -424,38 +424,36 @@ export async function renderAdminAppointments(container) {
 
           <!-- Fila 2: Filtros combinables de Estado, Especialidad, Médico y Búsqueda -->
           <div class="calendar-filters-bottom">
-            <div class="flex items-center gap-2 flex-wrap w-full">
-              <!-- Filtro Estado -->
-              <select id="selectFilterEstado" class="form-select text-xs" style="min-width: 140px; max-width: 160px;">
-                <option value="">Todos los estados</option>
-                <option value="PROGRAMADA">Programadas</option>
-                <option value="CONFIRMADA">Confirmadas</option>
-                <option value="ATENDIDA">Atendidas</option>
-                <option value="CANCELADA">Canceladas</option>
-                <option value="NO_ASISTIO">No asistió</option>
-                <option value="REPROGRAMADA">Reprogramadas</option>
-              </select>
+            <!-- Filtro Estado -->
+            <select id="selectFilterEstado" class="form-select text-xs calendar-filter-select">
+              <option value="">Todos los estados</option>
+              <option value="PROGRAMADA">Programadas</option>
+              <option value="CONFIRMADA">Confirmadas</option>
+              <option value="ATENDIDA">Atendidas</option>
+              <option value="CANCELADA">Canceladas</option>
+              <option value="NO_ASISTIO">No asistió</option>
+              <option value="REPROGRAMADA">Reprogramadas</option>
+            </select>
 
-              <!-- Filtro Especialidad -->
-              <select id="selectFilterEspecialidad" class="form-select text-xs" style="min-width: 150px; max-width: 180px;">
-                <option value="">Todas las especialidades</option>
-                ${state.specialties.map(s => `
-                  <option value="${esc(s.publicId)}">${esc(s.nombre)}</option>
-                `).join('')}
-              </select>
+            <!-- Filtro Especialidad -->
+            <select id="selectFilterEspecialidad" class="form-select text-xs calendar-filter-select calendar-filter-select--wide">
+              <option value="">Todas las especialidades</option>
+              ${state.specialties.map(s => `
+                <option value="${esc(s.publicId)}">${esc(s.nombre)}</option>
+              `).join('')}
+            </select>
 
-              <!-- Filtro Profesional -->
-              <select id="selectFilterProfesional" class="form-select text-xs" style="min-width: 160px; max-width: 200px;">
-                <option value="">Todos los médicos</option>
-                ${state.professionals.map(p => `
-                  <option value="${esc(p.publicId)}">Dr(a). ${esc(p.nombres)} ${esc(p.apellidos)}</option>
-                `).join('')}
-              </select>
+            <!-- Filtro Profesional -->
+            <select id="selectFilterProfesional" class="form-select text-xs calendar-filter-select">
+              <option value="">Todos los médicos</option>
+              ${state.professionals.map(p => `
+                <option value="${esc(p.publicId)}">Dr(a). ${esc(p.nombres)} ${esc(p.apellidos)}</option>
+              `).join('')}
+            </select>
 
-              <!-- Búsqueda reactiva de paciente -->
-              <div class="relative flex-1" style="min-width: 180px;">
-                <input type="search" id="inputSearchPaciente" class="form-input text-xs w-full" placeholder="Buscar por paciente o documento...">
-              </div>
+            <!-- Búsqueda reactiva de paciente -->
+            <div class="relative calendar-filter-search">
+              <input type="search" id="inputSearchPaciente" class="form-input text-xs w-full" placeholder="Buscar por paciente o documento...">
             </div>
           </div>
         </div>

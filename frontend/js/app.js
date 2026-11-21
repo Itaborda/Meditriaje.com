@@ -5,7 +5,7 @@
 
 import { auth } from './auth.js';
 import { router } from './router.js';
-import { ui } from './ui.js';
+import { ui, esc } from './ui.js';
 import { loginView, registerView, forgotPasswordView } from './views/auth-views.js';
 import { patientDashboardView } from './views/patient-dashboard.js';
 import { patientTriageView } from './views/patient-triage.js';
@@ -42,15 +42,22 @@ import { initAccessibilityWidget } from './components/accessibility-widget.js';
 function initTheme() {
   const root = document.documentElement;
   const themeBtn = document.getElementById('themeToggleBtn');
-  const themeText = document.getElementById('themeToggleText');
 
   const applyTheme = (theme) => {
-    if (theme === 'dark') {
+    const isDark = theme === 'dark';
+    if (isDark) {
       root.setAttribute('data-theme', 'dark');
-      if (themeText) themeText.textContent = 'Modo Claro';
     } else {
       root.removeAttribute('data-theme');
-      if (themeText) themeText.textContent = 'Modo Oscuro';
+    }
+    if (themeBtn) {
+      const label = isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro';
+      themeBtn.setAttribute('aria-label', label);
+      themeBtn.setAttribute('title', label);
+      themeBtn.innerHTML = `
+        ${ui.icon(isDark ? 'sun' : 'moon', 'icon icon--sm')}
+        <span id="themeToggleText" class="sr-only">${isDark ? 'Modo Claro' : 'Modo Oscuro'}</span>
+      `;
     }
     localStorage.setItem('theme', theme);
   };
@@ -64,6 +71,63 @@ function initTheme() {
       applyTheme(current === 'dark' ? 'light' : 'dark');
     });
   }
+}
+
+// Sincroniza pestaña activa en navegación móvil inferior del paciente
+function updateBottomNavActive() {
+  const bottomNav = document.getElementById('bottom-nav');
+  if (!bottomNav) return;
+  const hash = window.location.hash || '#/patient/dashboard';
+  const items = bottomNav.querySelectorAll('.bottom-nav-item');
+
+  items.forEach(item => {
+    const href = item.getAttribute('href') || '';
+    let isActive = hash === href || (href !== '#/' && hash.startsWith(href));
+    if (!isActive && href === '#/patient/appointments' && hash.startsWith('#/patient/book')) {
+      isActive = true;
+    }
+    if (!isActive && href === '#/patient/dashboard' && (hash.startsWith('#/patient/follow-ups') || hash.startsWith('#/patient/emergency-qr') || hash.startsWith('#/patient/allergies'))) {
+      isActive = true;
+    }
+    item.classList.toggle('is-active', isActive);
+    if (isActive) {
+      item.setAttribute('aria-current', 'page');
+    } else {
+      item.removeAttribute('aria-current');
+    }
+  });
+}
+
+function updateLandingNavbarState() {
+  const hash = window.location.hash || '#/';
+  const isLanding = !auth.isAuthenticated && (hash === '' || hash === '#' || hash === '#/');
+  document.body.classList.toggle('is-landing-view', isLanding);
+
+  const navLanding = document.getElementById('nav-landing-links');
+  if (navLanding) {
+    navLanding.classList.toggle('is-visible', isLanding);
+  }
+}
+
+function initLandingNavbarLinks() {
+  const navLanding = document.getElementById('nav-landing-links');
+  if (!navLanding) return;
+
+  navLanding.querySelectorAll('[data-landing-target]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      navLanding.querySelectorAll('.nav-landing-link').forEach((item) => {
+        item.classList.remove('is-active');
+      });
+      btn.classList.add('is-active');
+
+      const targetId = btn.getAttribute('data-landing-target');
+      if (targetId === 'landing-top') {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else if (targetId) {
+        document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth' });
+      }
+    });
+  });
 }
 
 // Actualización de la barra de navegación según el estado de la sesión
@@ -103,12 +167,12 @@ function updateNavbar() {
 
     if (navContainer) {
       navContainer.innerHTML = `
-        <a href="${dashboardLink}" class="nav-link">
-          ${ui.icon('user', 'icon icon--sm')}
-          <span class="font-medium nav-user-email">${user.email}</span>
-          <span class="badge ${roleBadgeClass}" style="margin-left: 4px;">${roleName}</span>
+        <a href="${dashboardLink}" class="nav-link nav-account-link" title="${esc(user.email || '')}">
+          ${ui.icon('user', 'icon icon--sm nav-user-icon')}
+          <span class="font-medium nav-user-email">${esc(user.email || '')}</span>
+          <span class="badge ${roleBadgeClass}">${roleName}</span>
         </a>
-        <button type="button" id="btnLogout" class="btn btn-ghost btn--sm" title="Cerrar sesion activa" aria-label="Cerrar sesión">
+        <button type="button" id="btnLogout" class="btn btn-ghost btn--sm" title="Cerrar sesión activa" aria-label="Cerrar sesión">
           ${ui.icon('log-out', 'icon icon--sm')}
           <span class="nav-logout-text">Salir</span>
         </button>
@@ -128,9 +192,11 @@ function updateNavbar() {
       });
     }
 
-    // Mostrar barra inferior en móviles solo para pacientes
+    // Mostrar barra inferior en móviles únicamente para pacientes
     if (bottomNav) {
-      bottomNav.style.display = auth.isPaciente ? 'flex' : 'none';
+      bottomNav.classList.toggle('is-enabled', auth.isPaciente);
+      document.body.classList.toggle('has-bottom-nav', auth.isPaciente);
+      if (auth.isPaciente) updateBottomNavActive();
     }
   } else {
     if (brandLink) {
@@ -140,15 +206,24 @@ function updateNavbar() {
 
     if (navContainer) {
       navContainer.innerHTML = `
-        <a href="#/login" class="nav-link font-medium">Iniciar sesión</a>
-        <a href="#/register" class="btn btn-primary btn--sm">Registrarme</a>
+        <a href="#/login" class="btn btn-secondary btn--sm nav-guest-login">
+          ${ui.icon('user', 'icon icon--xs')}
+          <span>Ingresar</span>
+        </a>
+        <a href="#/register" class="btn btn-primary btn--sm nav-guest-cta">
+          ${ui.icon('activity', 'icon icon--xs')}
+          <span>Comenzar ahora</span>
+        </a>
       `;
     }
 
     if (bottomNav) {
-      bottomNav.style.display = 'none';
+      bottomNav.classList.remove('is-enabled');
+      document.body.classList.remove('has-bottom-nav');
     }
   }
+
+  updateLandingNavbarState();
 
   // Sincronizar el estado del menú lateral accesible
   updateSidebar();
@@ -270,6 +345,13 @@ async function bootstrap() {
   auth.addEventListener('auth:change', () => {
     updateNavbar();
   });
+
+  window.addEventListener('hashchange', () => {
+    updateBottomNavActive();
+    updateLandingNavbarState();
+  });
+
+  initLandingNavbarLinks();
 
   // Restaurar sesión activa de forma transparente
   await auth.init();

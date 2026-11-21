@@ -4,6 +4,7 @@
  */
 
 import { operationalApi } from '../api.js';
+import { motion } from '../motion.js';
 import { ui, esc } from '../ui.js';
 
 let refreshIntervalId = null;
@@ -90,7 +91,7 @@ export async function renderOperationalDashboard(container) {
              aria-live="assertive" 
              style="display: none;">
       <div class="operational-banner-content">
-        <span aria-hidden="true" style="font-size: 1.5rem;">⚠️</span>
+        <span aria-hidden="true" style="display: inline-flex; color: var(--danger); flex-shrink: 0;">${ui.icon('alert-triangle', 'icon icon--lg')}</span>
         <div>
           <strong style="font-weight: var(--weight-bold); font-size: var(--text-sm);">ALERTA DE SATURACIÓN OPERATIVA EN CURSO:</strong>
           <div id="texto-alerta-critica" style="font-size: var(--text-sm); margin-top: 2px;">
@@ -120,9 +121,9 @@ export async function renderOperationalDashboard(container) {
         </div>
 
         <div class="operational-pill-group" id="kpi-pills-camas" aria-label="Desglose por estado de camas">
-          <span class="operational-pill" title="Disponibles">🟢 Libres: <strong id="kpi-camas-libres-val">0</strong></span>
-          <span class="operational-pill" title="En proceso de desinfección">🟡 Limpieza: <strong id="kpi-camas-limpieza-val">0</strong></span>
-          <span class="operational-pill" title="En mantenimiento">🔧 Mant.: <strong id="kpi-camas-mant-val">0</strong></span>
+          <span class="operational-pill" title="Disponibles"><span class="status-dot-pill status-dot-pill--success" aria-hidden="true"></span> Libres: <strong class="tabular-nums" id="kpi-camas-libres-val">0</strong></span>
+          <span class="operational-pill" title="En proceso de desinfección"><span class="status-dot-pill status-dot-pill--warning" aria-hidden="true"></span> Limpieza: <strong class="tabular-nums" id="kpi-camas-limpieza-val">0</strong></span>
+          <span class="operational-pill" title="En mantenimiento"><span class="status-dot-pill status-dot-pill--muted" aria-hidden="true"></span> Mant.: <strong class="tabular-nums" id="kpi-camas-mant-val">0</strong></span>
         </div>
       </article>
 
@@ -332,7 +333,7 @@ export async function renderOperationalDashboard(container) {
       <form id="form-scan-qr" style="display: flex; gap: var(--space-2); max-width: 520px; flex-wrap: wrap;">
         <input type="text" 
                id="input-token-qr" 
-               class="form-control" 
+               class="form-input form-control" 
                placeholder="Ej: QROP-7A1B2C3D4E" 
                aria-label="Token de manilla o cabecera hospitalaria" 
                required 
@@ -428,6 +429,8 @@ export async function renderOperationalDashboard(container) {
 
   let isAutoRefreshActive = true;
 
+  motion.staggerCards(container.querySelectorAll('.operational-kpi-card'), { root: container });
+
   // Carga inicial del panel del hospital
   await cargarDatosDashboard();
 
@@ -492,7 +495,7 @@ export async function renderOperationalDashboard(container) {
 
       // 1. KPI Ocupación
       const pct = Math.round(data.tasaOcupacionPorcentaje || 0);
-      kpiOcupacion.textContent = `${pct}%`;
+      motion.animateCounter(kpiOcupacion, pct, { suffix: '%' });
       kpiProgressBar.style.width = `${Math.min(pct, 100)}%`;
       kpiProgressBar.className = 'operational-progress-bar';
       if (pct >= 85) {
@@ -504,22 +507,22 @@ export async function renderOperationalDashboard(container) {
       }
 
       kpiDesglose.textContent = `${data.camasOcupadas || 0} ocupadas de ${data.totalCamas || 0} camas`;
-      kpiLibresVal.textContent = data.camasDisponibles || 0;
-      kpiLimpiezaVal.textContent = data.camasLimpieza || 0;
-      kpiMantVal.textContent = data.camasMantenimiento || 0;
+      motion.animateCounter(kpiLibresVal, data.camasDisponibles || 0);
+      motion.animateCounter(kpiLimpiezaVal, data.camasLimpieza || 0);
+      motion.animateCounter(kpiMantVal, data.camasMantenimiento || 0);
 
       // 2. KPI Urgencias
-      kpiUrgencias.textContent = data.episodiosUrgenciasActivos || 0;
+      motion.animateCounter(kpiUrgencias, data.episodiosUrgenciasActivos || 0);
       const porTriaje = data.episodiosPorNivelTriaje || {};
-      kpiCntT1.textContent = porTriaje['I'] || 0;
-      kpiCntT2.textContent = porTriaje['II'] || 0;
-      kpiCntT3.textContent = porTriaje['III'] || 0;
-      kpiCntT4.textContent = porTriaje['IV'] || 0;
-      kpiCntT5.textContent = porTriaje['V'] || 0;
+      motion.animateCounter(kpiCntT1, porTriaje['I'] || 0);
+      motion.animateCounter(kpiCntT2, porTriaje['II'] || 0);
+      motion.animateCounter(kpiCntT3, porTriaje['III'] || 0);
+      motion.animateCounter(kpiCntT4, porTriaje['IV'] || 0);
+      motion.animateCounter(kpiCntT5, porTriaje['V'] || 0);
 
       // 3. KPI Alertas
       const totalAlertas = (data.alertasActivas || []).length;
-      kpiAlertas.textContent = totalAlertas;
+      motion.animateCounter(kpiAlertas, totalAlertas);
       if (totalAlertas > 0) {
         kpiAlertaStatusPill.className = 'badge badge--cancelled';
         kpiAlertaStatusPill.innerHTML = `${ui.icon('alert-triangle', 'icon icon--sm')} ${totalAlertas} Requiere(n) Intervención`;
@@ -533,7 +536,7 @@ export async function renderOperationalDashboard(container) {
       }
 
       // 4. KPI Camas Libres
-      kpiDisponibles.textContent = data.camasDisponibles || 0;
+      motion.animateCounter(kpiDisponibles, data.camasDisponibles || 0);
       kpiTotalCamasPill.textContent = `Capacidad: ${data.totalCamas || 0} instaladas`;
 
       // 5. Tiempos Promedio Res 5596/2015
@@ -544,11 +547,11 @@ export async function renderOperationalDashboard(container) {
       const t4Val = Math.round(tiempos['IV'] || 0);
       const t5Val = Math.round(tiempos['V'] || 0);
 
-      t1.textContent = `${t1Val} min`;
-      t2.textContent = `${t2Val} min`;
-      t3.textContent = `${t3Val} min`;
-      t4.textContent = `${t4Val} min`;
-      t5.textContent = `${t5Val} min`;
+      motion.animateCounter(t1, t1Val, { suffix: ' min' });
+      motion.animateCounter(t2, t2Val, { suffix: ' min' });
+      motion.animateCounter(t3, t3Val, { suffix: ' min' });
+      motion.animateCounter(t4, t4Val, { suffix: ' min' });
+      motion.animateCounter(t5, t5Val, { suffix: ' min' });
 
       cntWaitT1.textContent = `${porTriaje['I'] || 0} paciente(s)`;
       cntWaitT2.textContent = `${porTriaje['II'] || 0} paciente(s)`;
