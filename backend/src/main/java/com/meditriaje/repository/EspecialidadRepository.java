@@ -1,27 +1,28 @@
 package com.meditriaje.repository;
 
 import com.meditriaje.model.Especialidad;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.meditriaje.repository.plsql.PackageGateway;
+import com.meditriaje.repository.plsql.ProcedureSpec;
 import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.stereotype.Repository;
 
-import java.sql.PreparedStatement;
+import java.sql.Types;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Repositorio JDBC para la entidad {@code ESPECIALIDAD}.
- * Utiliza SQL 100% parametrizado y paginación estándar Oracle (ADR-001, ADR-003, ADR-006, HU-10).
+ * Repositorio para la entidad {@code ESPECIALIDAD} (ADR-001, ADR-003, ADR-006, HU-10). No contiene SQL: delega en
+ * {@code PKG_STAFF} a través de {@link PackageGateway}.
  */
 @Repository
 public class EspecialidadRepository {
 
-    private final JdbcTemplate jdbcTemplate;
+    static final String PACKAGE = "PKG_STAFF";
 
-    private final RowMapper<Especialidad> rowMapper = (rs, rowNum) -> new Especialidad(
+    static final RowMapper<Especialidad> ESPECIALIDAD_MAPPER = (rs, rowNum) -> new Especialidad(
             rs.getLong("ID"),
             rs.getString("PUBLIC_ID"),
             rs.getString("NOMBRE"),
@@ -29,25 +30,70 @@ public class EspecialidadRepository {
             rs.getString("ESTADO")
     );
 
-    public EspecialidadRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "JdbcTemplate no puede ser nulo");
+    static final ProcedureSpec CREATE_SPECIALTY = ProcedureSpec.procedure(PACKAGE, "create_specialty")
+            .in("p_public_id", Types.VARCHAR)
+            .in("p_name", Types.VARCHAR)
+            .in("p_slot_minutes", Types.NUMERIC)
+            .out("o_specialty_id", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec UPDATE_SPECIALTY = ProcedureSpec.procedure(PACKAGE, "update_specialty")
+            .in("p_public_id", Types.VARCHAR)
+            .in("p_name", Types.VARCHAR)
+            .in("p_slot_minutes", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec GET_SPECIALTY_BY_PUBLIC_ID =
+            ProcedureSpec.procedure(PACKAGE, "get_specialty_by_public_id")
+                    .in("p_public_id", Types.VARCHAR)
+                    .cursor("o_specialty", ESPECIALIDAD_MAPPER)
+                    .build();
+
+    static final ProcedureSpec GET_SPECIALTY_BY_ID = ProcedureSpec.procedure(PACKAGE, "get_specialty_by_id")
+            .in("p_specialty_id", Types.NUMERIC)
+            .cursor("o_specialty", ESPECIALIDAD_MAPPER)
+            .build();
+
+    static final ProcedureSpec COUNT_SPECIALTIES_BY_NAME =
+            ProcedureSpec.function(PACKAGE, "count_specialties_by_name", "result", Types.NUMERIC)
+                    .in("p_name", Types.VARCHAR)
+                    .build();
+
+    static final ProcedureSpec COUNT_OTHER_SPECIALTIES_BY_NAME =
+            ProcedureSpec.function(PACKAGE, "count_other_specialties_by_name", "result", Types.NUMERIC)
+                    .in("p_name", Types.VARCHAR)
+                    .in("p_public_id", Types.VARCHAR)
+                    .build();
+
+    static final ProcedureSpec CHANGE_SPECIALTY_STATUS = ProcedureSpec.procedure(PACKAGE, "change_specialty_status")
+            .in("p_public_id", Types.VARCHAR)
+            .in("p_status", Types.VARCHAR)
+            .build();
+
+    static final ProcedureSpec LIST_SPECIALTIES = ProcedureSpec.procedure(PACKAGE, "list_specialties")
+            .in("p_status", Types.VARCHAR)
+            .in("p_offset", Types.NUMERIC)
+            .in("p_size", Types.NUMERIC)
+            .cursor("o_rows", ESPECIALIDAD_MAPPER)
+            .build();
+
+    static final ProcedureSpec COUNT_SPECIALTIES =
+            ProcedureSpec.function(PACKAGE, "count_specialties", "result", Types.NUMERIC)
+                    .in("p_status", Types.VARCHAR)
+                    .build();
+
+    private final PackageGateway gateway;
+
+    public EspecialidadRepository(PackageGateway gateway) {
+        this.gateway = Objects.requireNonNull(gateway, "gateway no puede ser nulo");
     }
 
     public Especialidad crear(String publicId, String nombre, int duracionSlotMin) {
-        final String sql = """
-            INSERT INTO ESPECIALIDAD (PUBLIC_ID, NOMBRE, DURACION_SLOT_MIN, ESTADO)
-            VALUES (?, ?, ?, 'ACTIVO')
-            """;
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(sql, new String[] { "ID" });
-            ps.setString(1, publicId);
-            ps.setString(2, nombre);
-            ps.setInt(3, duracionSlotMin);
-            return ps;
-        }, keyHolder);
-
-        Number key = keyHolder.getKey();
+        Map<String, Object> out = gateway.execute(CREATE_SPECIALTY, new MapSqlParameterSource()
+                .addValue("p_public_id", publicId)
+                .addValue("p_name", nombre)
+                .addValue("p_slot_minutes", duracionSlotMin));
+        Number key = (Number) out.get("o_specialty_id");
         if (key == null) {
             throw new IllegalStateException("No se pudo obtener el ID autogenerado para la especialidad.");
         }
@@ -55,72 +101,66 @@ public class EspecialidadRepository {
     }
 
     public void actualizar(String publicId, String nombre, int duracionSlotMin) {
-        final String sql = "UPDATE ESPECIALIDAD SET NOMBRE = ?, DURACION_SLOT_MIN = ? WHERE PUBLIC_ID = ?";
-        jdbcTemplate.update(sql, nombre, duracionSlotMin, publicId);
+        gateway.execute(UPDATE_SPECIALTY, new MapSqlParameterSource()
+                .addValue("p_public_id", publicId)
+                .addValue("p_name", nombre)
+                .addValue("p_slot_minutes", duracionSlotMin));
     }
 
     public Optional<Especialidad> buscarPorPublicId(String publicId) {
-        final String sql = "SELECT ID, PUBLIC_ID, NOMBRE, DURACION_SLOT_MIN, ESTADO FROM ESPECIALIDAD WHERE PUBLIC_ID = ?";
-        List<Especialidad> resultados = jdbcTemplate.query(sql, rowMapper, publicId);
+        List<Especialidad> resultados = gateway.list(
+                GET_SPECIALTY_BY_PUBLIC_ID,
+                new MapSqlParameterSource().addValue("p_public_id", publicId, Types.VARCHAR),
+                "o_specialty");
         return resultados.stream().findFirst();
     }
 
     public Optional<Especialidad> buscarPorId(Long id) {
-        final String sql = "SELECT ID, PUBLIC_ID, NOMBRE, DURACION_SLOT_MIN, ESTADO FROM ESPECIALIDAD WHERE ID = ?";
-        List<Especialidad> resultados = jdbcTemplate.query(sql, rowMapper, id);
+        List<Especialidad> resultados = gateway.list(
+                GET_SPECIALTY_BY_ID,
+                new MapSqlParameterSource().addValue("p_specialty_id", id, Types.NUMERIC),
+                "o_specialty");
         return resultados.stream().findFirst();
     }
 
     public boolean existePorNombre(String nombre) {
-        final String sql = "SELECT COUNT(*) FROM ESPECIALIDAD WHERE UPPER(TRIM(NOMBRE)) = UPPER(TRIM(?))";
-        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, nombre);
-        return count != null && count > 0;
+        Number count = gateway.callFunction(
+                COUNT_SPECIALTIES_BY_NAME,
+                new MapSqlParameterSource().addValue("p_name", nombre, Types.VARCHAR));
+        return count != null && count.longValue() > 0;
     }
 
     public boolean existePorNombreYNoPublicId(String nombre, String publicId) {
-        final String sql = "SELECT COUNT(*) FROM ESPECIALIDAD WHERE UPPER(TRIM(NOMBRE)) = UPPER(TRIM(?)) AND PUBLIC_ID <> ?";
-        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, nombre, publicId);
-        return count != null && count > 0;
+        Number count = gateway.callFunction(COUNT_OTHER_SPECIALTIES_BY_NAME, new MapSqlParameterSource()
+                .addValue("p_name", nombre, Types.VARCHAR)
+                .addValue("p_public_id", publicId, Types.VARCHAR));
+        return count != null && count.longValue() > 0;
     }
 
     public void cambiarEstado(String publicId, String nuevoEstado) {
-        final String sql = "UPDATE ESPECIALIDAD SET ESTADO = ? WHERE PUBLIC_ID = ?";
-        jdbcTemplate.update(sql, nuevoEstado, publicId);
+        gateway.execute(CHANGE_SPECIALTY_STATUS, new MapSqlParameterSource()
+                .addValue("p_public_id", publicId, Types.VARCHAR)
+                .addValue("p_status", nuevoEstado, Types.VARCHAR));
     }
 
     public List<Especialidad> listar(int page, int size, String estadoFiltro) {
         int offset = Math.max(0, page) * Math.max(1, size);
         int limit = Math.max(1, size);
-
-        if (estadoFiltro != null && !estadoFiltro.isBlank()) {
-            final String sql = """
-                SELECT ID, PUBLIC_ID, NOMBRE, DURACION_SLOT_MIN, ESTADO
-                FROM ESPECIALIDAD
-                WHERE ESTADO = ?
-                ORDER BY NOMBRE ASC, ID ASC
-                OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
-                """;
-            return jdbcTemplate.query(sql, rowMapper, estadoFiltro.trim().toUpperCase(), offset, limit);
-        } else {
-            final String sql = """
-                SELECT ID, PUBLIC_ID, NOMBRE, DURACION_SLOT_MIN, ESTADO
-                FROM ESPECIALIDAD
-                ORDER BY NOMBRE ASC, ID ASC
-                OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
-                """;
-            return jdbcTemplate.query(sql, rowMapper, offset, limit);
-        }
+        return gateway.list(LIST_SPECIALTIES, new MapSqlParameterSource()
+                .addValue("p_status", statusFilter(estadoFiltro), Types.VARCHAR)
+                .addValue("p_offset", offset, Types.NUMERIC)
+                .addValue("p_size", limit, Types.NUMERIC), "o_rows");
     }
 
     public long contar(String estadoFiltro) {
-        if (estadoFiltro != null && !estadoFiltro.isBlank()) {
-            final String sql = "SELECT COUNT(*) FROM ESPECIALIDAD WHERE ESTADO = ?";
-            Long count = jdbcTemplate.queryForObject(sql, Long.class, estadoFiltro.trim().toUpperCase());
-            return count != null ? count : 0L;
-        } else {
-            final String sql = "SELECT COUNT(*) FROM ESPECIALIDAD";
-            Long count = jdbcTemplate.queryForObject(sql, Long.class);
-            return count != null ? count : 0L;
-        }
+        Number count = gateway.callFunction(
+                COUNT_SPECIALTIES,
+                new MapSqlParameterSource().addValue("p_status", statusFilter(estadoFiltro), Types.VARCHAR));
+        return count != null ? count.longValue() : 0L;
+    }
+
+    /** Un filtro en blanco equivale a no filtrar; el estado se compara en mayúsculas. */
+    private static String statusFilter(String estadoFiltro) {
+        return estadoFiltro != null && !estadoFiltro.isBlank() ? estadoFiltro.trim().toUpperCase() : null;
     }
 }

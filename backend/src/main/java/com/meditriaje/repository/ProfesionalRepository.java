@@ -2,29 +2,29 @@ package com.meditriaje.repository;
 
 import com.meditriaje.dto.admin.ProfesionalResponse;
 import com.meditriaje.model.Profesional;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.meditriaje.repository.plsql.PackageGateway;
+import com.meditriaje.repository.plsql.ProcedureSpec;
 import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.stereotype.Repository;
 
-import java.sql.PreparedStatement;
 import java.sql.Timestamp;
-import java.util.ArrayList;
+import java.sql.Types;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Repositorio JDBC para la entidad {@code PROFESIONAL}.
- * Implementa consultas 100% parametrizadas y paginación estándar Oracle (ADR-001, ADR-003, ADR-006, HU-10, Ley 1164/2007).
+ * Repositorio para la entidad {@code PROFESIONAL} (ADR-001, ADR-003, ADR-006, HU-10, Ley 1164/2007). No
+ * contiene SQL: delega en {@code PKG_STAFF} a través de {@link PackageGateway}.
  */
 @Repository
 public class ProfesionalRepository {
 
-    private final JdbcTemplate jdbcTemplate;
+    static final String PACKAGE = "PKG_STAFF";
 
-    private final RowMapper<Profesional> profesionalRowMapper = (rs, rowNum) -> {
+    static final RowMapper<Profesional> PROFESIONAL_MAPPER = (rs, rowNum) -> {
         Timestamp tsCreated = rs.getTimestamp("CREATED_AT");
         Timestamp tsUpdated = rs.getTimestamp("UPDATED_AT");
         return new Profesional(
@@ -43,7 +43,7 @@ public class ProfesionalRepository {
         );
     };
 
-    private final RowMapper<ProfesionalResponse> profesionalResponseRowMapper = (rs, rowNum) -> {
+    static final RowMapper<ProfesionalResponse> RESPONSE_MAPPER = (rs, rowNum) -> {
         Timestamp tsCreated = rs.getTimestamp("CREATED_AT");
         return new ProfesionalResponse(
                 rs.getString("PUBLIC_ID"),
@@ -63,32 +63,100 @@ public class ProfesionalRepository {
         );
     };
 
-    public ProfesionalRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "JdbcTemplate no puede ser nulo");
+    static final ProcedureSpec CREATE_PROFESSIONAL = ProcedureSpec.procedure(PACKAGE, "create_professional")
+            .in("p_user_id", Types.NUMERIC)
+            .in("p_public_id", Types.VARCHAR)
+            .in("p_specialty_id", Types.NUMERIC)
+            .in("p_document_type", Types.VARCHAR)
+            .in("p_document_number", Types.VARCHAR)
+            .in("p_medical_registry", Types.VARCHAR)
+            .in("p_first_names", Types.VARCHAR)
+            .in("p_last_names", Types.VARCHAR)
+            .in("p_phone", Types.VARCHAR)
+            .out("o_professional_id", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec UPDATE_PROFESSIONAL = ProcedureSpec.procedure(PACKAGE, "update_professional")
+            .in("p_public_id", Types.VARCHAR)
+            .in("p_specialty_id", Types.NUMERIC)
+            .in("p_first_names", Types.VARCHAR)
+            .in("p_last_names", Types.VARCHAR)
+            .in("p_phone", Types.VARCHAR)
+            .build();
+
+    static final ProcedureSpec GET_PROFESSIONAL_BY_PUBLIC_ID =
+            ProcedureSpec.procedure(PACKAGE, "get_professional_by_public_id")
+                    .in("p_public_id", Types.VARCHAR)
+                    .cursor("o_professional", PROFESIONAL_MAPPER)
+                    .build();
+
+    static final ProcedureSpec GET_PROFESSIONAL_BY_ID = ProcedureSpec.procedure(PACKAGE, "get_professional_by_id")
+            .in("p_professional_id", Types.NUMERIC)
+            .cursor("o_professional", PROFESIONAL_MAPPER)
+            .build();
+
+    static final ProcedureSpec GET_PROFESSIONAL_BY_USER_ID =
+            ProcedureSpec.procedure(PACKAGE, "get_professional_by_user_id")
+                    .in("p_user_id", Types.NUMERIC)
+                    .cursor("o_professional", PROFESIONAL_MAPPER)
+                    .build();
+
+    static final ProcedureSpec COUNT_BY_MEDICAL_REGISTRY =
+            ProcedureSpec.function(PACKAGE, "count_by_medical_registry", "result", Types.NUMERIC)
+                    .in("p_medical_registry", Types.VARCHAR)
+                    .build();
+
+    static final ProcedureSpec COUNT_OTHER_BY_MEDICAL_REGISTRY =
+            ProcedureSpec.function(PACKAGE, "count_other_by_medical_registry", "result", Types.NUMERIC)
+                    .in("p_medical_registry", Types.VARCHAR)
+                    .in("p_public_id", Types.VARCHAR)
+                    .build();
+
+    static final ProcedureSpec COUNT_BY_DOCUMENT =
+            ProcedureSpec.function(PACKAGE, "count_by_document", "result", Types.NUMERIC)
+                    .in("p_document_type", Types.VARCHAR)
+                    .in("p_document_number", Types.VARCHAR)
+                    .build();
+
+    static final ProcedureSpec COUNT_OTHER_BY_DOCUMENT =
+            ProcedureSpec.function(PACKAGE, "count_other_by_document", "result", Types.NUMERIC)
+                    .in("p_document_type", Types.VARCHAR)
+                    .in("p_document_number", Types.VARCHAR)
+                    .in("p_public_id", Types.VARCHAR)
+                    .build();
+
+    static final ProcedureSpec LIST_PROFESSIONALS = ProcedureSpec.procedure(PACKAGE, "list_professionals")
+            .in("p_specialty_public_id", Types.VARCHAR)
+            .in("p_status", Types.VARCHAR)
+            .in("p_offset", Types.NUMERIC)
+            .in("p_size", Types.NUMERIC)
+            .cursor("o_rows", RESPONSE_MAPPER)
+            .build();
+
+    static final ProcedureSpec COUNT_PROFESSIONALS =
+            ProcedureSpec.function(PACKAGE, "count_professionals", "result", Types.NUMERIC)
+                    .in("p_specialty_public_id", Types.VARCHAR)
+                    .in("p_status", Types.VARCHAR)
+                    .build();
+
+    private final PackageGateway gateway;
+
+    public ProfesionalRepository(PackageGateway gateway) {
+        this.gateway = Objects.requireNonNull(gateway, "gateway no puede ser nulo");
     }
 
     public Long crear(Profesional profesional) {
-        final String sql = """
-            INSERT INTO PROFESIONAL (USUARIO_ID, PUBLIC_ID, ESPECIALIDAD_ID, TIPO_DOCUMENTO, NUMERO_DOCUMENTO, REGISTRO_MEDICO, NOMBRES, APELLIDOS, TELEFONO)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """;
-
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(sql, new String[] { "ID" });
-            ps.setLong(1, profesional.usuarioId());
-            ps.setString(2, profesional.publicId());
-            ps.setLong(3, profesional.especialidadId());
-            ps.setString(4, profesional.tipoDocumento() != null ? profesional.tipoDocumento() : "CC");
-            ps.setString(5, profesional.numeroDocumento());
-            ps.setString(6, profesional.registroMedico());
-            ps.setString(7, profesional.nombres());
-            ps.setString(8, profesional.apellidos());
-            ps.setString(9, profesional.telefono());
-            return ps;
-        }, keyHolder);
-
-        Number key = keyHolder.getKey();
+        Map<String, Object> out = gateway.execute(CREATE_PROFESSIONAL, new MapSqlParameterSource()
+                .addValue("p_user_id", profesional.usuarioId(), Types.NUMERIC)
+                .addValue("p_public_id", profesional.publicId(), Types.VARCHAR)
+                .addValue("p_specialty_id", profesional.especialidadId(), Types.NUMERIC)
+                .addValue("p_document_type", profesional.tipoDocumento() != null ? profesional.tipoDocumento() : "CC", Types.VARCHAR)
+                .addValue("p_document_number", profesional.numeroDocumento(), Types.VARCHAR)
+                .addValue("p_medical_registry", profesional.registroMedico(), Types.VARCHAR)
+                .addValue("p_first_names", profesional.nombres(), Types.VARCHAR)
+                .addValue("p_last_names", profesional.apellidos(), Types.VARCHAR)
+                .addValue("p_phone", profesional.telefono(), Types.VARCHAR));
+        Number key = (Number) out.get("o_professional_id");
         if (key == null) {
             throw new IllegalStateException("No se pudo obtener el ID autogenerado para el profesional.");
         }
@@ -96,142 +164,84 @@ public class ProfesionalRepository {
     }
 
     public void actualizar(Profesional profesional) {
-        final String sql = """
-            UPDATE PROFESIONAL
-            SET ESPECIALIDAD_ID = ?, NOMBRES = ?, APELLIDOS = ?, TELEFONO = ?, UPDATED_AT = CURRENT_TIMESTAMP
-            WHERE PUBLIC_ID = ?
-            """;
-        jdbcTemplate.update(
-                sql,
-                profesional.especialidadId(),
-                profesional.nombres(),
-                profesional.apellidos(),
-                profesional.telefono(),
-                profesional.publicId()
-        );
+        gateway.execute(UPDATE_PROFESSIONAL, new MapSqlParameterSource()
+                .addValue("p_public_id", profesional.publicId(), Types.VARCHAR)
+                .addValue("p_specialty_id", profesional.especialidadId(), Types.NUMERIC)
+                .addValue("p_first_names", profesional.nombres(), Types.VARCHAR)
+                .addValue("p_last_names", profesional.apellidos(), Types.VARCHAR)
+                .addValue("p_phone", profesional.telefono(), Types.VARCHAR));
     }
 
     public Optional<Profesional> buscarPorPublicId(String publicId) {
-        final String sql = """
-            SELECT ID, USUARIO_ID, PUBLIC_ID, ESPECIALIDAD_ID, TIPO_DOCUMENTO, NUMERO_DOCUMENTO, REGISTRO_MEDICO, NOMBRES, APELLIDOS, TELEFONO, CREATED_AT, UPDATED_AT
-            FROM PROFESIONAL
-            WHERE PUBLIC_ID = ?
-            """;
-        List<Profesional> resultados = jdbcTemplate.query(sql, profesionalRowMapper, publicId);
-        return resultados.stream().findFirst();
+        return first(GET_PROFESSIONAL_BY_PUBLIC_ID, new MapSqlParameterSource().addValue("p_public_id", publicId, Types.VARCHAR));
     }
 
     public Optional<Profesional> buscarPorId(Long id) {
-        final String sql = """
-            SELECT ID, USUARIO_ID, PUBLIC_ID, ESPECIALIDAD_ID, TIPO_DOCUMENTO, NUMERO_DOCUMENTO, REGISTRO_MEDICO, NOMBRES, APELLIDOS, TELEFONO, CREATED_AT, UPDATED_AT
-            FROM PROFESIONAL
-            WHERE ID = ?
-            """;
-        List<Profesional> resultados = jdbcTemplate.query(sql, profesionalRowMapper, id);
-        return resultados.stream().findFirst();
+        return first(GET_PROFESSIONAL_BY_ID, new MapSqlParameterSource().addValue("p_professional_id", id, Types.NUMERIC));
     }
 
     public Optional<Profesional> buscarPorUsuarioId(Long usuarioId) {
-        final String sql = """
-            SELECT ID, USUARIO_ID, PUBLIC_ID, ESPECIALIDAD_ID, TIPO_DOCUMENTO, NUMERO_DOCUMENTO, REGISTRO_MEDICO, NOMBRES, APELLIDOS, TELEFONO, CREATED_AT, UPDATED_AT
-            FROM PROFESIONAL
-            WHERE USUARIO_ID = ?
-            """;
-        List<Profesional> resultados = jdbcTemplate.query(sql, profesionalRowMapper, usuarioId);
-        return resultados.stream().findFirst();
+        return first(GET_PROFESSIONAL_BY_USER_ID, new MapSqlParameterSource().addValue("p_user_id", usuarioId, Types.NUMERIC));
     }
 
     public boolean existePorRegistroMedico(String registroMedico) {
-        final String sql = "SELECT COUNT(*) FROM PROFESIONAL WHERE UPPER(TRIM(REGISTRO_MEDICO)) = UPPER(TRIM(?))";
-        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, registroMedico);
-        return count != null && count > 0;
+        return positive(gateway.callFunction(
+                COUNT_BY_MEDICAL_REGISTRY,
+                new MapSqlParameterSource().addValue("p_medical_registry", registroMedico, Types.VARCHAR)));
     }
 
     public boolean existePorRegistroMedicoYNoPublicId(String registroMedico, String publicId) {
-        final String sql = """
-            SELECT COUNT(*)
-            FROM PROFESIONAL
-            WHERE UPPER(TRIM(REGISTRO_MEDICO)) = UPPER(TRIM(?))
-              AND PUBLIC_ID <> ?
-            """;
-        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, registroMedico, publicId);
-        return count != null && count > 0;
+        return positive(gateway.callFunction(COUNT_OTHER_BY_MEDICAL_REGISTRY, new MapSqlParameterSource()
+                .addValue("p_medical_registry", registroMedico, Types.VARCHAR)
+                .addValue("p_public_id", publicId, Types.VARCHAR)));
     }
 
     public boolean existePorDocumento(String tipoDocumento, String numeroDocumento) {
         if (tipoDocumento == null || numeroDocumento == null) return false;
-        final String sql = "SELECT COUNT(*) FROM PROFESIONAL WHERE UPPER(TRIM(TIPO_DOCUMENTO)) = UPPER(TRIM(?)) AND UPPER(TRIM(NUMERO_DOCUMENTO)) = UPPER(TRIM(?))";
-        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, tipoDocumento, numeroDocumento);
-        return count != null && count > 0;
+        return positive(gateway.callFunction(COUNT_BY_DOCUMENT, new MapSqlParameterSource()
+                .addValue("p_document_type", tipoDocumento, Types.VARCHAR)
+                .addValue("p_document_number", numeroDocumento, Types.VARCHAR)));
     }
 
     public boolean existePorDocumentoYNoPublicId(String tipoDocumento, String numeroDocumento, String publicId) {
         if (tipoDocumento == null || numeroDocumento == null) return false;
-        final String sql = """
-            SELECT COUNT(*)
-            FROM PROFESIONAL
-            WHERE UPPER(TRIM(TIPO_DOCUMENTO)) = UPPER(TRIM(?))
-              AND UPPER(TRIM(NUMERO_DOCUMENTO)) = UPPER(TRIM(?))
-              AND PUBLIC_ID <> ?
-            """;
-        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, tipoDocumento, numeroDocumento, publicId);
-        return count != null && count > 0;
+        return positive(gateway.callFunction(COUNT_OTHER_BY_DOCUMENT, new MapSqlParameterSource()
+                .addValue("p_document_type", tipoDocumento, Types.VARCHAR)
+                .addValue("p_document_number", numeroDocumento, Types.VARCHAR)
+                .addValue("p_public_id", publicId, Types.VARCHAR)));
     }
 
     public List<ProfesionalResponse> listar(int page, int size, String especialidadPublicId, String estado) {
-        StringBuilder sql = new StringBuilder("""
-            SELECT p.PUBLIC_ID, u.PUBLIC_ID AS USUARIO_PUBLIC_ID, p.TIPO_DOCUMENTO, p.NUMERO_DOCUMENTO, p.REGISTRO_MEDICO,
-                   p.NOMBRES, p.APELLIDOS, u.EMAIL, p.TELEFONO, e.PUBLIC_ID AS ESPECIALIDAD_PUBLIC_ID,
-                   e.NOMBRE AS ESPECIALIDAD_NOMBRE, u.ESTADO, u.DEBE_CAMBIAR_PASSWORD, p.CREATED_AT
-            FROM PROFESIONAL p
-            JOIN USUARIO u ON p.USUARIO_ID = u.ID
-            JOIN ESPECIALIDAD e ON p.ESPECIALIDAD_ID = e.ID
-            WHERE 1 = 1
-            """);
-
-        List<Object> params = new ArrayList<>();
-
-        if (especialidadPublicId != null && !especialidadPublicId.isBlank()) {
-            sql.append(" AND e.PUBLIC_ID = ?");
-            params.add(especialidadPublicId.trim());
-        }
-
-        if (estado != null && !estado.isBlank()) {
-            sql.append(" AND u.ESTADO = ?");
-            params.add(estado.trim().toUpperCase());
-        }
-
-        sql.append(" ORDER BY p.APELLIDOS ASC, p.NOMBRES ASC, p.ID ASC OFFSET ? ROWS FETCH NEXT ? ROWS ONLY");
         int offset = Math.max(0, page) * Math.max(1, size);
         int limit = Math.max(1, size);
-        params.add(offset);
-        params.add(limit);
-
-        return jdbcTemplate.query(sql.toString(), profesionalResponseRowMapper, params.toArray());
+        MapSqlParameterSource params = filters(especialidadPublicId, estado)
+                .addValue("p_offset", offset, Types.NUMERIC)
+                .addValue("p_size", limit, Types.NUMERIC);
+        return gateway.list(LIST_PROFESSIONALS, params, "o_rows");
     }
 
     public int contar(String especialidadPublicId, String estado) {
-        StringBuilder sql = new StringBuilder("""
-            SELECT COUNT(*)
-            FROM PROFESIONAL p
-            JOIN USUARIO u ON p.USUARIO_ID = u.ID
-            JOIN ESPECIALIDAD e ON p.ESPECIALIDAD_ID = e.ID
-            WHERE 1 = 1
-            """);
+        Number count = gateway.callFunction(COUNT_PROFESSIONALS, filters(especialidadPublicId, estado));
+        return count != null ? count.intValue() : 0;
+    }
 
-        List<Object> params = new ArrayList<>();
+    /** Filtros opcionales: en blanco no filtra; la especialidad se recorta y el estado se pasa a mayúsculas. */
+    private static MapSqlParameterSource filters(String especialidadPublicId, String estado) {
+        return new MapSqlParameterSource()
+                .addValue("p_specialty_public_id",
+                        especialidadPublicId != null && !especialidadPublicId.isBlank() ? especialidadPublicId.trim() : null,
+                        Types.VARCHAR)
+                .addValue("p_status",
+                        estado != null && !estado.isBlank() ? estado.trim().toUpperCase() : null,
+                        Types.VARCHAR);
+    }
 
-        if (especialidadPublicId != null && !especialidadPublicId.isBlank()) {
-            sql.append(" AND e.PUBLIC_ID = ?");
-            params.add(especialidadPublicId.trim());
-        }
+    private Optional<Profesional> first(ProcedureSpec spec, MapSqlParameterSource params) {
+        List<Profesional> resultados = gateway.list(spec, params, "o_professional");
+        return resultados.stream().findFirst();
+    }
 
-        if (estado != null && !estado.isBlank()) {
-            sql.append(" AND u.ESTADO = ?");
-            params.add(estado.trim().toUpperCase());
-        }
-
-        Integer count = jdbcTemplate.queryForObject(sql.toString(), Integer.class, params.toArray());
-        return count != null ? count : 0;
+    private static boolean positive(Object count) {
+        return count != null && ((Number) count).longValue() > 0;
     }
 }

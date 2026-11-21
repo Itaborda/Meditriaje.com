@@ -1,33 +1,32 @@
 package com.meditriaje.repository;
 
 import com.meditriaje.model.AsignacionAsistencial;
-import org.springframework.dao.EmptyResultDataAccessException;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.meditriaje.repository.plsql.PackageGateway;
+import com.meditriaje.repository.plsql.ProcedureSpec;
 import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.stereotype.Repository;
 
-import java.sql.PreparedStatement;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 
 /**
- * Repositorio JDBC para {@code ASIGNACION_ASISTENCIAL} (Fase U, ADR-022, U06).
+ * Repositorio para {@code ASIGNACION_ASISTENCIAL} (Fase U, ADR-022, U06). No contiene SQL: delega en
+ * {@code PKG_STAFF} a través de {@link PackageGateway}.
  */
 @Repository
 public class AsignacionAsistencialRepository {
 
-    private final JdbcTemplate jdbcTemplate;
+    static final String PACKAGE = "PKG_STAFF";
 
-    private final RowMapper<AsignacionAsistencial> rowMapper = (rs, rowNum) -> {
+    static final RowMapper<AsignacionAsistencial> ASIGNACION_MAPPER = (rs, rowNum) -> {
         Timestamp tsInicio = rs.getTimestamp("FECHA_INICIO");
         Timestamp tsFin = rs.getTimestamp("FECHA_FIN");
         Timestamp tsCreated = rs.getTimestamp("CREADO_AT");
-
         return new AsignacionAsistencial(
                 rs.getLong("ID"),
                 rs.getString("PUBLIC_ID"),
@@ -42,31 +41,54 @@ public class AsignacionAsistencialRepository {
         );
     };
 
-    public AsignacionAsistencialRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "jdbcTemplate no puede ser nulo");
+    static final ProcedureSpec CREATE_ASSIGNMENT = ProcedureSpec.procedure(PACKAGE, "create_assignment")
+            .in("p_public_id", Types.VARCHAR)
+            .in("p_episode_id", Types.NUMERIC)
+            .in("p_professional_id", Types.NUMERIC)
+            .in("p_role", Types.VARCHAR)
+            .in("p_assigned_by_user_id", Types.NUMERIC)
+            .in("p_start_at", Types.TIMESTAMP)
+            .in("p_active", Types.NUMERIC)
+            .out("o_assignment_id", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec DEACTIVATE_PREVIOUS_ASSIGNMENT =
+            ProcedureSpec.procedure(PACKAGE, "deactivate_previous_assignment")
+                    .in("p_episode_id", Types.NUMERIC)
+                    .in("p_role", Types.VARCHAR)
+                    .out("o_updated", Types.NUMERIC)
+                    .build();
+
+    static final ProcedureSpec COUNT_ACTIVE_ASSIGNMENTS =
+            ProcedureSpec.function(PACKAGE, "count_active_assignments", "result", Types.NUMERIC)
+                    .in("p_professional_id", Types.NUMERIC)
+                    .in("p_episode_id", Types.NUMERIC)
+                    .build();
+
+    static final ProcedureSpec LIST_ASSIGNMENTS_BY_EPISODE =
+            ProcedureSpec.procedure(PACKAGE, "list_assignments_by_episode")
+                    .in("p_episode_id", Types.NUMERIC)
+                    .cursor("o_rows", ASIGNACION_MAPPER)
+                    .build();
+
+    private final PackageGateway gateway;
+
+    public AsignacionAsistencialRepository(PackageGateway gateway) {
+        this.gateway = Objects.requireNonNull(gateway, "gateway no puede ser nulo");
     }
 
     public AsignacionAsistencial guardar(AsignacionAsistencial asignacion) {
-        String sql = """
-                INSERT INTO ASIGNACION_ASISTENCIAL (
-                    PUBLIC_ID, EPISODIO_ID, PROFESIONAL_ID, FUNCION, ASIGNADO_POR_USUARIO_ID, FECHA_INICIO, ACTIVO
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """;
+        Map<String, Object> out = gateway.execute(CREATE_ASSIGNMENT, new MapSqlParameterSource()
+                .addValue("p_public_id", asignacion.publicId(), Types.VARCHAR)
+                .addValue("p_episode_id", asignacion.episodioId(), Types.NUMERIC)
+                .addValue("p_professional_id", asignacion.profesionalId(), Types.NUMERIC)
+                .addValue("p_role", asignacion.funcion(), Types.VARCHAR)
+                .addValue("p_assigned_by_user_id", asignacion.asignadoPorUsuarioId(), Types.NUMERIC)
+                .addValue("p_start_at", asignacion.fechaInicio() != null
+                        ? Timestamp.from(asignacion.fechaInicio()) : Timestamp.from(Instant.now()), Types.TIMESTAMP)
+                .addValue("p_active", asignacion.activo() ? 1 : 0, Types.NUMERIC));
 
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(sql, new String[]{"ID"});
-            ps.setString(1, asignacion.publicId());
-            ps.setLong(2, asignacion.episodioId());
-            ps.setLong(3, asignacion.profesionalId());
-            ps.setString(4, asignacion.funcion());
-            ps.setLong(5, asignacion.asignadoPorUsuarioId());
-            ps.setTimestamp(6, asignacion.fechaInicio() != null ? Timestamp.from(asignacion.fechaInicio()) : Timestamp.from(Instant.now()));
-            ps.setInt(7, asignacion.activo() ? 1 : 0);
-            return ps;
-        }, keyHolder);
-
-        Number id = keyHolder.getKey();
+        Number id = (Number) out.get("o_assignment_id");
         Long generatedId = id != null ? id.longValue() : null;
 
         return new AsignacionAsistencial(
@@ -84,25 +106,21 @@ public class AsignacionAsistencialRepository {
     }
 
     public int inactivarAsignacionPreviaPorFuncion(Long episodioId, String funcion) {
-        String sql = """
-                UPDATE ASIGNACION_ASISTENCIAL
-                SET ACTIVO = 0, FECHA_FIN = CURRENT_TIMESTAMP
-                WHERE EPISODIO_ID = ? AND FUNCION = ? AND ACTIVO = 1
-                """;
-        return jdbcTemplate.update(sql, episodioId, funcion);
+        Map<String, Object> out = gateway.execute(DEACTIVATE_PREVIOUS_ASSIGNMENT, new MapSqlParameterSource()
+                .addValue("p_episode_id", episodioId)
+                .addValue("p_role", funcion));
+        Number updated = (Number) out.get("o_updated");
+        return updated != null ? updated.intValue() : 0;
     }
 
     public boolean tieneAsignacionActiva(Long profesionalId, Long episodioId) {
-        String sql = """
-                SELECT COUNT(*) FROM ASIGNACION_ASISTENCIAL
-                WHERE PROFESIONAL_ID = ? AND EPISODIO_ID = ? AND ACTIVO = 1
-                """;
-        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, profesionalId, episodioId);
-        return count != null && count > 0;
+        Number count = gateway.callFunction(COUNT_ACTIVE_ASSIGNMENTS, new MapSqlParameterSource()
+                .addValue("p_professional_id", profesionalId)
+                .addValue("p_episode_id", episodioId));
+        return count != null && count.longValue() > 0;
     }
 
     public List<AsignacionAsistencial> listarPorEpisodioId(Long episodioId) {
-        String sql = "SELECT * FROM ASIGNACION_ASISTENCIAL WHERE EPISODIO_ID = ? ORDER BY FECHA_INICIO ASC";
-        return jdbcTemplate.query(sql, rowMapper, episodioId);
+        return gateway.list(LIST_ASSIGNMENTS_BY_EPISODE, new MapSqlParameterSource("p_episode_id", episodioId), "o_rows");
     }
 }
