@@ -383,6 +383,10 @@ function renderQrActivo(rootContainer, qrData) {
             </div>
 
             <div class="pt-2 flex flex-wrap gap-3">
+              <button type="button" id="btnDownloadQrPng" class="btn btn-primary btn--sm">
+                ${ui.icon('download', 'icon icon--sm')}
+                <span>Descargar QR</span>
+              </button>
               <a href="${esc(fullUrl)}" target="_blank" rel="noopener" class="btn btn-secondary btn--sm">
                 <span>Abrir vista previa del resumen</span>
               </a>
@@ -415,8 +419,33 @@ function renderQrActivo(rootContainer, qrData) {
       canvasTarget.innerHTML = `<p class="text-xs text-danger text-center">No fue posible renderizar el gráfico QR.</p>`;
     }
   } else if (canvasTarget) {
-    canvasTarget.innerHTML = `<p class="text-xs text-muted text-center">Generando enlace seguro...</p>`;
+    canvasTarget.innerHTML = `<p class="text-xs text-danger text-center">La librería gráfica de QR no está disponible en este momento.</p>`;
   }
+
+  // Descargar gráfico QR como imagen PNG
+  const btnDownloadQr = activeSection.querySelector('#btnDownloadQrPng');
+  btnDownloadQr?.addEventListener('click', () => {
+    const imgEl = canvasTarget?.querySelector('img');
+    const canvasEl = canvasTarget?.querySelector('canvas');
+    let dataUrl = '';
+    if (canvasEl && typeof canvasEl.toDataURL === 'function') {
+      dataUrl = canvasEl.toDataURL('image/png');
+    } else if (imgEl?.src) {
+      dataUrl = imgEl.src;
+    }
+
+    if (!dataUrl) {
+      ui.showToast('El código QR aún no está listo para descargar.', 'warning');
+      return;
+    }
+
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = 'meditriaje-qr-emergencia.png';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  });
 
   // Copiar enlace al portapapeles
   const btnCopy = activeSection.querySelector('#btnCopyUrl');

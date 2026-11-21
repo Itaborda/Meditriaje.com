@@ -9,6 +9,7 @@ import { pharmacyApi } from '../api.js';
 import { auth } from '../auth.js';
 import { router } from '../router.js';
 import { ui, esc } from '../ui.js';
+import { openUniversalQrScanner } from '../components/qr-scanner-modal.js';
 
 let pharmacyState = {
   searchQuery: '',
@@ -119,6 +120,11 @@ export async function pharmacyDispensationView(container) {
             <span>Buscar Receta</span>
           </button>
 
+          <button type="button" class="btn btn-secondary" id="btnPharmacyScanQr" title="Escanear código QR con cámara o imagen">
+            ${ui.icon('camera', 'icon icon--sm')}
+            <span>Escanear QR</span>
+          </button>
+
           <button type="button" class="btn btn-secondary" id="btnResetSearch" title="Limpiar búsqueda">
             ${ui.icon('x', 'icon icon--sm')}
             <span>Limpiar</span>
@@ -144,6 +150,22 @@ export async function pharmacyDispensationView(container) {
   const form = container.querySelector('#pharmacySearchForm');
   const searchInput = container.querySelector('#pharmacySearchInput');
   const resetBtn = container.querySelector('#btnResetSearch');
+  const scanBtn = container.querySelector('#btnPharmacyScanQr');
+
+  scanBtn?.addEventListener('click', () => {
+    openUniversalQrScanner({
+      title: 'Escanear QR en Farmacia',
+      subtitle: 'Escanea el código de reclamación de receta o un carnet QR de emergencia.',
+      onParsed: (parsed) => {
+        if (parsed.kind === 'emergency-summary' || parsed.kind === 'tracking-qr') {
+          return false;
+        }
+        searchInput.value = parsed.token;
+        form.requestSubmit();
+        return true;
+      }
+    });
+  });
 
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();

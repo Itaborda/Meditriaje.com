@@ -5,7 +5,10 @@
 
 import { operationalApi } from '../api.js';
 import { motion } from '../motion.js';
+import { router } from '../router.js';
 import { ui, esc } from '../ui.js';
+import { openUniversalQrScanner } from '../components/qr-scanner-modal.js';
+import { parseQrPayload, consumePendingOperationalQr } from '../qr-payload.js';
 
 let refreshIntervalId = null;
 
@@ -326,11 +329,11 @@ export async function renderOperationalDashboard(container) {
         </h2>
       </div>
       <p class="text-xs text-muted" style="margin-bottom: var(--space-4); max-width: 650px;">
-        Consulte la localización segura de un paciente mediante el token de su manilla o cabecera clínica. 
+        Escanea con la cámara o ingresa manualmente el token de manilla hospitalaria (<code>QROP-...</code>) o un carnet QR de emergencia.
         Garantiza estricta confidencialidad sin exponer diagnósticos ni datos sensibles (cumplimiento Ley 1581 / Res. 1995 de 1999).
       </p>
 
-      <form id="form-scan-qr" style="display: flex; gap: var(--space-2); max-width: 520px; flex-wrap: wrap;">
+      <form id="form-scan-qr" style="display: flex; gap: var(--space-2); max-width: 680px; flex-wrap: wrap;">
         <input type="text" 
                id="input-token-qr" 
                class="form-input form-control" 
@@ -341,6 +344,10 @@ export async function renderOperationalDashboard(container) {
         <button type="submit" class="btn btn-primary" id="btnConsultarQr">
           ${ui.icon('search', 'icon icon--sm')}
           <span>Localizar Paciente</span>
+        </button>
+        <button type="button" class="btn btn-secondary" id="btnOpenQrScanner">
+          ${ui.icon('camera', 'icon icon--sm')}
+          <span>Escanear con cámara</span>
         </button>
       </form>
 
@@ -688,6 +695,8 @@ export async function renderOperationalDashboard(container) {
 
   // Módulo de Consulta de QR de Manilla / Cabecera (O03)
   const formScan = container.querySelector('#form-scan-qr');
+  const inputToken = container.querySelector('#input-token-qr');
+  const btnOpenQrScanner = container.querySelector('#btnOpenQrScanner');
   const resScan = container.querySelector('#resultado-qr-track');
   const qrIdProv = container.querySelector('#qr-id-prov');
   const qrUbicacion = container.querySelector('#qr-ubicacion');
@@ -696,11 +705,18 @@ export async function renderOperationalDashboard(container) {
   const qrTokenVal = container.querySelector('#qr-token-val');
   const btnCopiarToken = container.querySelector('#btnCopiarTokenQr');
 
-  formScan.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const token = container.querySelector('#input-token-qr').value.trim();
-    if (!token) return;
+  const submitTrackingToken = async (rawInput) => {
+    const raw = (rawInput ?? '').trim();
+    if (!raw) return;
 
+    const parsed = parseQrPayload(raw);
+    if (parsed?.kind === 'emergency-summary') {
+      ui.showToast('Código QR de emergencia detectado. Abriendo resumen clínico...', 'success', 2500);
+      router.navigate(parsed.route);
+      return;
+    }
+
+    const token = parsed?.token || raw;
     try {
       const qrData = await operationalApi.consultarTrackingQr(token);
       resScan.style.display = 'block';
@@ -722,7 +738,33 @@ export async function renderOperationalDashboard(container) {
       resScan.style.display = 'none';
       ui.showToast(err.message || 'Token QR no encontrado o inválido.', 'error');
     }
+  };
+
+  formScan.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await submitTrackingToken(inputToken.value);
   });
+
+  btnOpenQrScanner?.addEventListener('click', () => {
+    openUniversalQrScanner({
+      title: 'Escanear Código QR',
+      subtitle: 'Escanea una manilla hospitalaria (QROP) o el carnet QR de emergencia del paciente',
+      onParsed: (parsed) => {
+        if (parsed.kind === 'emergency-summary') {
+          return false;
+        }
+        inputToken.value = parsed.token;
+        submitTrackingToken(parsed.token);
+        return true;
+      }
+    });
+  });
+
+  const pendingQrToken = consumePendingOperationalQr();
+  if (pendingQrToken && inputToken) {
+    inputToken.value = pendingQrToken;
+    submitTrackingToken(pendingQrToken);
+  }
 
   // Copiar token de manilla al portapapeles
   btnCopiarToken?.addEventListener('click', async () => {

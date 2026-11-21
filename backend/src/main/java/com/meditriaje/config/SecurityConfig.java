@@ -72,7 +72,7 @@ public class SecurityConfig {
                     .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN)
                 );
                 headers.permissionsPolicy(permissions -> permissions
-                    .policy("camera=(), microphone=(), geolocation=()")
+                    .policy("camera=(self), microphone=(), geolocation=()")
                 );
                 headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::deny);
                 headers.httpStrictTransportSecurity(hsts -> hsts

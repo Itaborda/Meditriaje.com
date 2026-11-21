@@ -11,6 +11,7 @@ import { ui, esc } from '../ui.js';
 import { showMfaModal } from './mfa-setup-modal.js';
 import { showBreakGlassModal } from './break-glass-modal.js';
 import { showChangePasswordModal } from './change-password-modal.js';
+import { openUniversalQrScanner } from '../components/qr-scanner-modal.js';
 
 const ESTADOS = [
   { value: '', label: 'Todos los estados' },
@@ -88,6 +89,10 @@ export async function professionalAgendaView(container) {
             ${ui.icon('activity', 'icon icon--sm')}
             <span>Urgencias</span>
           </a>
+          <button type="button" id="btnProfScanQr" class="btn btn-secondary btn--sm" title="Escanear código QR con cámara o imagen">
+            ${ui.icon('camera', 'icon icon--sm')}
+            <span>Escanear QR</span>
+          </button>
           <button type="button" id="btnCambiarPassword" class="btn btn-secondary btn--sm" title="Actualizar contraseña de acceso">
             ${ui.icon('lock', 'icon icon--sm')}
             <span>Contraseña</span>
@@ -301,6 +306,9 @@ export async function professionalAgendaView(container) {
   });
   container.querySelector('#btnBreakGlass')?.addEventListener('click', () => {
     showBreakGlassModal();
+  });
+  container.querySelector('#btnProfScanQr')?.addEventListener('click', () => {
+    openUniversalQrScanner();
   });
   container.querySelector('#btnConfigurarMfa')?.addEventListener('click', () => {
     showMfaModal();

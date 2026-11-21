@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>MediTriaje 2.0 — Plataforma de Triaje, Citas e Historia Clínica</title>
   <link rel="icon" type="image/png" href="assets/images/favicon.png">
-  <link rel="stylesheet" href="css/tokens.css?v=2.0.7">
-  <link rel="stylesheet" href="css/base.css?v=2.0.7">
-  <link rel="stylesheet" href="css/components.css?v=2.0.7">
+  <link rel="stylesheet" href="css/tokens.css?v=2.0.8">
+  <link rel="stylesheet" href="css/base.css?v=2.0.8">
+  <link rel="stylesheet" href="css/components.css?v=2.0.8">
 </head>
 <body>
   <!-- Enlace accesible de salto al contenido -->
@@ -124,8 +124,10 @@
 
   <!-- Librería local para renderizado de QR (cumple CSP script-src 'self') -->
   <script src="js/lib/qrcode.min.js"></script>
+  <!-- Librería local para decodificación de QR por cámara/imagen (Apache-2.0, cumple CSP script-src 'self') -->
+  <script src="js/lib/jsQR.js"></script>
 
   <!-- Script Modular de la Aplicación -->
-  <script type="module" src="js/app.js?v=2.0.7"></script>
+  <script type="module" src="js/app.js?v=2.0.8"></script>
 </body>
 </html>
