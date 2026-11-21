@@ -1,127 +1,94 @@
 package com.meditriaje.repository;
 
-import com.meditriaje.dto.followup.SeguimientoResponse;
-import com.meditriaje.model.SeguimientoPostAtencion;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.PreparedStatementCreator;
-import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.support.KeyHolder;
-
-import java.time.Instant;
-import java.time.LocalDate;
-import java.util.List;
-import java.util.Optional;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@ExtendWith(MockitoExtension.class)
+import com.meditriaje.dto.followup.SeguimientoResponse;
+import com.meditriaje.model.SeguimientoPostAtencion;
+import com.meditriaje.repository.plsql.PackageGateway;
+import java.math.BigDecimal;
+import java.sql.Date;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.namedparam.SqlParameterSource;
+
+/** Pruebas unitarias de {@link SeguimientoRepository}: delega en PKG_CLINICAL a través de la pasarela. */
 class SeguimientoRepositoryTest {
 
-    @Mock
-    private JdbcTemplate jdbcTemplate;
-
-    @InjectMocks
-    private SeguimientoRepository repository;
+    private final PackageGateway gateway = mock(PackageGateway.class);
+    private final SeguimientoRepository repository = new SeguimientoRepository(gateway);
 
     @Test
-    @DisplayName("guardar ejecuta inserción con PreparedStatementCreator y KeyHolder")
+    @DisplayName("guardar envía la fecha de control como Date y devuelve el ID generado")
     void guardar_ejecutaInsert() {
-        SeguimientoPostAtencion seguimiento = new SeguimientoPostAtencion(
-                null,
-                "seg-uuid-1",
-                10L,
-                20L,
-                30L,
-                "CONTROL_MEDICO",
-                "Control de presión arterial en 7 días",
-                LocalDate.now().plusDays(7),
-                "PENDIENTE",
-                null,
-                null,
-                Instant.now(),
-                Instant.now()
-        );
+        LocalDate control = LocalDate.now().plusDays(7);
+        SeguimientoPostAtencion seguimiento = new SeguimientoPostAtencion(null, "seg-uuid-1", 10L, 20L, 30L,
+                "CONTROL_MEDICO", "Control de presión arterial en 7 días", control, null, null, null,
+                Instant.now(), Instant.now());
+        when(gateway.execute(eq(SeguimientoRepository.CREATE_FOLLOW_UP),
+                        argThat(p -> Date.valueOf(control).equals(p.getValue("p_suggested_control_date"))
+                                && "PENDIENTE".equals(p.getValue("p_status")))))
+                .thenReturn(Map.of("o_id", BigDecimal.ONE));
 
-        org.mockito.Mockito.doAnswer(invocation -> {
-            KeyHolder kh = invocation.getArgument(1);
-            kh.getKeyList().add(java.util.Map.of("ID", 1L));
-            return 1;
-        }).when(jdbcTemplate).update(any(PreparedStatementCreator.class), any(KeyHolder.class));
-
-        Long id = repository.guardar(seguimiento);
-
-        assertThat(id).isEqualTo(1L);
-        verify(jdbcTemplate).update(any(PreparedStatementCreator.class), any(KeyHolder.class));
+        assertThat(repository.guardar(seguimiento)).isEqualTo(1L);
     }
 
     @Test
-    @DisplayName("buscarPorPublicId retorna Optional con SeguimientoResponse")
+    @DisplayName("buscarPorPublicId retorna la primera fila de la vista")
     void buscarPorPublicId_retornaResponse() {
-        SeguimientoResponse resp = new SeguimientoResponse(
-                "seg-uuid-1", "at-1", "pac-1", "Carlos Gomez",
-                "prof-1", "Dra. Laura Perez", "Medicina General",
-                "CONTROL_MEDICO", "Control de presión",
-                LocalDate.now().plusDays(7), "PENDIENTE",
-                null, null, Instant.now(), Instant.now()
-        );
-
-        when(jdbcTemplate.query(anyString(), any(RowMapper.class), eq("seg-uuid-1")))
+        SeguimientoResponse resp = new SeguimientoResponse("seg-uuid-1", "at-1", "pac-1", "Carlos Gomez",
+                "prof-1", "Dra. Laura Perez", "Medicina General", "CONTROL_MEDICO", "Control de presión",
+                LocalDate.now().plusDays(7), "PENDIENTE", null, null, Instant.now(), Instant.now());
+        when(gateway.<SeguimientoResponse>list(eq(SeguimientoRepository.GET_VIEW_BY_PUBLIC_ID),
+                        any(SqlParameterSource.class), eq("o_rows")))
                 .thenReturn(List.of(resp));
 
         Optional<SeguimientoResponse> opt = repository.buscarPorPublicId("seg-uuid-1");
 
-        assertThat(opt).isPresent();
-        assertThat(opt.get().publicId()).isEqualTo("seg-uuid-1");
-        assertThat(opt.get().tipo()).isEqualTo("CONTROL_MEDICO");
+        assertThat(opt).contains(resp);
     }
 
     @Test
-    @DisplayName("registrarReportePaciente actualiza reporte, fecha y estado COMPLETADO")
-    void registrarReportePaciente_ejecutaUpdate() {
+    @DisplayName("registrarReportePaciente y actualizarEstado llaman a sus rutinas")
+    void actualizaciones() {
         repository.registrarReportePaciente(10L, "Evolución favorable sin dolor", Instant.now());
-
-        verify(jdbcTemplate).update(anyString(), eq("Evolución favorable sin dolor"), any(), eq(10L));
-    }
-
-    @Test
-    @DisplayName("actualizarEstado actualiza estado del seguimiento")
-    void actualizarEstado_ejecutaUpdate() {
         repository.actualizarEstado(10L, "CANCELADO");
 
-        verify(jdbcTemplate).update(anyString(), eq("CANCELADO"), eq(10L));
+        verify(gateway).execute(eq(SeguimientoRepository.REGISTER_REPORT),
+                argThat(p -> "Evolución favorable sin dolor".equals(p.getValue("p_report"))));
+        verify(gateway).execute(eq(SeguimientoRepository.UPDATE_STATUS),
+                argThat(p -> "CANCELADO".equals(p.getValue("p_status"))));
     }
 
     @Test
-    @DisplayName("listarPorAtencionId consulta seguimientos por atención")
-    void listarPorAtencionId_retornaLista() {
-        when(jdbcTemplate.query(anyString(), any(RowMapper.class), eq(5L)))
+    @DisplayName("listarPorPacienteId normaliza el filtro y calcula el desplazamiento")
+    void listarPorPacienteId_paginacion() {
+        when(gateway.<SeguimientoResponse>list(eq(SeguimientoRepository.LIST_BY_PATIENT),
+                        argThat(p -> "PENDIENTE".equals(p.getValue("p_status"))
+                                && Integer.valueOf(20).equals(p.getValue("p_offset"))
+                                && Integer.valueOf(10).equals(p.getValue("p_size"))), eq("o_rows")))
                 .thenReturn(List.of());
 
-        List<SeguimientoResponse> lista = repository.listarPorAtencionId(5L);
-
-        assertThat(lista).isNotNull();
-        verify(jdbcTemplate).query(anyString(), any(RowMapper.class), eq(5L));
+        assertThat(repository.listarPorPacienteId(20L, " pendiente ", 2, 10)).isEmpty();
     }
 
     @Test
-    @DisplayName("contarPorPacienteId ejecuta conteo parametrizado")
+    @DisplayName("contarPorPacienteId sin filtro envía estado nulo")
     void contarPorPacienteId_retornaTotal() {
-        when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class), eq(20L)))
-                .thenReturn(3);
+        when(gateway.<Object>callFunction(eq(SeguimientoRepository.COUNT_BY_PATIENT),
+                        argThat(p -> p.getValue("p_status") == null)))
+                .thenReturn(new BigDecimal("3"));
 
-        int total = repository.contarPorPacienteId(20L, null);
-
-        assertThat(total).isEqualTo(3);
+        assertThat(repository.contarPorPacienteId(20L, null)).isEqualTo(3);
     }
 }

@@ -1,69 +1,69 @@
 package com.meditriaje.repository;
 
-import com.meditriaje.dto.clinical.DiagnosticoCie10Response;
-import com.meditriaje.model.DiagnosticoCie10;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
-
-import java.util.List;
-import java.util.Optional;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-@ExtendWith(MockitoExtension.class)
+import com.meditriaje.dto.clinical.DiagnosticoCie10Response;
+import com.meditriaje.model.DiagnosticoCie10;
+import com.meditriaje.repository.plsql.PackageGateway;
+import java.util.List;
+import java.util.Optional;
+import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.namedparam.SqlParameterSource;
+
+/** El repositorio del catálogo CIE-10 delega en PKG_CATALOGS a través de la pasarela. */
 class DiagnosticoCie10RepositoryTest {
 
-    @Mock
-    private JdbcTemplate jdbcTemplate;
+    private final PackageGateway gateway = mock(PackageGateway.class);
+    private final DiagnosticoCie10Repository repository = new DiagnosticoCie10Repository(gateway);
 
-    private DiagnosticoCie10Repository repository;
-
-    @BeforeEach
-    void setUp() {
-        repository = new DiagnosticoCie10Repository(jdbcTemplate);
+    @Test
+    void declaraLasRutinasDePkgCatalogs() {
+        assertThat(DiagnosticoCie10Repository.GET_DIAGNOSIS_BY_CODE.qualifiedName())
+                .isEqualTo("PKG_CATALOGS.get_diagnosis_by_code");
+        assertThat(DiagnosticoCie10Repository.LIST_ACTIVE_DIAGNOSES.qualifiedName())
+                .isEqualTo("PKG_CATALOGS.list_active_diagnoses");
     }
 
     @Test
-    void buscarPorCodigo_retornaEntidadSiExiste() {
+    void buscarPorCodigo_normalizaElCodigoYRetornaLaFila() {
         DiagnosticoCie10 diag = new DiagnosticoCie10(1L, "J00", "Rinofaringitis aguda", "ACTIVO");
-        when(jdbcTemplate.query(anyString(), any(RowMapper.class), eq("J00")))
-                .thenReturn(List.of(diag));
+        when(gateway.<DiagnosticoCie10>single(eq(DiagnosticoCie10Repository.GET_DIAGNOSIS_BY_CODE),
+                        argThat(p -> "J00".equals(p.getValue("p_code"))), eq("o_row")))
+                .thenReturn(Optional.of(diag));
 
-        Optional<DiagnosticoCie10> resultado = repository.buscarPorCodigo("J00");
+        Optional<DiagnosticoCie10> resultado = repository.buscarPorCodigo(" j00 ");
 
-        assertThat(resultado).isPresent();
-        assertThat(resultado.get().codigo()).isEqualTo("J00");
-        assertThat(resultado.get().descripcion()).isEqualTo("Rinofaringitis aguda");
+        assertThat(resultado).contains(diag);
     }
 
     @Test
-    void buscarPorCodigo_retornaVacioSiNoExiste() {
-        when(jdbcTemplate.query(anyString(), any(RowMapper.class), eq("Z99.9")))
-                .thenReturn(List.of());
-
-        Optional<DiagnosticoCie10> resultado = repository.buscarPorCodigo("Z99.9");
-
-        assertThat(resultado).isEmpty();
+    void buscarPorCodigo_vacioNoConsultaLaBase() {
+        assertThat(repository.buscarPorCodigo("  ")).isEmpty();
+        verifyNoInteractions(gateway);
     }
 
     @Test
-    void listarActivos_conQueryFiltraCorrectamente() {
+    void listarActivos_conQueryEnviaElPatronEnMayusculas() {
         DiagnosticoCie10Response item = new DiagnosticoCie10Response("J00", "Rinofaringitis aguda");
-        when(jdbcTemplate.query(anyString(), any(RowMapper.class), any(), any()))
+        when(gateway.<DiagnosticoCie10Response>list(eq(DiagnosticoCie10Repository.LIST_ACTIVE_DIAGNOSES),
+                        argThat(p -> "%RINO%".equals(p.getValue("p_pattern"))), eq("o_rows")))
                 .thenReturn(List.of(item));
 
-        List<DiagnosticoCie10Response> resultado = repository.listarActivos("rino");
+        assertThat(repository.listarActivos("rino")).containsExactly(item);
+    }
 
-        assertThat(resultado).hasSize(1);
-        assertThat(resultado.get(0).codigo()).isEqualTo("J00");
+    @Test
+    void listarActivos_sinQueryEnviaPatronNulo() {
+        when(gateway.<DiagnosticoCie10Response>list(eq(DiagnosticoCie10Repository.LIST_ACTIVE_DIAGNOSES),
+                        any(SqlParameterSource.class), eq("o_rows")))
+                .thenReturn(List.of());
+
+        assertThat(repository.listarActivos(null)).isEmpty();
     }
 }

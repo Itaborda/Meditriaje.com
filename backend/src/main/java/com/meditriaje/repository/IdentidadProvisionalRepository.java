@@ -1,33 +1,33 @@
 package com.meditriaje.repository;
 
 import com.meditriaje.model.IdentidadProvisional;
-import org.springframework.dao.EmptyResultDataAccessException;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
-import org.springframework.stereotype.Repository;
-
-import java.sql.PreparedStatement;
+import com.meditriaje.repository.plsql.PackageGateway;
+import com.meditriaje.repository.plsql.ProcedureSpec;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.time.Instant;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.stereotype.Repository;
 
 /**
- * Repositorio JDBC para {@code IDENTIDAD_PROVISIONAL} (Fase U, ADR-023, U03).
+ * Repositorio de {@code IDENTIDAD_PROVISIONAL} (Fase U, ADR-023, U03) a través de {@code PKG_PATIENTS}. No
+ * contiene SQL.
  */
 @Repository
 public class IdentidadProvisionalRepository {
 
-    private final JdbcTemplate jdbcTemplate;
-
-    private final RowMapper<IdentidadProvisional> rowMapper = (rs, rowNum) -> {
+    static final RowMapper<IdentidadProvisional> ROW_MAPPER = (rs, rowNum) -> {
         Timestamp tsConf = rs.getTimestamp("FECHA_CONFIRMACION");
         Timestamp tsCreated = rs.getTimestamp("CREADO_AT");
-        long pacId = rs.getLong("VINCULADO_PACIENTE_ID");
-        long confPor = rs.getLong("CONFIRMADO_POR_USUARIO_ID");
-        int edad = rs.getInt("EDAD_APARENTE");
+        Integer edad = getNullableInt(rs, "EDAD_APARENTE");
+        Long pacId = getNullableLong(rs, "VINCULADO_PACIENTE_ID");
+        Long confPor = getNullableLong(rs, "CONFIRMADO_POR_USUARIO_ID");
 
         return new IdentidadProvisional(
                 rs.getLong("ID"),
@@ -35,48 +35,68 @@ public class IdentidadProvisionalRepository {
                 rs.getLong("EPISODIO_ID"),
                 rs.getString("CODIGO_PROVISIONAL"),
                 rs.getString("DESCRIPCION_FISICA"),
-                rs.wasNull() ? null : edad,
+                edad,
                 rs.getString("GENERO_APARENTE"),
                 rs.getString("CONDICION_LLEGADA"),
                 rs.getString("ESTADO"),
-                rs.wasNull() ? null : pacId,
-                rs.wasNull() ? null : confPor,
+                pacId,
+                confPor,
                 tsConf != null ? tsConf.toInstant() : null,
-                tsCreated != null ? tsCreated.toInstant() : null
-        );
+                tsCreated != null ? tsCreated.toInstant() : null);
     };
 
-    public IdentidadProvisionalRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = Objects.requireNonNull(jdbcTemplate, "jdbcTemplate no puede ser nulo");
+    static final ProcedureSpec CREATE_PROVISIONAL_IDENTITY = ProcedureSpec.procedure(
+                    PacienteRepository.PACKAGE, "create_provisional_identity")
+            .in("p_public_id", Types.VARCHAR)
+            .in("p_episode_id", Types.NUMERIC)
+            .in("p_provisional_code", Types.VARCHAR)
+            .in("p_physical_description", Types.VARCHAR)
+            .in("p_apparent_age", Types.NUMERIC)
+            .in("p_apparent_gender", Types.VARCHAR)
+            .in("p_arrival_condition", Types.VARCHAR)
+            .in("p_status", Types.VARCHAR)
+            .out("o_id", Types.NUMERIC)
+            .build();
+
+    static final ProcedureSpec GET_BY_EPISODE = ProcedureSpec.procedure(
+                    PacienteRepository.PACKAGE, "get_provisional_identity_by_episode")
+            .in("p_episode_id", Types.NUMERIC)
+            .cursor("o_row", ROW_MAPPER)
+            .build();
+
+    static final ProcedureSpec GET_BY_CODE = ProcedureSpec.procedure(
+                    PacienteRepository.PACKAGE, "get_provisional_identity_by_code")
+            .in("p_provisional_code", Types.VARCHAR)
+            .cursor("o_row", ROW_MAPPER)
+            .build();
+
+    static final ProcedureSpec RECONCILE = ProcedureSpec.procedure(
+                    PacienteRepository.PACKAGE, "reconcile_provisional_identity")
+            .in("p_id", Types.NUMERIC)
+            .in("p_patient_id", Types.NUMERIC)
+            .in("p_confirmed_by_user_id", Types.NUMERIC)
+            .in("p_confirmed_at", Types.TIMESTAMP)
+            .out("o_affected", Types.NUMERIC)
+            .build();
+
+    private final PackageGateway gateway;
+
+    public IdentidadProvisionalRepository(PackageGateway gateway) {
+        this.gateway = Objects.requireNonNull(gateway, "gateway no puede ser nulo");
     }
 
     public IdentidadProvisional guardar(IdentidadProvisional identidad) {
-        String sql = """
-                INSERT INTO IDENTIDAD_PROVISIONAL (
-                    PUBLIC_ID, EPISODIO_ID, CODIGO_PROVISIONAL, DESCRIPCION_FISICA,
-                    EDAD_APARENTE, GENERO_APARENTE, CONDICION_LLEGADA, ESTADO
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """;
+        Map<String, Object> out = gateway.execute(CREATE_PROVISIONAL_IDENTITY, new MapSqlParameterSource()
+                .addValue("p_public_id", identidad.publicId())
+                .addValue("p_episode_id", Objects.requireNonNull(identidad.episodioId()))
+                .addValue("p_provisional_code", identidad.codigoProvisional())
+                .addValue("p_physical_description", identidad.descripcionFisica(), Types.VARCHAR)
+                .addValue("p_apparent_age", identidad.edadAparente(), Types.NUMERIC)
+                .addValue("p_apparent_gender", identidad.generoAparente(), Types.VARCHAR)
+                .addValue("p_arrival_condition", identidad.condicionLlegada(), Types.VARCHAR)
+                .addValue("p_status", identidad.estado()));
 
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(sql, new String[]{"ID"});
-            ps.setString(1, identidad.publicId());
-            ps.setLong(2, identidad.episodioId());
-            ps.setString(3, identidad.codigoProvisional());
-            ps.setString(4, identidad.descripcionFisica());
-            if (identidad.edadAparente() != null) {
-                ps.setInt(5, identidad.edadAparente());
-            } else {
-                ps.setNull(5, java.sql.Types.NUMERIC);
-            }
-            ps.setString(6, identidad.generoAparente());
-            ps.setString(7, identidad.condicionLlegada());
-            ps.setString(8, identidad.estado());
-            return ps;
-        }, keyHolder);
-
-        Number id = keyHolder.getKey();
+        Number id = (Number) out.get("o_id");
         Long generatedId = id != null ? id.longValue() : null;
 
         return new IdentidadProvisional(
@@ -92,43 +112,34 @@ public class IdentidadProvisionalRepository {
                 null,
                 null,
                 null,
-                Instant.now()
-        );
+                Instant.now());
     }
 
     public Optional<IdentidadProvisional> buscarPorEpisodioId(Long episodioId) {
-        String sql = "SELECT * FROM IDENTIDAD_PROVISIONAL WHERE EPISODIO_ID = ?";
-        try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(sql, rowMapper, episodioId));
-        } catch (EmptyResultDataAccessException e) {
-            return Optional.empty();
-        }
+        return gateway.single(GET_BY_EPISODE, new MapSqlParameterSource("p_episode_id", episodioId), "o_row");
     }
 
     public Optional<IdentidadProvisional> buscarPorCodigo(String codigoProvisional) {
-        String sql = "SELECT * FROM IDENTIDAD_PROVISIONAL WHERE CODIGO_PROVISIONAL = ?";
-        try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(sql, rowMapper, codigoProvisional));
-        } catch (EmptyResultDataAccessException e) {
-            return Optional.empty();
-        }
+        return gateway.single(GET_BY_CODE, new MapSqlParameterSource("p_provisional_code", codigoProvisional), "o_row");
     }
 
     public int reconciliarIdentidad(Long id, Long pacienteId, Long confirmadoPorUsuarioId, Instant fechaConfirmacion) {
-        String sql = """
-                UPDATE IDENTIDAD_PROVISIONAL
-                SET ESTADO = 'VINCULADA',
-                    VINCULADO_PACIENTE_ID = ?,
-                    CONFIRMADO_POR_USUARIO_ID = ?,
-                    FECHA_CONFIRMACION = ?
-                WHERE ID = ? AND ESTADO = 'PROVISIONAL'
-                """;
-        return jdbcTemplate.update(
-                sql,
-                pacienteId,
-                confirmadoPorUsuarioId,
-                Timestamp.from(fechaConfirmacion != null ? fechaConfirmacion : Instant.now()),
-                id
-        );
+        Map<String, Object> out = gateway.execute(RECONCILE, new MapSqlParameterSource()
+                .addValue("p_id", id)
+                .addValue("p_patient_id", pacienteId)
+                .addValue("p_confirmed_by_user_id", confirmadoPorUsuarioId)
+                .addValue("p_confirmed_at",
+                        Timestamp.from(fechaConfirmacion != null ? fechaConfirmacion : Instant.now())));
+        return ((Number) out.get("o_affected")).intValue();
+    }
+
+    private static Integer getNullableInt(ResultSet rs, String column) throws SQLException {
+        int value = rs.getInt(column);
+        return rs.wasNull() ? null : value;
+    }
+
+    private static Long getNullableLong(ResultSet rs, String column) throws SQLException {
+        long value = rs.getLong(column);
+        return rs.wasNull() ? null : value;
     }
 }
