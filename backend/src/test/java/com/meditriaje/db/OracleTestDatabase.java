@@ -89,6 +89,7 @@ public final class OracleTestDatabase {
         return Flyway.configure()
                 .dataSource(ownerDataSource)
                 .locations("classpath:database/migrations")
+                .repeatableSqlMigrationPrefix("NO_REPEATABLES__")
                 .outOfOrder(false)
                 .validateOnMigrate(true)
                 .target(MigrationVersion.fromVersion(targetVersion))

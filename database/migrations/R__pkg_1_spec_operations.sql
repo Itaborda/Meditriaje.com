@@ -12,7 +12,7 @@ CREATE OR REPLACE PACKAGE PKG_OPERATIONS AUTHID DEFINER AS
                                        p_severity IN VARCHAR2, p_message IN VARCHAR2,
                                        p_status IN VARCHAR2, o_id OUT NUMBER);
 
-    -- Alerta operativa por ID interno (0 o 1 fila): ID, PUBLIC_ID, SEDE_ID, TIPO_ALERTA, NIVEL_SEVERIDAD,
+    -- Alerta operativa por ID interno (0 o 1 fila): ID, PUBLIC_ID, TIPO_ALERTA, NIVEL_SEVERIDAD,
     -- MENSAJE, ESTADO, RECONOCIDO_POR_USUARIO_ID, RECONOCIDO_AT, MOTIVO_RECONOCIMIENTO, CREADO_AT.
     PROCEDURE get_operational_alert_by_id(p_id IN NUMBER, o_alert OUT SYS_REFCURSOR);
 

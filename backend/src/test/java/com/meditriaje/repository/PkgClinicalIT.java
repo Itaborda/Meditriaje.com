@@ -93,15 +93,14 @@ class PkgClinicalIT {
     }
 
     private static Long newAppointment(Long patientId, Long professionalId, int hourOffset) {
-        Long siteId = owner.queryForObject("SELECT MIN(ID) FROM SEDE", Long.class);
         Long espId = owner.queryForObject("SELECT ESPECIALIDAD_ID FROM PROFESIONAL WHERE ID = ?", Long.class, professionalId);
         String slotPublicId = UUID.randomUUID().toString();
         Instant start = Instant.now().plus(hourOffset, ChronoUnit.HOURS);
         Instant end = start.plus(20, ChronoUnit.MINUTES);
         owner.update(
-                "INSERT INTO DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, SEDE_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN) "
-                        + "VALUES (?, ?, ?, ?, ?, ?)",
-                slotPublicId, professionalId, siteId, espId, Timestamp.from(start), Timestamp.from(end));
+                "INSERT INTO DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN) "
+                        + "VALUES (?, ?, ?, ?, ?)",
+                slotPublicId, professionalId, espId, Timestamp.from(start), Timestamp.from(end));
         Long slotId = owner.queryForObject("SELECT ID FROM DISPONIBILIDAD_SLOT WHERE PUBLIC_ID = ?", Long.class, slotPublicId);
 
         String citaPublicId = UUID.randomUUID().toString();

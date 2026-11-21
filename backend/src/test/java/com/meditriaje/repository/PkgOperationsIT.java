@@ -73,7 +73,7 @@ class PkgOperationsIT {
     }
 
     private static void seed() {
-        sedeId = owner.queryForObject("SELECT MIN(ID) FROM SEDE", Long.class);
+        sedeId = owner.queryForObject("SELECT MIN(ID) FROM CONFIGURACION_HOSPITAL", Long.class);
         owner.update("INSERT INTO USUARIO (PUBLIC_ID, EMAIL, PASSWORD_HASH) VALUES ('op-u-ack', 'ack@demo.meditriaje.test', 'x')");
         owner.update("INSERT INTO USUARIO (PUBLIC_ID, EMAIL, PASSWORD_HASH) VALUES ('op-u-pat', 'pat@real.org', 'x')");
         userAckId = owner.queryForObject("SELECT ID FROM USUARIO WHERE PUBLIC_ID = 'op-u-ack'", Long.class);
@@ -85,7 +85,7 @@ class PkgOperationsIT {
                 VALUES (?, 'op-pat-1', 'CC', '7701', 'Camila', 'Operaciones', DATE '1993-07-20')""", userPatId);
         pacienteId = owner.queryForObject("SELECT ID FROM PACIENTE WHERE PUBLIC_ID = 'op-pat-1'", Long.class);
 
-        owner.update("INSERT INTO EPISODIO_ATENCION (PUBLIC_ID, TIPO, SEDE_ID) VALUES ('op-ep-1', 'URGENCIA', ?)", sedeId);
+        owner.update("INSERT INTO EPISODIO_ATENCION (PUBLIC_ID, TIPO) VALUES ('op-ep-1', 'URGENCIA')");
         episodioId = owner.queryForObject("SELECT ID FROM EPISODIO_ATENCION WHERE PUBLIC_ID = 'op-ep-1'", Long.class);
     }
 
@@ -244,10 +244,10 @@ class PkgOperationsIT {
 
         Instant futureStart = Instant.now().plus(2, ChronoUnit.DAYS);
         owner.update("""
-                INSERT INTO DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, SEDE_ID, ESPECIALIDAD_ID,
+                INSERT INTO DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, ESPECIALIDAD_ID,
                                                  FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO)
-                VALUES ('op-slot-demo', ?, ?, ?, ?, ?, 'PRESENCIAL', 'LIBRE')""",
-                profId, sedeId, espId, Timestamp.from(futureStart), Timestamp.from(futureStart.plus(20, ChronoUnit.MINUTES)));
+                VALUES ('op-slot-demo', ?, ?, ?, ?, 'PRESENCIAL', 'LIBRE')""",
+                profId, espId, Timestamp.from(futureStart), Timestamp.from(futureStart.plus(20, ChronoUnit.MINUTES)));
 
         demoSeed.moverSlotAlPasadoParaDemo("op-slot-demo");
 

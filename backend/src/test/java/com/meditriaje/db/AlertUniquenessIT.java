@@ -9,6 +9,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.oracle.OracleContainer;
 
 import javax.sql.DataSource;
+import java.sql.Types;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -22,8 +23,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @Testcontainers(disabledWithoutDocker = true)
 class AlertUniquenessIT {
 
-    private static final String INSERT = "INSERT INTO ALERTA_OPERATIVA (PUBLIC_ID, SEDE_ID, TIPO_ALERTA, NIVEL_SEVERIDAD, "
-            + "MENSAJE, ESTADO, EPISODIO_ID) VALUES (?, (SELECT ID FROM SEDE), ?, 'ALTA', 'm', ?, "
+    private static final String INSERT = "INSERT INTO ALERTA_OPERATIVA (PUBLIC_ID, TIPO_ALERTA, NIVEL_SEVERIDAD, "
+            + "MENSAJE, ESTADO, EPISODIO_ID) VALUES (?, ?, 'ALTA', 'm', ?, "
             + "(SELECT ID FROM EPISODIO_ATENCION WHERE PUBLIC_ID = ?))";
 
     private static OracleContainer oracle;
@@ -48,7 +49,10 @@ class AlertUniquenessIT {
     }
 
     private static void insert(String publicId, String type, String state, String episodePublicId) {
-        owner.update(INSERT, publicId, type, state, episodePublicId);
+        owner.update(
+                INSERT,
+                new Object[]{publicId, type, state, episodePublicId},
+                new int[]{Types.VARCHAR, Types.VARCHAR, Types.VARCHAR, Types.VARCHAR});
     }
 
     @Test

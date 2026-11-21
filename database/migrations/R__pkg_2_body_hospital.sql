@@ -10,8 +10,8 @@ CREATE OR REPLACE PACKAGE BODY PKG_HOSPITAL AS
                           p_type IN VARCHAR2, p_floor IN VARCHAR2, p_status IN VARCHAR2,
                           o_id OUT NUMBER) IS
     BEGIN
-        INSERT INTO AREA_HOSPITALARIA (PUBLIC_ID, SEDE_ID, CODIGO, NOMBRE, TIPO, PISO, ESTADO)
-        VALUES (p_public_id, PKG_COMMON.get_single_site_id, p_code, p_name, p_type, p_floor, p_status)
+        INSERT INTO AREA_HOSPITALARIA (PUBLIC_ID, CODIGO, NOMBRE, TIPO, PISO, ESTADO)
+        VALUES (p_public_id, p_code, p_name, p_type, p_floor, p_status)
         RETURNING ID INTO o_id;
     END create_area;
 
@@ -27,7 +27,12 @@ CREATE OR REPLACE PACKAGE BODY PKG_HOSPITAL AS
 
     PROCEDURE list_areas_by_site(p_site_id IN NUMBER, o_rows OUT SYS_REFCURSOR) IS
     BEGIN
-        OPEN o_rows FOR SELECT * FROM AREA_HOSPITALARIA WHERE SEDE_ID = p_site_id ORDER BY CODIGO ASC;
+        OPEN o_rows FOR
+            SELECT a.ID, a.PUBLIC_ID, a.CODIGO, a.NOMBRE, a.TIPO, a.PISO, a.ESTADO, a.CREADO_AT
+              FROM AREA_HOSPITALARIA a
+              CROSS JOIN CONFIGURACION_HOSPITAL cfg
+             WHERE (p_site_id IS NULL OR cfg.ID = p_site_id)
+             ORDER BY a.CODIGO ASC;
     END list_areas_by_site;
 
     -- ---------------------------------------------------------------- Habitaciones y salas
@@ -96,8 +101,8 @@ CREATE OR REPLACE PACKAGE BODY PKG_HOSPITAL AS
                    h.CODIGO AS HAB_CODIGO,
                    a.PUBLIC_ID AS AREA_PUB_ID,
                    a.NOMBRE AS AREA_NOMBRE,
-                   s.PUBLIC_ID AS SEDE_PUB_ID,
-                   s.NOMBRE AS SEDE_NOMBRE,
+                   cfg.PUBLIC_ID AS SEDE_PUB_ID,
+                   cfg.RAZON_SOCIAL AS SEDE_NOMBRE,
                    ep.PUBLIC_ID AS EPISODIO_PUB_ID,
                    CASE
                        WHEN p.ID IS NOT NULL THEN (p.NOMBRES || ' ' || p.APELLIDOS)
@@ -108,12 +113,12 @@ CREATE OR REPLACE PACKAGE BODY PKG_HOSPITAL AS
               FROM CAMA_HOSPITALARIA c
               JOIN HABITACION_SALA h ON c.HABITACION_ID = h.ID
               JOIN AREA_HOSPITALARIA a ON h.AREA_ID = a.ID
-              JOIN SEDE s ON a.SEDE_ID = s.ID
+              CROSS JOIN CONFIGURACION_HOSPITAL cfg
               LEFT JOIN OCUPACION_CAMA oc ON oc.CAMA_ID = c.ID AND oc.ESTADO = 'ACTIVA'
               LEFT JOIN EPISODIO_ATENCION ep ON oc.EPISODIO_ID = ep.ID
               LEFT JOIN PACIENTE p ON ep.PACIENTE_ID = p.ID
               LEFT JOIN IDENTIDAD_PROVISIONAL ip ON ip.EPISODIO_ID = ep.ID AND ip.ESTADO = 'PROVISIONAL'
-             WHERE s.ID = p_site_id
+             WHERE (p_site_id IS NULL OR cfg.ID = p_site_id)
              ORDER BY a.CODIGO, h.CODIGO, c.CODIGO;
     END list_bed_details_by_site;
 
@@ -127,8 +132,8 @@ CREATE OR REPLACE PACKAGE BODY PKG_HOSPITAL AS
                    h.CODIGO AS HAB_CODIGO,
                    a.PUBLIC_ID AS AREA_PUB_ID,
                    a.NOMBRE AS AREA_NOMBRE,
-                   s.PUBLIC_ID AS SEDE_PUB_ID,
-                   s.NOMBRE AS SEDE_NOMBRE,
+                   cfg.PUBLIC_ID AS SEDE_PUB_ID,
+                   cfg.RAZON_SOCIAL AS SEDE_NOMBRE,
                    ep.PUBLIC_ID AS EPISODIO_PUB_ID,
                    CASE
                        WHEN p.ID IS NOT NULL THEN (p.NOMBRES || ' ' || p.APELLIDOS)
@@ -139,7 +144,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_HOSPITAL AS
               FROM CAMA_HOSPITALARIA c
               JOIN HABITACION_SALA h ON c.HABITACION_ID = h.ID
               JOIN AREA_HOSPITALARIA a ON h.AREA_ID = a.ID
-              JOIN SEDE s ON a.SEDE_ID = s.ID
+              CROSS JOIN CONFIGURACION_HOSPITAL cfg
               LEFT JOIN OCUPACION_CAMA oc ON oc.CAMA_ID = c.ID AND oc.ESTADO = 'ACTIVA'
               LEFT JOIN EPISODIO_ATENCION ep ON oc.EPISODIO_ID = ep.ID
               LEFT JOIN PACIENTE p ON ep.PACIENTE_ID = p.ID

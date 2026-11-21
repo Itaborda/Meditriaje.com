@@ -25,9 +25,9 @@ CREATE OR REPLACE PACKAGE BODY PKG_SCHEDULING AS
                    pr.NOMBRES || ' ' || pr.APELLIDOS AS PROFESIONAL_NOMBRE,
                    e.PUBLIC_ID AS ESPECIALIDAD_PUBLIC_ID,
                    e.NOMBRE AS ESPECIALIDAD_NOMBRE,
-                   sd.PUBLIC_ID AS SEDE_PUBLIC_ID,
-                   sd.NOMBRE AS SEDE_NOMBRE,
-                   sd.DIRECCION AS SEDE_DIRECCION,
+                   cfg.PUBLIC_ID AS SEDE_PUBLIC_ID,
+                   cfg.RAZON_SOCIAL AS SEDE_NOMBRE,
+                   cfg.DIRECCION AS SEDE_DIRECCION,
                    s.FECHA_HORA_INICIO,
                    s.FECHA_HORA_FIN,
                    s.MODALIDAD,
@@ -45,7 +45,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_SCHEDULING AS
               JOIN PACIENTE p ON c.PACIENTE_ID = p.ID
               JOIN PROFESIONAL pr ON s.PROFESIONAL_ID = pr.ID
               JOIN ESPECIALIDAD e ON s.ESPECIALIDAD_ID = e.ID
-              JOIN SEDE sd ON s.SEDE_ID = sd.ID
+              CROSS JOIN CONFIGURACION_HOSPITAL cfg
               LEFT JOIN TRIAJE t ON c.TRIAJE_ID = t.ID
               LEFT JOIN CITA co ON c.CITA_ORIGEN_ID = co.ID
               LEFT JOIN ATENCION atn ON atn.CITA_ID = c.ID
@@ -103,9 +103,9 @@ CREATE OR REPLACE PACKAGE BODY PKG_SCHEDULING AS
                    pr.NOMBRES || ' ' || pr.APELLIDOS AS PROFESIONAL_NOMBRE,
                    e.PUBLIC_ID AS ESPECIALIDAD_PUBLIC_ID,
                    e.NOMBRE AS ESPECIALIDAD_NOMBRE,
-                   sd.PUBLIC_ID AS SEDE_PUBLIC_ID,
-                   sd.NOMBRE AS SEDE_NOMBRE,
-                   sd.DIRECCION AS SEDE_DIRECCION,
+                   cfg.PUBLIC_ID AS SEDE_PUBLIC_ID,
+                   cfg.RAZON_SOCIAL AS SEDE_NOMBRE,
+                   cfg.DIRECCION AS SEDE_DIRECCION,
                    s.FECHA_HORA_INICIO,
                    s.FECHA_HORA_FIN,
                    s.MODALIDAD,
@@ -123,7 +123,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_SCHEDULING AS
               JOIN PACIENTE p ON c.PACIENTE_ID = p.ID
               JOIN PROFESIONAL pr ON s.PROFESIONAL_ID = pr.ID
               JOIN ESPECIALIDAD e ON s.ESPECIALIDAD_ID = e.ID
-              JOIN SEDE sd ON s.SEDE_ID = sd.ID
+              CROSS JOIN CONFIGURACION_HOSPITAL cfg
               LEFT JOIN TRIAJE t ON c.TRIAJE_ID = t.ID
               LEFT JOIN CITA co ON c.CITA_ORIGEN_ID = co.ID
               LEFT JOIN ATENCION atn ON atn.CITA_ID = c.ID
@@ -177,9 +177,9 @@ CREATE OR REPLACE PACKAGE BODY PKG_SCHEDULING AS
                    pr.NOMBRES || ' ' || pr.APELLIDOS AS PROFESIONAL_NOMBRE,
                    e.PUBLIC_ID AS ESPECIALIDAD_PUBLIC_ID,
                    e.NOMBRE AS ESPECIALIDAD_NOMBRE,
-                   sd.PUBLIC_ID AS SEDE_PUBLIC_ID,
-                   sd.NOMBRE AS SEDE_NOMBRE,
-                   sd.DIRECCION AS SEDE_DIRECCION,
+                   cfg.PUBLIC_ID AS SEDE_PUBLIC_ID,
+                   cfg.RAZON_SOCIAL AS SEDE_NOMBRE,
+                   cfg.DIRECCION AS SEDE_DIRECCION,
                    s.FECHA_HORA_INICIO,
                    s.FECHA_HORA_FIN,
                    s.MODALIDAD,
@@ -197,7 +197,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_SCHEDULING AS
               JOIN PACIENTE p ON c.PACIENTE_ID = p.ID
               JOIN PROFESIONAL pr ON s.PROFESIONAL_ID = pr.ID
               JOIN ESPECIALIDAD e ON s.ESPECIALIDAD_ID = e.ID
-              JOIN SEDE sd ON s.SEDE_ID = sd.ID
+              CROSS JOIN CONFIGURACION_HOSPITAL cfg
               LEFT JOIN TRIAJE t ON c.TRIAJE_ID = t.ID
               LEFT JOIN CITA co ON c.CITA_ORIGEN_ID = co.ID
               LEFT JOIN ATENCION atn ON atn.CITA_ID = c.ID
@@ -232,9 +232,9 @@ CREATE OR REPLACE PACKAGE BODY PKG_SCHEDULING AS
                        pr.REGISTRO_MEDICO AS REGISTRO_MEDICO,
                        e.PUBLIC_ID AS ESPECIALIDAD_PUBLIC_ID,
                        e.NOMBRE AS ESPECIALIDAD_NOMBRE,
-                       sd.PUBLIC_ID AS SEDE_PUBLIC_ID,
-                       sd.NOMBRE AS SEDE_NOMBRE,
-                       sd.CIUDAD AS SEDE_CIUDAD,
+                       cfg.PUBLIC_ID AS SEDE_PUBLIC_ID,
+                       cfg.RAZON_SOCIAL AS SEDE_NOMBRE,
+                       cfg.CIUDAD AS SEDE_CIUDAD,
                        s.FECHA_HORA_INICIO,
                        s.FECHA_HORA_FIN,
                        s.MODALIDAD,
@@ -250,7 +250,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_SCHEDULING AS
                   JOIN USUARIO up ON p.USUARIO_ID = up.ID
                   JOIN PROFESIONAL pr ON s.PROFESIONAL_ID = pr.ID
                   JOIN ESPECIALIDAD e ON s.ESPECIALIDAD_ID = e.ID
-                  JOIN SEDE sd ON s.SEDE_ID = sd.ID
+                  CROSS JOIN CONFIGURACION_HOSPITAL cfg
                   LEFT JOIN TRIAJE t ON c.TRIAJE_ID = t.ID
                  WHERE (p_from IS NULL OR s.FECHA_HORA_INICIO >= p_from)
                    AND (p_to IS NULL OR s.FECHA_HORA_INICIO <= p_to)
@@ -272,9 +272,9 @@ CREATE OR REPLACE PACKAGE BODY PKG_SCHEDULING AS
                        pr.REGISTRO_MEDICO AS REGISTRO_MEDICO,
                        e.PUBLIC_ID AS ESPECIALIDAD_PUBLIC_ID,
                        e.NOMBRE AS ESPECIALIDAD_NOMBRE,
-                       sd.PUBLIC_ID AS SEDE_PUBLIC_ID,
-                       sd.NOMBRE AS SEDE_NOMBRE,
-                       sd.CIUDAD AS SEDE_CIUDAD,
+                       cfg.PUBLIC_ID AS SEDE_PUBLIC_ID,
+                       cfg.RAZON_SOCIAL AS SEDE_NOMBRE,
+                       cfg.CIUDAD AS SEDE_CIUDAD,
                        s.FECHA_HORA_INICIO,
                        s.FECHA_HORA_FIN,
                        s.MODALIDAD,
@@ -290,7 +290,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_SCHEDULING AS
                   JOIN USUARIO up ON p.USUARIO_ID = up.ID
                   JOIN PROFESIONAL pr ON s.PROFESIONAL_ID = pr.ID
                   JOIN ESPECIALIDAD e ON s.ESPECIALIDAD_ID = e.ID
-                  JOIN SEDE sd ON s.SEDE_ID = sd.ID
+                  CROSS JOIN CONFIGURACION_HOSPITAL cfg
                   LEFT JOIN TRIAJE t ON c.TRIAJE_ID = t.ID
                  WHERE (p_from IS NULL OR s.FECHA_HORA_INICIO >= p_from)
                    AND (p_to IS NULL OR s.FECHA_HORA_INICIO <= p_to)
@@ -314,7 +314,6 @@ CREATE OR REPLACE PACKAGE BODY PKG_SCHEDULING AS
           JOIN PACIENTE p ON c.PACIENTE_ID = p.ID
           JOIN PROFESIONAL pr ON s.PROFESIONAL_ID = pr.ID
           JOIN ESPECIALIDAD e ON s.ESPECIALIDAD_ID = e.ID
-          JOIN SEDE sd ON s.SEDE_ID = sd.ID
          WHERE (p_from IS NULL OR s.FECHA_HORA_INICIO >= p_from)
            AND (p_to IS NULL OR s.FECHA_HORA_INICIO <= p_to)
            AND (p_professional_public_id IS NULL OR pr.PUBLIC_ID = p_professional_public_id)
@@ -328,9 +327,9 @@ CREATE OR REPLACE PACKAGE BODY PKG_SCHEDULING AS
                           p_start_at IN TIMESTAMP WITH TIME ZONE, p_end_at IN TIMESTAMP WITH TIME ZONE,
                           p_modality IN VARCHAR2, p_status IN VARCHAR2, o_id OUT NUMBER) IS
     BEGIN
-        INSERT INTO DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, SEDE_ID, ESPECIALIDAD_ID,
+        INSERT INTO DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, ESPECIALIDAD_ID,
                                          FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO)
-        VALUES (p_public_id, p_professional_id, PKG_COMMON.get_single_site_id, p_specialty_id,
+        VALUES (p_public_id, p_professional_id, p_specialty_id,
                 p_start_at, p_end_at, p_modality, p_status)
         RETURNING ID INTO o_id;
     END create_slot;
@@ -341,8 +340,8 @@ CREATE OR REPLACE PACKAGE BODY PKG_SCHEDULING AS
             SELECT s.PUBLIC_ID,
                    p.PUBLIC_ID AS PROFESIONAL_PUBLIC_ID,
                    p.NOMBRES || ' ' || p.APELLIDOS AS PROFESIONAL_NOMBRE,
-                   sd.PUBLIC_ID AS SEDE_PUBLIC_ID,
-                   sd.NOMBRE AS SEDE_NOMBRE,
+                   cfg.PUBLIC_ID AS SEDE_PUBLIC_ID,
+                   cfg.RAZON_SOCIAL AS SEDE_NOMBRE,
                    e.PUBLIC_ID AS ESPECIALIDAD_PUBLIC_ID,
                    e.NOMBRE AS ESPECIALIDAD_NOMBRE,
                    s.FECHA_HORA_INICIO,
@@ -351,7 +350,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_SCHEDULING AS
                    s.ESTADO
               FROM DISPONIBILIDAD_SLOT s
               JOIN PROFESIONAL p ON s.PROFESIONAL_ID = p.ID
-              JOIN SEDE sd ON s.SEDE_ID = sd.ID
+              CROSS JOIN CONFIGURACION_HOSPITAL cfg
               JOIN ESPECIALIDAD e ON s.ESPECIALIDAD_ID = e.ID
              WHERE s.PUBLIC_ID = p_public_id;
     END get_slot_detail;
@@ -359,7 +358,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_SCHEDULING AS
     PROCEDURE get_slot_by_id(p_id IN NUMBER, o_row OUT SYS_REFCURSOR) IS
     BEGIN
         OPEN o_row FOR
-            SELECT ID, PUBLIC_ID, PROFESIONAL_ID, SEDE_ID, ESPECIALIDAD_ID,
+            SELECT ID, PUBLIC_ID, PROFESIONAL_ID, ESPECIALIDAD_ID,
                    FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO
               FROM DISPONIBILIDAD_SLOT
              WHERE ID = p_id;
@@ -368,7 +367,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_SCHEDULING AS
     PROCEDURE get_slot_by_public_id(p_public_id IN VARCHAR2, o_row OUT SYS_REFCURSOR) IS
     BEGIN
         OPEN o_row FOR
-            SELECT ID, PUBLIC_ID, PROFESIONAL_ID, SEDE_ID, ESPECIALIDAD_ID,
+            SELECT ID, PUBLIC_ID, PROFESIONAL_ID, ESPECIALIDAD_ID,
                    FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO
               FROM DISPONIBILIDAD_SLOT
              WHERE PUBLIC_ID = p_public_id;
@@ -407,8 +406,8 @@ CREATE OR REPLACE PACKAGE BODY PKG_SCHEDULING AS
             SELECT s.PUBLIC_ID,
                    p.PUBLIC_ID AS PROFESIONAL_PUBLIC_ID,
                    p.NOMBRES || ' ' || p.APELLIDOS AS PROFESIONAL_NOMBRE,
-                   sd.PUBLIC_ID AS SEDE_PUBLIC_ID,
-                   sd.NOMBRE AS SEDE_NOMBRE,
+                   cfg.PUBLIC_ID AS SEDE_PUBLIC_ID,
+                   cfg.RAZON_SOCIAL AS SEDE_NOMBRE,
                    e.PUBLIC_ID AS ESPECIALIDAD_PUBLIC_ID,
                    e.NOMBRE AS ESPECIALIDAD_NOMBRE,
                    s.FECHA_HORA_INICIO,
@@ -417,10 +416,10 @@ CREATE OR REPLACE PACKAGE BODY PKG_SCHEDULING AS
                    s.ESTADO
               FROM DISPONIBILIDAD_SLOT s
               JOIN PROFESIONAL p ON s.PROFESIONAL_ID = p.ID
-              JOIN SEDE sd ON s.SEDE_ID = sd.ID
+              CROSS JOIN CONFIGURACION_HOSPITAL cfg
               JOIN ESPECIALIDAD e ON s.ESPECIALIDAD_ID = e.ID
              WHERE (p_professional_public_id IS NULL OR p.PUBLIC_ID = p_professional_public_id)
-               AND (p_site_public_id IS NULL OR sd.PUBLIC_ID = p_site_public_id)
+               AND (p_site_public_id IS NULL OR cfg.PUBLIC_ID = p_site_public_id)
                AND (p_specialty_public_id IS NULL OR e.PUBLIC_ID = p_specialty_public_id)
                AND (p_from IS NULL OR s.FECHA_HORA_INICIO >= p_from)
                AND (p_to IS NULL OR s.FECHA_HORA_INICIO <= p_to)
@@ -438,10 +437,10 @@ CREATE OR REPLACE PACKAGE BODY PKG_SCHEDULING AS
           INTO v_count
           FROM DISPONIBILIDAD_SLOT s
           JOIN PROFESIONAL p ON s.PROFESIONAL_ID = p.ID
-          JOIN SEDE sd ON s.SEDE_ID = sd.ID
+          CROSS JOIN CONFIGURACION_HOSPITAL cfg
           JOIN ESPECIALIDAD e ON s.ESPECIALIDAD_ID = e.ID
          WHERE (p_professional_public_id IS NULL OR p.PUBLIC_ID = p_professional_public_id)
-           AND (p_site_public_id IS NULL OR sd.PUBLIC_ID = p_site_public_id)
+           AND (p_site_public_id IS NULL OR cfg.PUBLIC_ID = p_site_public_id)
            AND (p_specialty_public_id IS NULL OR e.PUBLIC_ID = p_specialty_public_id)
            AND (p_from IS NULL OR s.FECHA_HORA_INICIO >= p_from)
            AND (p_to IS NULL OR s.FECHA_HORA_INICIO <= p_to)
@@ -460,25 +459,24 @@ CREATE OR REPLACE PACKAGE BODY PKG_SCHEDULING AS
                    p.NOMBRES || ' ' || p.APELLIDOS AS PROFESIONAL_NOMBRE,
                    e.PUBLIC_ID AS ESPECIALIDAD_PUBLIC_ID,
                    e.NOMBRE AS ESPECIALIDAD_NOMBRE,
-                   sd.PUBLIC_ID AS SEDE_PUBLIC_ID,
-                   sd.NOMBRE AS SEDE_NOMBRE,
-                   sd.DIRECCION AS SEDE_DIRECCION,
-                   sd.CIUDAD AS SEDE_CIUDAD,
+                   cfg.PUBLIC_ID AS SEDE_PUBLIC_ID,
+                   cfg.RAZON_SOCIAL AS SEDE_NOMBRE,
+                   cfg.DIRECCION AS SEDE_DIRECCION,
+                   cfg.CIUDAD AS SEDE_CIUDAD,
                    s.FECHA_HORA_INICIO,
                    s.FECHA_HORA_FIN,
                    s.MODALIDAD
               FROM DISPONIBILIDAD_SLOT s
               JOIN PROFESIONAL p ON s.PROFESIONAL_ID = p.ID
               JOIN USUARIO u ON p.USUARIO_ID = u.ID
-              JOIN SEDE sd ON s.SEDE_ID = sd.ID
+              CROSS JOIN CONFIGURACION_HOSPITAL cfg
               JOIN ESPECIALIDAD e ON s.ESPECIALIDAD_ID = e.ID
              WHERE s.ESTADO = 'LIBRE'
                AND u.ESTADO = 'ACTIVO'
-               AND sd.ESTADO = 'ACTIVO'
                AND e.ESTADO = 'ACTIVO'
                AND (p_specialty_public_id IS NULL OR e.PUBLIC_ID = p_specialty_public_id)
                AND (p_professional_public_id IS NULL OR p.PUBLIC_ID = p_professional_public_id)
-               AND (p_site_public_id IS NULL OR sd.PUBLIC_ID = p_site_public_id)
+               AND (p_site_public_id IS NULL OR cfg.PUBLIC_ID = p_site_public_id)
                AND (p_modality IS NULL OR s.MODALIDAD = p_modality)
                AND (p_from IS NULL OR s.FECHA_HORA_INICIO >= p_from)
                AND (p_to IS NULL OR s.FECHA_HORA_INICIO <= p_to)
@@ -497,15 +495,14 @@ CREATE OR REPLACE PACKAGE BODY PKG_SCHEDULING AS
           FROM DISPONIBILIDAD_SLOT s
           JOIN PROFESIONAL p ON s.PROFESIONAL_ID = p.ID
           JOIN USUARIO u ON p.USUARIO_ID = u.ID
-          JOIN SEDE sd ON s.SEDE_ID = sd.ID
+          CROSS JOIN CONFIGURACION_HOSPITAL cfg
           JOIN ESPECIALIDAD e ON s.ESPECIALIDAD_ID = e.ID
          WHERE s.ESTADO = 'LIBRE'
            AND u.ESTADO = 'ACTIVO'
-           AND sd.ESTADO = 'ACTIVO'
            AND e.ESTADO = 'ACTIVO'
            AND (p_specialty_public_id IS NULL OR e.PUBLIC_ID = p_specialty_public_id)
            AND (p_professional_public_id IS NULL OR p.PUBLIC_ID = p_professional_public_id)
-           AND (p_site_public_id IS NULL OR sd.PUBLIC_ID = p_site_public_id)
+           AND (p_site_public_id IS NULL OR cfg.PUBLIC_ID = p_site_public_id)
            AND (p_modality IS NULL OR s.MODALIDAD = p_modality)
            AND (p_from IS NULL OR s.FECHA_HORA_INICIO >= p_from)
            AND (p_to IS NULL OR s.FECHA_HORA_INICIO <= p_to);

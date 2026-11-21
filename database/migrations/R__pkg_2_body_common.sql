@@ -13,22 +13,28 @@ CREATE OR REPLACE PACKAGE BODY PKG_COMMON AS
     END raise_error;
 
     FUNCTION get_single_site_id RETURN NUMBER IS
-        v_site_id SEDE.ID%TYPE;
+        v_hospital_id CONFIGURACION_HOSPITAL.ID%TYPE;
     BEGIN
-        SELECT MIN(ID) INTO v_site_id FROM SEDE;
-        IF v_site_id IS NULL THEN
-            raise_error(c_err_not_found, 'No hay una sede hospitalaria configurada.');
+        SELECT MIN(ID) INTO v_hospital_id FROM CONFIGURACION_HOSPITAL;
+        IF v_hospital_id IS NULL THEN
+            raise_error(c_err_not_found, 'No hay una configuracion hospitalaria registrada.');
         END IF;
-        RETURN v_site_id;
+        RETURN v_hospital_id;
     END get_single_site_id;
 
     PROCEDURE get_single_site(o_site OUT SYS_REFCURSOR) IS
-        v_site_id SEDE.ID%TYPE := get_single_site_id;
+        v_hospital_id CONFIGURACION_HOSPITAL.ID%TYPE := get_single_site_id;
     BEGIN
         OPEN o_site FOR
-            SELECT ID, INSTITUCION_ID, PUBLIC_ID, NOMBRE, DIRECCION, CIUDAD, ESTADO
-              FROM SEDE
-             WHERE ID = v_site_id;
+            SELECT ID,
+                   ID AS INSTITUCION_ID,
+                   PUBLIC_ID,
+                   RAZON_SOCIAL AS NOMBRE,
+                   DIRECCION,
+                   CIUDAD,
+                   'ACTIVO' AS ESTADO
+              FROM CONFIGURACION_HOSPITAL
+             WHERE ID = v_hospital_id;
     END get_single_site;
 
     FUNCTION new_public_id RETURN VARCHAR2 IS

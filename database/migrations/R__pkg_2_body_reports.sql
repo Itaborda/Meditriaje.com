@@ -35,13 +35,12 @@ CREATE OR REPLACE PACKAGE BODY PKG_REPORTS AS
                                         o_rows OUT SYS_REFCURSOR) IS
     BEGIN
         OPEN o_rows FOR
-            SELECT sed.PUBLIC_ID, sed.NOMBRE, COUNT(c.ID) AS TOTAL
+            SELECT cfg.PUBLIC_ID, cfg.RAZON_SOCIAL AS NOMBRE, COUNT(c.ID) AS TOTAL
               FROM CITA c
-              JOIN DISPONIBILIDAD_SLOT s ON c.SLOT_ID = s.ID
-              JOIN SEDE sed ON s.SEDE_ID = sed.ID
+              CROSS JOIN CONFIGURACION_HOSPITAL cfg
              WHERE (p_from IS NULL OR c.CREATED_AT >= p_from)
                AND (p_to IS NULL OR c.CREATED_AT <= p_to)
-             GROUP BY sed.PUBLIC_ID, sed.NOMBRE
+             GROUP BY cfg.PUBLIC_ID, cfg.RAZON_SOCIAL
              ORDER BY TOTAL DESC;
     END list_appointments_by_site;
 

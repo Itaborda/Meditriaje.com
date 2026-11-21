@@ -71,7 +71,7 @@ class PkgStaffIT {
 
     private static Long newEpisode() {
         String publicId = UUID.randomUUID().toString();
-        owner.update("INSERT INTO EPISODIO_ATENCION (PUBLIC_ID, TIPO, SEDE_ID) VALUES (?, 'URGENCIA', (SELECT MIN(ID) FROM SEDE))",
+        owner.update("INSERT INTO EPISODIO_ATENCION (PUBLIC_ID, TIPO) VALUES (?, 'URGENCIA')",
                 publicId);
         return owner.queryForObject("SELECT ID FROM EPISODIO_ATENCION WHERE PUBLIC_ID = ?", Long.class, publicId);
     }

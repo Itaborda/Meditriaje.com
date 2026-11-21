@@ -74,7 +74,7 @@ public class DisponibilidadSlotRepository {
                 rs.getLong("ID"),
                 rs.getString("PUBLIC_ID"),
                 rs.getLong("PROFESIONAL_ID"),
-                rs.getLong("SEDE_ID"),
+                1L,
                 rs.getLong("ESPECIALIDAD_ID"),
                 tsInicio != null ? tsInicio.toInstant() : null,
                 tsFin != null ? tsFin.toInstant() : null,

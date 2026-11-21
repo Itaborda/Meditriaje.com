@@ -145,8 +145,7 @@ class PkgPatientsIT {
     void provisionalIdentityIsCreatedFoundAndReconciled() {
         Paciente paciente = newPatient("900400");
         String episodePublicId = UUID.randomUUID().toString();
-        owner.update("INSERT INTO EPISODIO_ATENCION (PUBLIC_ID, TIPO, SEDE_ID) "
-                + "VALUES (?, 'URGENCIA', (SELECT MIN(ID) FROM SEDE))", episodePublicId);
+        owner.update("INSERT INTO EPISODIO_ATENCION (PUBLIC_ID, TIPO) VALUES (?, 'URGENCIA')", episodePublicId);
         Long episodeId = owner.queryForObject(
                 "SELECT ID FROM EPISODIO_ATENCION WHERE PUBLIC_ID = ?", Long.class, episodePublicId);
 

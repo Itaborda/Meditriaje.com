@@ -22,12 +22,12 @@ CREATE OR REPLACE PACKAGE PKG_COMMON AUTHID DEFINER AS
     -- produce -20999 INVALID_ERROR_CODE.
     PROCEDURE raise_error(p_code IN NUMBER, p_message IN VARCHAR2);
 
-    -- ID interno de la única sede del hospital (V024/V025 garantizan que existe exactamente una).
-    -- Lanza -20100 si no hay ninguna sede configurada.
+    -- ID interno del único hospital en CONFIGURACION_HOSPITAL (singleton ID = 1).
+    -- Lanza -20100 si no hay configuración hospitalaria registrada.
     FUNCTION get_single_site_id RETURN NUMBER;
 
-    -- Datos de la única sede: ID, INSTITUCION_ID, PUBLIC_ID, NOMBRE, DIRECCION, CIUDAD, ESTADO.
-    -- Lanza -20100 si no hay ninguna sede configurada.
+    -- Datos del único hospital (desde CONFIGURACION_HOSPITAL): ID, INSTITUCION_ID, PUBLIC_ID, NOMBRE,
+    -- DIRECCION, CIUDAD, ESTADO. Lanza -20100 si no hay configuración hospitalaria registrada.
     PROCEDURE get_single_site(o_site OUT SYS_REFCURSOR);
 
     -- Nuevo identificador público en formato UUID (minúsculas, con guiones) para la columna PUBLIC_ID.

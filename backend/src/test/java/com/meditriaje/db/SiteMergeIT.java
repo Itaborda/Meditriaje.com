@@ -97,7 +97,7 @@ class SiteMergeIT {
         mergedCountsBefore = tableCounts(merged);
         siteIds = idsByPublicId(merged, "SEDE");
         institutionIds = idsByPublicId(merged, "INSTITUCION");
-        OracleTestDatabase.flyway(ds).migrate();
+        OracleTestDatabase.flywayUpTo(ds, "25").migrate();
     }
 
     private static void buildPrecheckScenario() {
@@ -112,7 +112,7 @@ class SiteMergeIT {
         jdbc.update("INSERT INTO AREA_HOSPITALARIA (PUBLIC_ID, SEDE_ID, CODIGO, NOMBRE, TIPO) VALUES "
                 + "('it-area-long-2', (SELECT ID FROM SEDE WHERE PUBLIC_ID = 'it-site-3'), ?, 'Long 2', 'URGENCIAS')", longCode);
         precheckFactsBefore = facts(jdbc);
-        Flyway flyway = OracleTestDatabase.flyway(ds);
+        Flyway flyway = OracleTestDatabase.flywayUpTo(ds, "25");
         precheckMessage = migrateExpectingFailure(flyway);
         precheckFactsAfter = facts(jdbc);
         precheckLegacyIndexSurvived = indexExists(jdbc, "UQ_ALERTA_SEDE_TIPO_ACTIVA");
@@ -139,7 +139,7 @@ class SiteMergeIT {
         OracleTestDatabase.flywayUpTo(ds, "23").migrate();
         rollbackFactsBefore = facts(jdbc);
 
-        Flyway flyway = OracleTestDatabase.flyway(ds);
+        Flyway flyway = OracleTestDatabase.flywayUpTo(ds, "25");
         // Falla 1: el conteo ANTES de PACIENTE ya no coincide con la tabla real.
         jdbc.update("UPDATE CONCILIACION_MIGRACION SET CANTIDAD_FILAS = CANTIDAD_FILAS + 1 WHERE MIGRACION = 'V023' "
                 + "AND FASE = 'ANTES' AND NOMBRE_TABLA = 'PACIENTE' AND " + BASIS_ROWS);
@@ -177,7 +177,7 @@ class SiteMergeIT {
     private static void buildFreshScenario() {
         DataSource ds = OracleTestDatabase.provisionOwner(oracle, "MT_FRESH");
         fresh = new JdbcTemplate(ds);
-        OracleTestDatabase.flyway(ds).migrate();
+        OracleTestDatabase.flywayUpTo(ds, "25").migrate();
     }
 
     // ------------------------------------------------------------------ la fusión conserva las filas

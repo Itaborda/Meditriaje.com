@@ -24,7 +24,7 @@ public class AreaHospitalariaRepository {
         return new AreaHospitalaria(
                 rs.getLong("ID"),
                 rs.getString("PUBLIC_ID"),
-                rs.getLong("SEDE_ID"),
+                1L,
                 rs.getString("CODIGO"),
                 rs.getString("NOMBRE"),
                 rs.getString("TIPO"),

@@ -100,14 +100,14 @@ class PackageGatewayIT {
     void functionReturnsTheSingleSiteId() {
         Number siteId = gateway.callFunction(GET_SINGLE_SITE_ID);
 
-        assertThat(siteId.longValue()).isEqualTo(owner.queryForObject("SELECT ID FROM SEDE", Long.class));
+        assertThat(siteId.longValue()).isEqualTo(owner.queryForObject("SELECT ID FROM CONFIGURACION_HOSPITAL", Long.class));
     }
 
     @Test
     void refCursorIsMappedWithTheDeclaredRowMapper() {
         List<String> names = gateway.list(GET_SINGLE_SITE, new MapSqlParameterSource(), "o_site");
 
-        assertThat(names).containsExactly(owner.queryForObject("SELECT NOMBRE FROM SEDE", String.class));
+        assertThat(names).containsExactly(owner.queryForObject("SELECT RAZON_SOCIAL FROM CONFIGURACION_HOSPITAL", String.class));
     }
 
     @Test

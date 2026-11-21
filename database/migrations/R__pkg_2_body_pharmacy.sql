@@ -171,9 +171,8 @@ CREATE OR REPLACE PACKAGE BODY PKG_PHARMACY AS
     PROCEDURE create_dispensation(p_public_id IN VARCHAR2, p_prescription_id IN NUMBER, p_user_id IN NUMBER,
                                   p_notes IN VARCHAR2, o_id OUT NUMBER) IS
     BEGIN
-        -- Hospital único: la sede se resuelve en la base con PKG_COMMON.get_single_site_id.
-        INSERT INTO DISPENSACION (PUBLIC_ID, RECETA_ID, SEDE_ID, USUARIO_ID, OBSERVACIONES)
-        VALUES (p_public_id, p_prescription_id, PKG_COMMON.get_single_site_id, p_user_id, p_notes)
+        INSERT INTO DISPENSACION (PUBLIC_ID, RECETA_ID, USUARIO_ID, OBSERVACIONES)
+        VALUES (p_public_id, p_prescription_id, p_user_id, p_notes)
         RETURNING ID INTO o_id;
     END create_dispensation;
 
@@ -192,7 +191,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_PHARMACY AS
     PROCEDURE get_dispensation_by_public_id(p_public_id IN VARCHAR2, o_row OUT SYS_REFCURSOR) IS
     BEGIN
         OPEN o_row FOR
-            SELECT ID, PUBLIC_ID, RECETA_ID, SEDE_ID, USUARIO_ID, OBSERVACIONES, CREATED_AT
+            SELECT ID, PUBLIC_ID, RECETA_ID, USUARIO_ID, OBSERVACIONES, CREATED_AT
               FROM DISPENSACION
              WHERE PUBLIC_ID = p_public_id;
     END get_dispensation_by_public_id;
@@ -203,15 +202,15 @@ CREATE OR REPLACE PACKAGE BODY PKG_PHARMACY AS
             SELECT d.ID AS DISPENSACION_ID,
                    d.PUBLIC_ID AS DISPENSACION_PUBLIC_ID,
                    r.PUBLIC_ID AS RECETA_PUBLIC_ID,
-                   s.PUBLIC_ID AS SEDE_PUBLIC_ID,
-                   s.NOMBRE AS SEDE_NOMBRE,
+                   cfg.PUBLIC_ID AS SEDE_PUBLIC_ID,
+                   cfg.RAZON_SOCIAL AS SEDE_NOMBRE,
                    u.PUBLIC_ID AS DISPENSADOR_PUBLIC_ID,
                    COALESCE(TRIM(pr.NOMBRES || ' ' || pr.APELLIDOS), u.EMAIL) AS DISPENSADOR_NOMBRE,
                    d.OBSERVACIONES,
                    d.CREATED_AT
               FROM DISPENSACION d
               JOIN RECETA r ON d.RECETA_ID = r.ID
-              JOIN SEDE s ON d.SEDE_ID = s.ID
+              CROSS JOIN CONFIGURACION_HOSPITAL cfg
               JOIN USUARIO u ON d.USUARIO_ID = u.ID
               LEFT JOIN PROFESIONAL pr ON u.ID = pr.USUARIO_ID
              WHERE d.PUBLIC_ID = p_public_id;
@@ -240,15 +239,15 @@ CREATE OR REPLACE PACKAGE BODY PKG_PHARMACY AS
             SELECT d.ID AS DISPENSACION_ID,
                    d.PUBLIC_ID AS DISPENSACION_PUBLIC_ID,
                    r.PUBLIC_ID AS RECETA_PUBLIC_ID,
-                   s.PUBLIC_ID AS SEDE_PUBLIC_ID,
-                   s.NOMBRE AS SEDE_NOMBRE,
+                   cfg.PUBLIC_ID AS SEDE_PUBLIC_ID,
+                   cfg.RAZON_SOCIAL AS SEDE_NOMBRE,
                    u.PUBLIC_ID AS DISPENSADOR_PUBLIC_ID,
                    COALESCE(TRIM(pr.NOMBRES || ' ' || pr.APELLIDOS), u.EMAIL) AS DISPENSADOR_NOMBRE,
                    d.OBSERVACIONES,
                    d.CREATED_AT
               FROM DISPENSACION d
               JOIN RECETA r ON d.RECETA_ID = r.ID
-              JOIN SEDE s ON d.SEDE_ID = s.ID
+              CROSS JOIN CONFIGURACION_HOSPITAL cfg
               JOIN USUARIO u ON d.USUARIO_ID = u.ID
               LEFT JOIN PROFESIONAL pr ON u.ID = pr.USUARIO_ID
              WHERE d.RECETA_ID = p_prescription_id

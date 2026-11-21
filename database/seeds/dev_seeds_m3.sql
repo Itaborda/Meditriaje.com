@@ -20,9 +20,6 @@ DECLARE
     v_admin_id          NUMBER;
     v_rol_admin_id      NUMBER;
     v_rol_prof_id       NUMBER;
-    v_inst_id           NUMBER;
-    v_sede_centro_id    NUMBER;
-    v_sede_norte_id     NUMBER;
     v_esp_mg_id         NUMBER;
     v_esp_ped_id        NUMBER;
     v_esp_mi_id         NUMBER;
@@ -70,25 +67,14 @@ BEGIN
     END;
 
     -- -------------------------------------------------------------------------
-    -- 2-3. HOSPITAL ÚNICO: se reutilizan la institución y la sede creadas por V024.
-    -- Nunca se inserta una segunda sede ni institución (TR_SEDE_UNICA / TR_INSTITUCION_UNICA, ORA-20060).
-    -- Si aún tienen los datos de marcador de posición de V024, se renombran con los datos de demostración.
+    -- 2-3. HOSPITAL ÚNICO: configuración hospitalaria (singleton ID = 1 en CONFIGURACION_HOSPITAL).
+    -- Si aún tiene los datos provisionales de V024, se actualiza con los datos de demostración.
     -- -------------------------------------------------------------------------
-    SELECT ID INTO v_inst_id FROM INSTITUCION;
-    SELECT ID INTO v_sede_centro_id FROM SEDE;
-    v_sede_norte_id := v_sede_centro_id;
-
-    UPDATE INSTITUCION
-       SET NIT = '900123456-1', RAZON_SOCIAL = 'IPS MediSalud Valledupar S.A.S.'
-     WHERE ID = v_inst_id AND RAZON_SOCIAL = 'HOSPITAL PENDING CONFIGURATION';
-    UPDATE SEDE
-       SET NOMBRE = 'Sede Centro Valledupar', DIRECCION = 'Calle 16 # 12-45', CIUDAD = 'Valledupar'
-     WHERE ID = v_sede_centro_id AND DIRECCION = 'N/A';
     UPDATE CONFIGURACION_HOSPITAL
        SET NIT = '900123456-1', RAZON_SOCIAL = 'IPS MediSalud Valledupar S.A.S.',
            DIRECCION = 'Calle 16 # 12-45', CIUDAD = 'Valledupar', UPDATED_AT = SYSTIMESTAMP
      WHERE ID = 1 AND RAZON_SOCIAL = 'HOSPITAL PENDING CONFIGURATION';
-    DBMS_OUTPUT.PUT_LINE('Hospital único reutilizado (sede ID ' || v_sede_centro_id || ').');
+    DBMS_OUTPUT.PUT_LINE('Configuración de hospital único verificada.');
 
     -- -------------------------------------------------------------------------
     -- 4. ESPECIALIDADES MÉDICAS (4)
@@ -222,25 +208,25 @@ BEGIN
         -- Verificar si es día hábil (lunes a viernes: 2..6 en formato NLS o comprobación con TO_CHAR)
         IF TO_CHAR(v_curr_date, 'DY', 'NLS_DATE_LANGUAGE=ENGLISH') NOT IN ('SAT', 'SUN') THEN
             -- Generar 3 slots matutinos y 3 slots vespertinos para cada profesional
-            -- Prof 1 (Medicina General - 20 min en Sede Centro)
+            -- Prof 1 (Medicina General - 20 min)
             FOR h IN 0..2 LOOP
                 v_slot_inicio := FROM_TZ(CAST(v_curr_date + (8 + h * 0.5) / 24 AS TIMESTAMP), 'America/Bogota');
                 v_slot_fin    := v_slot_inicio + NUMTODSINTERVAL(20, 'MINUTE');
                 BEGIN
-                    INSERT INTO DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, SEDE_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO)
-                    VALUES (SYS_GUID(), v_prof1_id, v_sede_centro_id, v_esp_mg_id, v_slot_inicio, v_slot_fin, 'PRESENCIAL', 'LIBRE');
+                    INSERT INTO DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO)
+                    VALUES (SYS_GUID(), v_prof1_id, v_esp_mg_id, v_slot_inicio, v_slot_fin, 'PRESENCIAL', 'LIBRE');
                     v_slots_count := v_slots_count + 1;
                 EXCEPTION WHEN DUP_VAL_ON_INDEX THEN NULL;
                 END;
             END LOOP;
 
-            -- Prof 2 (Pediatría - 30 min en Sede Centro)
+            -- Prof 2 (Pediatría - 30 min)
             FOR h IN 0..1 LOOP
                 v_slot_inicio := FROM_TZ(CAST(v_curr_date + (9 + h * 0.5) / 24 AS TIMESTAMP), 'America/Bogota');
                 v_slot_fin    := v_slot_inicio + NUMTODSINTERVAL(30, 'MINUTE');
                 BEGIN
-                    INSERT INTO DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, SEDE_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO)
-                    VALUES (SYS_GUID(), v_prof2_id, v_sede_centro_id, v_esp_ped_id, v_slot_inicio, v_slot_fin, 'PRESENCIAL', 'LIBRE');
+                    INSERT INTO DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO)
+                    VALUES (SYS_GUID(), v_prof2_id, v_esp_ped_id, v_slot_inicio, v_slot_fin, 'PRESENCIAL', 'LIBRE');
                     v_slots_count := v_slots_count + 1;
                 EXCEPTION WHEN DUP_VAL_ON_INDEX THEN NULL;
                 END;
@@ -251,8 +237,8 @@ BEGIN
                 v_slot_inicio := FROM_TZ(CAST(v_curr_date + (14 + h * 0.5) / 24 AS TIMESTAMP), 'America/Bogota');
                 v_slot_fin    := v_slot_inicio + NUMTODSINTERVAL(30, 'MINUTE');
                 BEGIN
-                    INSERT INTO DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, SEDE_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO)
-                    VALUES (SYS_GUID(), v_prof3_id, v_sede_norte_id, v_esp_mi_id, v_slot_inicio, v_slot_fin, 'TELEMEDICINA', 'LIBRE');
+                    INSERT INTO DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO)
+                    VALUES (SYS_GUID(), v_prof3_id, v_esp_mi_id, v_slot_inicio, v_slot_fin, 'TELEMEDICINA', 'LIBRE');
                     v_slots_count := v_slots_count + 1;
                 EXCEPTION WHEN DUP_VAL_ON_INDEX THEN NULL;
                 END;
@@ -263,8 +249,8 @@ BEGIN
                 v_slot_inicio := FROM_TZ(CAST(v_curr_date + (15 + h * 0.5) / 24 AS TIMESTAMP), 'America/Bogota');
                 v_slot_fin    := v_slot_inicio + NUMTODSINTERVAL(30, 'MINUTE');
                 BEGIN
-                    INSERT INTO DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, SEDE_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO)
-                    VALUES (SYS_GUID(), v_prof4_id, v_sede_norte_id, v_esp_odo_id, v_slot_inicio, v_slot_fin, 'PRESENCIAL', 'LIBRE');
+                    INSERT INTO DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO)
+                    VALUES (SYS_GUID(), v_prof4_id, v_esp_odo_id, v_slot_inicio, v_slot_fin, 'PRESENCIAL', 'LIBRE');
                     v_slots_count := v_slots_count + 1;
                 EXCEPTION WHEN DUP_VAL_ON_INDEX THEN NULL;
                 END;

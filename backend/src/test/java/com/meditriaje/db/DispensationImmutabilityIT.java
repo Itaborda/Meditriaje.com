@@ -32,7 +32,7 @@ class DispensationImmutabilityIT {
         DataSource ds = OracleTestDatabase.provisionOwner(oracle, "MT_DISPENSACION");
         OracleTestDatabase.flywayUpTo(ds, "22").migrate();
         OracleTestDatabase.runScript(ds, "db/merge-fixture.sql");
-        OracleTestDatabase.flyway(ds).migrate();
+        OracleTestDatabase.flywayUpTo(ds, "25").migrate();
         owner = new JdbcTemplate(ds);
     }
 

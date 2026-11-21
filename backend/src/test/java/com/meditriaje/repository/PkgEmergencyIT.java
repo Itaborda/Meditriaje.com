@@ -56,7 +56,7 @@ class PkgEmergencyIT {
         episodes = new EpisodioAtencionRepository(gateway);
         admissions = new IngresoUrgenciaRepository(gateway);
 
-        siteId = owner.queryForObject("SELECT MIN(ID) FROM SEDE", Long.class);
+        siteId = owner.queryForObject("SELECT MIN(ID) FROM CONFIGURACION_HOSPITAL", Long.class);
         patientId = owner.queryForObject("SELECT ID FROM PACIENTE WHERE PUBLIC_ID = 'fx-patient-1'", Long.class);
         staffUserId = owner.queryForObject("SELECT ID FROM USUARIO WHERE PUBLIC_ID = 'fx-user-staff'", Long.class);
         professionalId = owner.queryForObject("SELECT ID FROM PROFESIONAL WHERE PUBLIC_ID = 'fx-prof-1'", Long.class);

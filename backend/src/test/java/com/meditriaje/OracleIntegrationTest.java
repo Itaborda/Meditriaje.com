@@ -210,13 +210,11 @@ class OracleIntegrationTest {
         ownerTemplate.update("INSERT INTO " + OWNER_USER + ".PROFESIONAL (USUARIO_ID, PUBLIC_ID, ESPECIALIDAD_ID, REGISTRO_MEDICO, NOMBRES, APELLIDOS, NUMERO_DOCUMENTO) VALUES (?, ?, ?, ?, ?, ?, SUBSTR(RAWTOHEX(SYS_GUID()), 1, 20))",
                 docUsuarioId, "prof-t-" + uid, espId, "RM-T-" + uid, "Doc", "Test");
         Long profId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".PROFESIONAL WHERE PUBLIC_ID = ?", Long.class, "prof-t-" + uid);
-        // Hospital único (V024/V025): se reutiliza la única sede; TR_SEDE_UNICA impide crear otra.
-        Long sedeId = ownerTemplate.queryForObject("SELECT MIN(ID) FROM " + OWNER_USER + ".SEDE", Long.class);
         java.time.Instant ahora = java.time.Instant.now();
         ownerTemplate.update(
-                "INSERT INTO " + OWNER_USER + ".DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, SEDE_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, 'PRESENCIAL', 'LIBRE')",
-                "slot-t-" + uid, profId, sedeId, espId, java.sql.Timestamp.from(ahora), java.sql.Timestamp.from(ahora.plusSeconds(1200)));
+                "INSERT INTO " + OWNER_USER + ".DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO) "
+                        + "VALUES (?, ?, ?, ?, ?, 'PRESENCIAL', 'LIBRE')",
+                "slot-t-" + uid, profId, espId, java.sql.Timestamp.from(ahora), java.sql.Timestamp.from(ahora.plusSeconds(1200)));
         Long slotId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".DISPONIBILIDAD_SLOT WHERE PUBLIC_ID = ?", Long.class, "slot-t-" + uid);
 
         // Paciente B con triaje de A -> rechazado por FK_CITA_TRIAJE_PACIENTE
@@ -270,10 +268,9 @@ class OracleIntegrationTest {
 
     @Test
     void app_puedeConsultarTablasOferta() {
-        // MEDITRIAJE_APP puede consultar las tablas de oferta asistencial (V004)
+        // MEDITRIAJE_APP puede consultar CONFIGURACION_HOSPITAL y las tablas de oferta asistencial
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
-        assertThat(appTemplate.queryForObject("SELECT COUNT(*) FROM " + OWNER_USER + ".INSTITUCION", Integer.class)).isNotNull();
-        assertThat(appTemplate.queryForObject("SELECT COUNT(*) FROM " + OWNER_USER + ".SEDE", Integer.class)).isNotNull();
+        assertThat(appTemplate.queryForObject("SELECT COUNT(*) FROM " + OWNER_USER + ".CONFIGURACION_HOSPITAL", Integer.class)).isEqualTo(1);
         assertThat(appTemplate.queryForObject("SELECT COUNT(*) FROM " + OWNER_USER + ".ESPECIALIDAD", Integer.class)).isNotNull();
         assertThat(appTemplate.queryForObject("SELECT COUNT(*) FROM " + OWNER_USER + ".PROFESIONAL", Integer.class)).isNotNull();
         assertThat(appTemplate.queryForObject("SELECT COUNT(*) FROM " + OWNER_USER + ".DISPONIBILIDAD_SLOT", Integer.class)).isNotNull();
@@ -318,9 +315,6 @@ class OracleIntegrationTest {
         );
 
 
-        // Hospital único (V024/V025): se reutiliza la única sede; TR_SEDE_UNICA impide crear otra.
-        Long sedeId = ownerTemplate.queryForObject("SELECT MIN(ID) FROM " + OWNER_USER + ".SEDE", Long.class);
-
         ownerTemplate.update(
                 "INSERT INTO " + OWNER_USER + ".USUARIO (PUBLIC_ID, EMAIL, PASSWORD_HASH) VALUES (?, ?, ?)",
                 "u-pac-" + uid, "pac-" + uid + "@test.com", "hash"
@@ -340,9 +334,9 @@ class OracleIntegrationTest {
 
         java.time.Instant ahora = java.time.Instant.now();
         ownerTemplate.update(
-                "INSERT INTO " + OWNER_USER + ".DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, SEDE_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO) " +
-                "VALUES (?, ?, ?, ?, ?, ?, 'PRESENCIAL', 'LIBRE')",
-                "slot-" + uid, profId, sedeId, espId, java.sql.Timestamp.from(ahora), java.sql.Timestamp.from(ahora.plusSeconds(1200))
+                "INSERT INTO " + OWNER_USER + ".DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO) " +
+                "VALUES (?, ?, ?, ?, ?, 'PRESENCIAL', 'LIBRE')",
+                "slot-" + uid, profId, espId, java.sql.Timestamp.from(ahora), java.sql.Timestamp.from(ahora.plusSeconds(1200))
         );
         Long slotId = ownerTemplate.queryForObject(
                 "SELECT ID FROM " + OWNER_USER + ".DISPONIBILIDAD_SLOT WHERE PUBLIC_ID = ?", Long.class, "slot-" + uid
@@ -398,14 +392,11 @@ class OracleIntegrationTest {
         Long profId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".PROFESIONAL WHERE PUBLIC_ID = ?", Long.class, "prof-mc-" + uid);
 
 
-        // Hospital único (V024/V025): se reutiliza la única sede; TR_SEDE_UNICA impide crear otra.
-        Long sedeId = ownerTemplate.queryForObject("SELECT MIN(ID) FROM " + OWNER_USER + ".SEDE", Long.class);
-
         java.time.Instant ahora = java.time.Instant.now();
         ownerTemplate.update(
-                "INSERT INTO " + OWNER_USER + ".DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, SEDE_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO) " +
-                "VALUES (?, ?, ?, ?, ?, ?, 'PRESENCIAL', 'LIBRE')",
-                "slot-mc-" + uid, profId, sedeId, espId, java.sql.Timestamp.from(ahora), java.sql.Timestamp.from(ahora.plusSeconds(1200))
+                "INSERT INTO " + OWNER_USER + ".DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO) " +
+                "VALUES (?, ?, ?, ?, ?, 'PRESENCIAL', 'LIBRE')",
+                "slot-mc-" + uid, profId, espId, java.sql.Timestamp.from(ahora), java.sql.Timestamp.from(ahora.plusSeconds(1200))
         );
         Long slotId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".DISPONIBILIDAD_SLOT WHERE PUBLIC_ID = ?", Long.class, "slot-mc-" + uid);
 
@@ -576,9 +567,6 @@ class OracleIntegrationTest {
         Long espId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".ESPECIALIDAD WHERE PUBLIC_ID = ?", Long.class, "esp-clin-" + uid);
 
 
-        // Hospital único (V024/V025): se reutiliza la única sede; TR_SEDE_UNICA impide crear otra.
-        Long sedeId = ownerTemplate.queryForObject("SELECT MIN(ID) FROM " + OWNER_USER + ".SEDE", Long.class);
-
         ownerTemplate.update("INSERT INTO " + OWNER_USER + ".USUARIO (PUBLIC_ID, EMAIL, PASSWORD_HASH) VALUES (?, ?, ?)",
                 "u-med-" + uid, "med-" + uid + "@test.com", "hash");
         Long uMedId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".USUARIO WHERE PUBLIC_ID = ?", Long.class, "u-med-" + uid);
@@ -588,9 +576,9 @@ class OracleIntegrationTest {
         Long profesionalId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".PROFESIONAL WHERE PUBLIC_ID = ?", Long.class, "pro-clin-" + uid);
 
         // Slot y cita
-        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, SEDE_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO) "
-                + "VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP + INTERVAL '1' DAY, CURRENT_TIMESTAMP + INTERVAL '1' DAY + INTERVAL '20' MINUTE, 'PRESENCIAL', 'OCUPADO')",
-                "slot-clin-" + uid, profesionalId, sedeId, espId);
+        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO) "
+                + "VALUES (?, ?, ?, CURRENT_TIMESTAMP + INTERVAL '1' DAY, CURRENT_TIMESTAMP + INTERVAL '1' DAY + INTERVAL '20' MINUTE, 'PRESENCIAL', 'OCUPADO')",
+                "slot-clin-" + uid, profesionalId, espId);
         Long slotId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".DISPONIBILIDAD_SLOT WHERE PUBLIC_ID = ?", Long.class, "slot-clin-" + uid);
 
         ownerTemplate.update("INSERT INTO " + OWNER_USER + ".CITA (PUBLIC_ID, SLOT_ID, PACIENTE_ID, ESTADO) VALUES (?, ?, ?, 'CONFIRMADA')",
@@ -718,14 +706,13 @@ class OracleIntegrationTest {
                 "usr-rx-prof-" + uid, "rx-prof-" + uid + "@test.com");
         Long usuarioProfId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".USUARIO WHERE PUBLIC_ID = ?", Long.class, "usr-rx-prof-" + uid);
         Long espId = ownerTemplate.queryForObject("SELECT MIN(ID) FROM " + OWNER_USER + ".ESPECIALIDAD", Long.class);
-        Long sedeId = ownerTemplate.queryForObject("SELECT MIN(ID) FROM " + OWNER_USER + ".SEDE", Long.class);
         ownerTemplate.update("INSERT INTO " + OWNER_USER + ".PROFESIONAL (PUBLIC_ID, USUARIO_ID, ESPECIALIDAD_ID, REGISTRO_MEDICO, NOMBRES, APELLIDOS, NUMERO_DOCUMENTO) "
                 + "VALUES (?, ?, ?, ?, 'Dr', 'Prescriptor', SUBSTR(RAWTOHEX(SYS_GUID()), 1, 20))", "prof-rx-" + uid, usuarioProfId, espId, "RM-RX-" + uid);
         Long profesionalId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".PROFESIONAL WHERE PUBLIC_ID = ?", Long.class, "prof-rx-" + uid);
 
-        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, SEDE_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, ESTADO) "
-                + "VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP + INTERVAL '1' DAY, CURRENT_TIMESTAMP + INTERVAL '1' DAY + INTERVAL '20' MINUTE, 'OCUPADO')",
-                "slot-rx-" + uid, profesionalId, sedeId, espId);
+        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, ESTADO) "
+                + "VALUES (?, ?, ?, CURRENT_TIMESTAMP + INTERVAL '1' DAY, CURRENT_TIMESTAMP + INTERVAL '1' DAY + INTERVAL '20' MINUTE, 'OCUPADO')",
+                "slot-rx-" + uid, profesionalId, espId);
         Long slotId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".DISPONIBILIDAD_SLOT WHERE PUBLIC_ID = ?", Long.class, "slot-rx-" + uid);
 
         ownerTemplate.update("INSERT INTO " + OWNER_USER + ".CITA (PUBLIC_ID, SLOT_ID, PACIENTE_ID, ESTADO) VALUES (?, ?, ?, 'CONFIRMADA')",
@@ -808,11 +795,9 @@ class OracleIntegrationTest {
                 + "VALUES (?, ?, ?, ?, 'Dr', 'Rollback', SUBSTR(RAWTOHEX(SYS_GUID()), 1, 20))", "prof-rx-rb-" + uid, usuarioProfId, espId, "RM-RX-RB-" + uid);
         Long profesionalId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".PROFESIONAL WHERE PUBLIC_ID = ?", Long.class, "prof-rx-rb-" + uid);
 
-        // Hospital único (V024/V025): se reutiliza la única sede; TR_SEDE_UNICA impide crear otra.
-        Long sedeId = ownerTemplate.queryForObject("SELECT MIN(ID) FROM " + OWNER_USER + ".SEDE", Long.class);
-        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, SEDE_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO) "
-                + "VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '20' MINUTE, 'PRESENCIAL', 'OCUPADO')",
-                "slot-rx-rb-" + uid, profesionalId, sedeId, espId);
+        ownerTemplate.update("INSERT INTO " + OWNER_USER + ".DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO) "
+                + "VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '20' MINUTE, 'PRESENCIAL', 'OCUPADO')",
+                "slot-rx-rb-" + uid, profesionalId, espId);
         Long slotId = ownerTemplate.queryForObject("SELECT ID FROM " + OWNER_USER + ".DISPONIBILIDAD_SLOT WHERE PUBLIC_ID = ?", Long.class, "slot-rx-rb-" + uid);
 
         ownerTemplate.update("INSERT INTO " + OWNER_USER + ".CITA (PUBLIC_ID, SLOT_ID, PACIENTE_ID, ESTADO) VALUES (?, ?, ?, 'ATENDIDA')",

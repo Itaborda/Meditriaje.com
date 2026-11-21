@@ -86,8 +86,8 @@ class PkgSchedulingIT {
         absences = new AusenciaMedicaRepository(gateway);
         reminders = new RecordatorioCitaRepository(gateway);
 
-        siteId = owner.queryForObject("SELECT MIN(ID) FROM SEDE", Long.class);
-        sitePublicId = owner.queryForObject("SELECT PUBLIC_ID FROM SEDE WHERE ID = ?", String.class, siteId);
+        siteId = owner.queryForObject("SELECT MIN(ID) FROM CONFIGURACION_HOSPITAL", Long.class);
+        sitePublicId = owner.queryForObject("SELECT PUBLIC_ID FROM CONFIGURACION_HOSPITAL WHERE ID = ?", String.class, siteId);
         patientId = owner.queryForObject("SELECT ID FROM PACIENTE WHERE PUBLIC_ID = 'fx-patient-1'", Long.class);
         patient2Id = owner.queryForObject("SELECT ID FROM PACIENTE WHERE PUBLIC_ID = 'fx-patient-2'", Long.class);
         profId = owner.queryForObject("SELECT ID FROM PROFESIONAL WHERE PUBLIC_ID = 'fx-prof-1'", Long.class);

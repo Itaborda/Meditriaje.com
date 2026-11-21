@@ -9,12 +9,11 @@ CREATE OR REPLACE PACKAGE BODY PKG_OPERATIONS AS
     PROCEDURE create_operational_alert(p_public_id IN VARCHAR2, p_alert_type IN VARCHAR2,
                                        p_severity IN VARCHAR2, p_message IN VARCHAR2,
                                        p_status IN VARCHAR2, o_id OUT NUMBER) IS
-        v_site_id SEDE.ID%TYPE := PKG_COMMON.get_single_site_id;
     BEGIN
         INSERT INTO ALERTA_OPERATIVA (
-            PUBLIC_ID, SEDE_ID, TIPO_ALERTA, NIVEL_SEVERIDAD, MENSAJE, ESTADO
+            PUBLIC_ID, TIPO_ALERTA, NIVEL_SEVERIDAD, MENSAJE, ESTADO
         ) VALUES (
-            p_public_id, v_site_id, p_alert_type, p_severity, p_message, NVL(p_status, 'ACTIVA')
+            p_public_id, p_alert_type, p_severity, p_message, NVL(p_status, 'ACTIVA')
         )
         RETURNING ID INTO o_id;
     END create_operational_alert;
@@ -22,7 +21,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_OPERATIONS AS
     PROCEDURE get_operational_alert_by_id(p_id IN NUMBER, o_alert OUT SYS_REFCURSOR) IS
     BEGIN
         OPEN o_alert FOR
-            SELECT ID, PUBLIC_ID, SEDE_ID, TIPO_ALERTA, NIVEL_SEVERIDAD, MENSAJE, ESTADO,
+            SELECT ID, PUBLIC_ID, TIPO_ALERTA, NIVEL_SEVERIDAD, MENSAJE, ESTADO,
                    RECONOCIDO_POR_USUARIO_ID, RECONOCIDO_AT, MOTIVO_RECONOCIMIENTO, CREADO_AT
               FROM ALERTA_OPERATIVA
              WHERE ID = p_id;
@@ -31,7 +30,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_OPERATIONS AS
     PROCEDURE get_operational_alert_by_public_id(p_public_id IN VARCHAR2, o_alert OUT SYS_REFCURSOR) IS
     BEGIN
         OPEN o_alert FOR
-            SELECT ID, PUBLIC_ID, SEDE_ID, TIPO_ALERTA, NIVEL_SEVERIDAD, MENSAJE, ESTADO,
+            SELECT ID, PUBLIC_ID, TIPO_ALERTA, NIVEL_SEVERIDAD, MENSAJE, ESTADO,
                    RECONOCIDO_POR_USUARIO_ID, RECONOCIDO_AT, MOTIVO_RECONOCIMIENTO, CREADO_AT
               FROM ALERTA_OPERATIVA
              WHERE PUBLIC_ID = p_public_id;
@@ -41,8 +40,8 @@ CREATE OR REPLACE PACKAGE BODY PKG_OPERATIONS AS
     BEGIN
         OPEN o_rows FOR
             SELECT a.PUBLIC_ID,
-                   s.PUBLIC_ID AS SEDE_PUB_ID,
-                   s.NOMBRE AS SEDE_NOMBRE,
+                   cfg.PUBLIC_ID AS SEDE_PUB_ID,
+                   cfg.RAZON_SOCIAL AS SEDE_NOMBRE,
                    a.TIPO_ALERTA,
                    a.NIVEL_SEVERIDAD,
                    a.MENSAJE,
@@ -52,9 +51,9 @@ CREATE OR REPLACE PACKAGE BODY PKG_OPERATIONS AS
                    a.MOTIVO_RECONOCIMIENTO,
                    a.CREADO_AT
               FROM ALERTA_OPERATIVA a
-              JOIN SEDE s ON a.SEDE_ID = s.ID
+              CROSS JOIN CONFIGURACION_HOSPITAL cfg
               LEFT JOIN USUARIO u ON a.RECONOCIDO_POR_USUARIO_ID = u.ID
-             WHERE (p_site_id IS NULL OR a.SEDE_ID = p_site_id)
+             WHERE (p_site_id IS NULL OR cfg.ID = p_site_id)
                AND (p_status IS NULL OR a.ESTADO = p_status)
              ORDER BY a.CREADO_AT DESC, a.ID DESC;
     END list_operational_alerts;

@@ -123,15 +123,15 @@ class PkgReportsIT {
         Long prof1Id = id("PROFESIONAL", "rep-prof-1");
         Long prof2Id = id("PROFESIONAL", "rep-prof-2");
 
-        Long sedeId = owner.queryForObject("SELECT MIN(ID) FROM SEDE", Long.class);
-        String sedePublicId = owner.queryForObject("SELECT PUBLIC_ID FROM SEDE WHERE ID = ?", String.class, sedeId);
-        String sedeNombre = owner.queryForObject("SELECT NOMBRE FROM SEDE WHERE ID = ?", String.class, sedeId);
+        Long sedeId = owner.queryForObject("SELECT MIN(ID) FROM CONFIGURACION_HOSPITAL", Long.class);
+        String sedePublicId = owner.queryForObject("SELECT PUBLIC_ID FROM CONFIGURACION_HOSPITAL WHERE ID = ?", String.class, sedeId);
+        String sedeNombre = owner.queryForObject("SELECT RAZON_SOCIAL FROM CONFIGURACION_HOSPITAL WHERE ID = ?", String.class, sedeId);
 
         // 4 slots y 4 citas (3 dentro de ventana: 2 ATENDIDA en esp-1, 1 CANCELADA en esp-2; 1 antigua CANCELADA en esp-2)
-        insertSlot("rep-slot-1", prof1Id, sedeId, esp1Id, tBase.plus(1, ChronoUnit.DAYS));
-        insertSlot("rep-slot-2", prof1Id, sedeId, esp1Id, tBase.plus(2, ChronoUnit.DAYS));
-        insertSlot("rep-slot-3", prof2Id, sedeId, esp2Id, tBase.plus(3, ChronoUnit.DAYS));
-        insertSlot("rep-slot-4", prof2Id, sedeId, esp2Id, tBase.plus(4, ChronoUnit.DAYS));
+        insertSlot("rep-slot-1", prof1Id, esp1Id, tBase.plus(1, ChronoUnit.DAYS));
+        insertSlot("rep-slot-2", prof1Id, esp1Id, tBase.plus(2, ChronoUnit.DAYS));
+        insertSlot("rep-slot-3", prof2Id, esp2Id, tBase.plus(3, ChronoUnit.DAYS));
+        insertSlot("rep-slot-4", prof2Id, esp2Id, tBase.plus(4, ChronoUnit.DAYS));
 
         Long s1 = id("DISPONIBILIDAD_SLOT", "rep-slot-1");
         Long s2 = id("DISPONIBILIDAD_SLOT", "rep-slot-2");
@@ -201,10 +201,10 @@ class PkgReportsIT {
         Long rd2 = owner.queryForObject("SELECT ID FROM RECETA_DETALLE WHERE RECETA_ID = ?", Long.class, rx2);
         Long rd3 = owner.queryForObject("SELECT ID FROM RECETA_DETALLE WHERE RECETA_ID = ?", Long.class, rx3);
 
-        owner.update("INSERT INTO DISPENSACION (PUBLIC_ID, RECETA_ID, SEDE_ID, USUARIO_ID, CREATED_AT) VALUES ('rep-disp1', ?, ?, ?, ?)",
-                rx2, sedeId, uFarmId, Timestamp.from(tIn2));
-        owner.update("INSERT INTO DISPENSACION (PUBLIC_ID, RECETA_ID, SEDE_ID, USUARIO_ID, CREATED_AT) VALUES ('rep-disp2', ?, ?, ?, ?)",
-                rx3, sedeId, uFarmId, Timestamp.from(tOld));
+        owner.update("INSERT INTO DISPENSACION (PUBLIC_ID, RECETA_ID, USUARIO_ID, CREATED_AT) VALUES ('rep-disp1', ?, ?, ?)",
+                rx2, uFarmId, Timestamp.from(tIn2));
+        owner.update("INSERT INTO DISPENSACION (PUBLIC_ID, RECETA_ID, USUARIO_ID, CREATED_AT) VALUES ('rep-disp2', ?, ?, ?)",
+                rx3, uFarmId, Timestamp.from(tOld));
 
         Long disp1 = id("DISPENSACION", "rep-disp1");
         Long disp2 = id("DISPENSACION", "rep-disp2");
@@ -281,12 +281,12 @@ class PkgReportsIT {
         return owner.queryForObject("SELECT ID FROM " + table + " WHERE PUBLIC_ID = ?", Long.class, publicId);
     }
 
-    private static void insertSlot(String publicId, Long profId, Long sedeId, Long espId, Instant start) {
+    private static void insertSlot(String publicId, Long profId, Long espId, Instant start) {
         owner.update("""
-                INSERT INTO DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, SEDE_ID, ESPECIALIDAD_ID,
+                INSERT INTO DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, ESPECIALIDAD_ID,
                                                  FECHA_HORA_INICIO, FECHA_HORA_FIN, MODALIDAD, ESTADO)
-                VALUES (?, ?, ?, ?, ?, ?, 'PRESENCIAL', 'OCUPADO')""",
-                publicId, profId, sedeId, espId, Timestamp.from(start), Timestamp.from(start.plus(20, ChronoUnit.MINUTES)));
+                VALUES (?, ?, ?, ?, ?, 'PRESENCIAL', 'OCUPADO')""",
+                publicId, profId, espId, Timestamp.from(start), Timestamp.from(start.plus(20, ChronoUnit.MINUTES)));
     }
 
     private static void insertRxDetail(Long recetaId, Long medId, int cantidad) {

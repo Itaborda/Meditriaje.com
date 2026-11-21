@@ -33,7 +33,7 @@ public class AlertaOperativaRepository {
         return new AlertaOperativa(
                 rs.getLong("ID"),
                 rs.getString("PUBLIC_ID"),
-                rs.getLong("SEDE_ID"),
+                1L,
                 rs.getString("TIPO_ALERTA"),
                 rs.getString("NIVEL_SEVERIDAD"),
                 rs.getString("MENSAJE"),

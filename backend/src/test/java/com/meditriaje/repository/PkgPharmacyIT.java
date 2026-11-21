@@ -102,14 +102,13 @@ class PkgPharmacyIT {
     }
 
     private static Long newEncounter(Long patientId, Long professionalId, int hourOffset) {
-        Long siteId = owner.queryForObject("SELECT MIN(ID) FROM SEDE", Long.class);
         Long espId = owner.queryForObject("SELECT ESPECIALIDAD_ID FROM PROFESIONAL WHERE ID = ?", Long.class, professionalId);
         String slotPublicId = UUID.randomUUID().toString();
         Instant start = Instant.now().plus(hourOffset, ChronoUnit.HOURS);
         owner.update(
-                "INSERT INTO DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, SEDE_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN) "
-                        + "VALUES (?, ?, ?, ?, ?, ?)",
-                slotPublicId, professionalId, siteId, espId, Timestamp.from(start),
+                "INSERT INTO DISPONIBILIDAD_SLOT (PUBLIC_ID, PROFESIONAL_ID, ESPECIALIDAD_ID, FECHA_HORA_INICIO, FECHA_HORA_FIN) "
+                        + "VALUES (?, ?, ?, ?, ?)",
+                slotPublicId, professionalId, espId, Timestamp.from(start),
                 Timestamp.from(start.plus(20, ChronoUnit.MINUTES)));
         Long slotId = owner.queryForObject("SELECT ID FROM DISPONIBILIDAD_SLOT WHERE PUBLIC_ID = ?", Long.class, slotPublicId);
 
@@ -196,7 +195,7 @@ class PkgPharmacyIT {
                 .containsExactly("PENDIENTE", "PENDIENTE");
 
         // Primera dispensación parcial (med1: 4 de 10; med2: 6 de 6)
-        Long canonicalSiteId = owner.queryForObject("SELECT ID FROM SEDE", Long.class);
+        Long canonicalSiteId = owner.queryForObject("SELECT ID FROM CONFIGURACION_HOSPITAL", Long.class);
         String dispPub1 = UUID.randomUUID().toString();
         Long dispId1 = dispensaciones.crearDispensacion(
                 new Dispensacion(null, dispPub1, recId1, 99999L, dispenserUserId, "Entrega parcial", null));

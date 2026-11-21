@@ -29,7 +29,7 @@ class SingleSiteIT {
         oracle = OracleTestDatabase.newContainer();
         oracle.start();
         DataSource ds = OracleTestDatabase.provisionOwner(oracle, "MT_SEDE_UNICA");
-        OracleTestDatabase.flyway(ds).migrate();
+        OracleTestDatabase.flywayUpTo(ds, "25").migrate();
         owner = new JdbcTemplate(ds);
     }
 

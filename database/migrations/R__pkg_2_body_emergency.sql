@@ -9,8 +9,8 @@ CREATE OR REPLACE PACKAGE BODY PKG_EMERGENCY AS
                              p_status IN VARCHAR2, p_admitted_at IN TIMESTAMP WITH TIME ZONE,
                              p_reason IN VARCHAR2, o_id OUT NUMBER) IS
     BEGIN
-        INSERT INTO EPISODIO_ATENCION (PUBLIC_ID, PACIENTE_ID, TIPO, SEDE_ID, ESTADO, INGRESO_AT, MOTIVO_INGRESO)
-        VALUES (p_public_id, p_patient_id, p_type, PKG_COMMON.get_single_site_id, p_status, p_admitted_at, p_reason)
+        INSERT INTO EPISODIO_ATENCION (PUBLIC_ID, PACIENTE_ID, TIPO, ESTADO, INGRESO_AT, MOTIVO_INGRESO)
+        VALUES (p_public_id, p_patient_id, p_type, p_status, p_admitted_at, p_reason)
         RETURNING ID INTO o_id;
     END create_episode;
 
@@ -50,8 +50,8 @@ CREATE OR REPLACE PACKAGE BODY PKG_EMERGENCY AS
             SELECT e.PUBLIC_ID AS EPISODIO_PUB_ID,
                    p.PUBLIC_ID AS PACIENTE_PUB_ID,
                    CASE WHEN p.ID IS NOT NULL THEN (p.NOMBRES || ' ' || p.APELLIDOS) ELSE NULL END AS PACIENTE_NOMBRE,
-                   s.PUBLIC_ID AS SEDE_PUB_ID,
-                   s.NOMBRE AS SEDE_NOMBRE,
+                   cfg.PUBLIC_ID AS SEDE_PUB_ID,
+                   cfg.RAZON_SOCIAL AS SEDE_NOMBRE,
                    e.TIPO,
                    e.ESTADO,
                    ip.CODIGO_PROVISIONAL,
@@ -68,7 +68,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_EMERGENCY AS
                    e.EGRESO_AT,
                    e.CREADO_AT
               FROM EPISODIO_ATENCION e
-              JOIN SEDE s ON e.SEDE_ID = s.ID
+              CROSS JOIN CONFIGURACION_HOSPITAL cfg
               LEFT JOIN PACIENTE p ON e.PACIENTE_ID = p.ID
               LEFT JOIN INGRESO_URGENCIA iu ON e.ID = iu.EPISODIO_ID
               LEFT JOIN IDENTIDAD_PROVISIONAL ip ON e.ID = ip.EPISODIO_ID
@@ -87,8 +87,8 @@ CREATE OR REPLACE PACKAGE BODY PKG_EMERGENCY AS
                      ELSE 'Paciente no identificado'
                    END AS IDENTIFICADOR_VISIBLE,
                    ip.CODIGO_PROVISIONAL,
-                   s.PUBLIC_ID AS SEDE_PUB_ID,
-                   s.NOMBRE AS SEDE_NOMBRE,
+                   cfg.PUBLIC_ID AS SEDE_PUB_ID,
+                   cfg.RAZON_SOCIAL AS SEDE_NOMBRE,
                    e.TIPO,
                    e.ESTADO,
                    COALESCE((SELECT vt.NIVEL FROM VALORACION_TRIAJE vt WHERE vt.EPISODIO_ID = e.ID
@@ -101,13 +101,13 @@ CREATE OR REPLACE PACKAGE BODY PKG_EMERGENCY AS
                      WHERE aa.EPISODIO_ID = e.ID AND aa.ACTIVO = 1 AND aa.FUNCION = 'MEDICO_TRATANTE'
                      FETCH FIRST 1 ROWS ONLY) AS MEDICO_TRATANTE_NOMBRE
               FROM EPISODIO_ATENCION e
-              JOIN SEDE s ON e.SEDE_ID = s.ID
+              CROSS JOIN CONFIGURACION_HOSPITAL cfg
               LEFT JOIN PACIENTE p ON e.PACIENTE_ID = p.ID
               LEFT JOIN INGRESO_URGENCIA iu ON e.ID = iu.EPISODIO_ID
               LEFT JOIN IDENTIDAD_PROVISIONAL ip ON e.ID = ip.EPISODIO_ID
              WHERE e.TIPO = 'URGENCIA'
                AND e.ESTADO NOT IN ('EGRESADO', 'CANCELADO')
-               AND (p_site_id IS NULL OR e.SEDE_ID = p_site_id)
+               AND (p_site_id IS NULL OR cfg.ID = p_site_id)
                AND (p_status IS NULL OR e.ESTADO = p_status)
              ORDER BY
                CASE

@@ -85,7 +85,7 @@ class PkgHospitalIT {
         discharges = new EgresoHospitalarioRepository(gateway);
         procedures = new ProcedimientoHospitalarioRepository(gateway);
 
-        siteId = owner.queryForObject("SELECT MIN(ID) FROM SEDE", Long.class);
+        siteId = owner.queryForObject("SELECT MIN(ID) FROM CONFIGURACION_HOSPITAL", Long.class);
         episodeId = idOf("EPISODIO_ATENCION", "fx-episode-1");
         episode2Id = idOf("EPISODIO_ATENCION", "fx-episode-2");
         staffUserId = idOf("USUARIO", "fx-user-staff");

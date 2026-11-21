@@ -38,7 +38,7 @@ public class DispensacionRepository {
                 rs.getLong("ID"),
                 rs.getString("PUBLIC_ID"),
                 rs.getLong("RECETA_ID"),
-                rs.getLong("SEDE_ID"),
+                1L,
                 rs.getLong("USUARIO_ID"),
                 rs.getString("OBSERVACIONES"),
                 ts != null ? ts.toInstant() : null);

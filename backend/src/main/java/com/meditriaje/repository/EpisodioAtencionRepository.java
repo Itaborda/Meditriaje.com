@@ -38,7 +38,7 @@ public class EpisodioAtencionRepository {
                 rs.getString("PUBLIC_ID"),
                 pacienteId,
                 rs.getString("TIPO"),
-                rs.getLong("SEDE_ID"),
+                1L,
                 rs.getString("ESTADO"),
                 tsIngreso != null ? tsIngreso.toInstant() : null,
                 tsEgreso != null ? tsEgreso.toInstant() : null,
