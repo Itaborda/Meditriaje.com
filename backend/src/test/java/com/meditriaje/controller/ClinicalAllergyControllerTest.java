@@ -3,9 +3,9 @@ package com.meditriaje.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.meditriaje.config.CorsConfig;
 import com.meditriaje.config.SecurityConfig;
-import com.meditriaje.dto.allergy.AlergiaResponse;
-import com.meditriaje.dto.allergy.InactivarAlergiaRequest;
-import com.meditriaje.dto.allergy.RegistrarAlergiaRequest;
+import com.meditriaje.dto.allergy.AllergyResponse;
+import com.meditriaje.dto.allergy.InactivateAllergyRequest;
+import com.meditriaje.dto.allergy.RegisterAllergyRequest;
 import com.meditriaje.exception.GlobalExceptionHandler;
 import com.meditriaje.security.JwtService;
 import com.meditriaje.service.AllergyService;
@@ -59,26 +59,26 @@ class ClinicalAllergyControllerTest {
 
     @BeforeEach
     void setUpTokens() {
-        when(jwtService.esValido(TOKEN_PROFESIONAL)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_PROFESIONAL)).thenReturn("u-prof-1");
-        when(jwtService.extraerRoles(TOKEN_PROFESIONAL)).thenReturn(List.of("ROLE_PROFESIONAL"));
+        when(jwtService.isValid(TOKEN_PROFESIONAL)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_PROFESIONAL)).thenReturn("u-prof-1");
+        when(jwtService.extractRoles(TOKEN_PROFESIONAL)).thenReturn(List.of("ROLE_PROFESIONAL"));
 
-        when(jwtService.esValido(TOKEN_PACIENTE)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_PACIENTE)).thenReturn("u-pac-1");
-        when(jwtService.extraerRoles(TOKEN_PACIENTE)).thenReturn(List.of("ROLE_PACIENTE"));
+        when(jwtService.isValid(TOKEN_PACIENTE)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_PACIENTE)).thenReturn("u-pac-1");
+        when(jwtService.extractRoles(TOKEN_PACIENTE)).thenReturn(List.of("ROLE_PACIENTE"));
 
-        when(jwtService.esValido(TOKEN_ADMIN)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_ADMIN)).thenReturn("u-admin-1");
-        when(jwtService.extraerRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
+        when(jwtService.isValid(TOKEN_ADMIN)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_ADMIN)).thenReturn("u-admin-1");
+        when(jwtService.extractRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
     }
 
     @Test
     @DisplayName("GET /api/v1/clinical/patients/{id}/allergies: 200 OK para ROLE_PROFESIONAL")
-    void listarAlergias_profesional_200Ok() throws Exception {
-        AlergiaResponse resp = new AlergiaResponse(
+    void listAllergies_professional_200Ok() throws Exception {
+        AllergyResponse resp = new AllergyResponse(
                 "ale-1", "pac-1", "Penicilina", "Edema", "GRAVE", "ACTIVA", "PROFESIONAL", false, null, Instant.now(), null, null
         );
-        when(allergyService.listarAlergiasPacienteParaProfesional(eq("pac-1"), anyBoolean(), eq("u-prof-1"), any(), anyString()))
+        when(allergyService.listPatientAllergiesForProfessional(eq("pac-1"), anyBoolean(), eq("u-prof-1"), any(), anyString()))
                 .thenReturn(List.of(resp));
 
         mockMvc.perform(get("/api/v1/clinical/patients/pac-1/allergies")
@@ -91,12 +91,12 @@ class ClinicalAllergyControllerTest {
 
     @Test
     @DisplayName("POST /api/v1/clinical/patients/{id}/allergies: 201 Created para ROLE_PROFESIONAL con cabecera Location")
-    void registrarAlergia_profesional_201Created() throws Exception {
-        RegistrarAlergiaRequest req = new RegistrarAlergiaRequest("Dipirona", "Hipotension", "GRAVE");
-        AlergiaResponse resp = new AlergiaResponse(
+    void registerAllergy_professional_201Created() throws Exception {
+        RegisterAllergyRequest req = new RegisterAllergyRequest("Dipirona", "Hipotension", "GRAVE");
+        AllergyResponse resp = new AllergyResponse(
                 "ale-dip-1", "pac-1", "Dipirona", "Hipotension", "GRAVE", "ACTIVA", "PROFESIONAL", false, null, Instant.now(), null, null
         );
-        when(allergyService.registrarAlergiaPorProfesional(eq("pac-1"), any(RegistrarAlergiaRequest.class), eq("u-prof-1"), anyString()))
+        when(allergyService.registerAllergyByProfessional(eq("pac-1"), any(RegisterAllergyRequest.class), eq("u-prof-1"), anyString()))
                 .thenReturn(resp);
 
         mockMvc.perform(post("/api/v1/clinical/patients/pac-1/allergies")
@@ -112,12 +112,12 @@ class ClinicalAllergyControllerTest {
 
     @Test
     @DisplayName("PATCH /api/v1/clinical/allergies/{id}/deactivate: 200 OK para ROLE_PROFESIONAL")
-    void inactivarAlergia_profesional_200Ok() throws Exception {
-        InactivarAlergiaRequest req = new InactivarAlergiaRequest("Prueba de tolerancia negativa");
-        AlergiaResponse resp = new AlergiaResponse(
+    void inactivateAllergy_professional_200Ok() throws Exception {
+        InactivateAllergyRequest req = new InactivateAllergyRequest("Prueba de tolerancia negativa");
+        AllergyResponse resp = new AllergyResponse(
                 "ale-dip-1", "pac-1", "Dipirona", "Hipotension", "GRAVE", "INACTIVA", "PROFESIONAL", false, null, Instant.now(), Instant.now(), "Prueba de tolerancia negativa"
         );
-        when(allergyService.inactivarAlergiaPorProfesional(eq("ale-dip-1"), any(InactivarAlergiaRequest.class), eq("u-prof-1"), anyString()))
+        when(allergyService.inactivateAllergyByProfessional(eq("ale-dip-1"), any(InactivateAllergyRequest.class), eq("u-prof-1"), anyString()))
                 .thenReturn(resp);
 
         mockMvc.perform(patch("/api/v1/clinical/allergies/ale-dip-1/deactivate")
@@ -132,8 +132,8 @@ class ClinicalAllergyControllerTest {
 
     @Test
     @DisplayName("POST /api/v1/clinical/patients/{id}/allergies: 403 Forbidden para ROLE_ADMINISTRADOR (ADR-007)")
-    void registrarAlergia_administrador_403Forbidden() throws Exception {
-        RegistrarAlergiaRequest req = new RegistrarAlergiaRequest("Dipirona", "Hipotension", "GRAVE");
+    void registerAllergy_administrator_403Forbidden() throws Exception {
+        RegisterAllergyRequest req = new RegisterAllergyRequest("Dipirona", "Hipotension", "GRAVE");
 
         mockMvc.perform(post("/api/v1/clinical/patients/pac-1/allergies")
                         .header("X-Requested-With", "XMLHttpRequest")
@@ -145,7 +145,7 @@ class ClinicalAllergyControllerTest {
 
     @Test
     @DisplayName("GET /api/v1/clinical/patients/{id}/allergies: 403 Forbidden para ROLE_PACIENTE")
-    void listarAlergias_paciente_403Forbidden() throws Exception {
+    void listAllergies_patient_403Forbidden() throws Exception {
         mockMvc.perform(get("/api/v1/clinical/patients/pac-1/allergies")
                         .cookie(new Cookie("access_token", TOKEN_PACIENTE)))
                 .andExpect(status().isForbidden());
@@ -153,15 +153,15 @@ class ClinicalAllergyControllerTest {
 
     @Test
     @DisplayName("GET /api/v1/clinical/patients/{id}/allergies: 401 Unauthorized sin token")
-    void listarAlergias_sinAuth_401Unauthorized() throws Exception {
+    void listAllergies_withoutAuth_401Unauthorized() throws Exception {
         mockMvc.perform(get("/api/v1/clinical/patients/pac-1/allergies"))
                 .andExpect(status().isUnauthorized());
     }
 
     @Test
     @DisplayName("POST /api/v1/clinical/patients/{id}/allergies: 400 Bad Request ante severidad o sustancia inválida")
-    void registrarAlergia_datosInvalidos_400BadRequest() throws Exception {
-        RegistrarAlergiaRequest reqInvalido = new RegistrarAlergiaRequest("A", null, "EXTREMA");
+    void registerAllergy_invalidData_400BadRequest() throws Exception {
+        RegisterAllergyRequest reqInvalido = new RegisterAllergyRequest("A", null, "EXTREMA");
 
         mockMvc.perform(post("/api/v1/clinical/patients/pac-1/allergies")
                         .header("X-Requested-With", "XMLHttpRequest")

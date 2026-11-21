@@ -1,6 +1,6 @@
 package com.meditriaje.repository;
 
-import com.meditriaje.model.Sede;
+import com.meditriaje.model.Site;
 import com.meditriaje.repository.plsql.PackageGateway;
 import com.meditriaje.repository.plsql.ProcedureSpec;
 import java.sql.Types;
@@ -19,7 +19,7 @@ public class SiteRepository {
     static final String PACKAGE = "PKG_COMMON";
     static final String SITE_CURSOR = "o_site";
 
-    static final RowMapper<Sede> SITE_MAPPER = (rs, rowNum) -> new Sede(
+    static final RowMapper<Site> SITE_MAPPER = (rs, rowNum) -> new Site(
             rs.getLong("ID"),
             rs.getLong("INSTITUCION_ID"),
             rs.getString("PUBLIC_ID"),
@@ -42,8 +42,8 @@ public class SiteRepository {
     }
 
     /** Devuelve la única sede del hospital; el paquete lanza -20100 (404) si no hay ninguna. */
-    public Sede getSingleSite() {
-        return gateway.<Sede>single(GET_SINGLE_SITE, EmptySqlParameterSource.INSTANCE, SITE_CURSOR)
+    public Site getSingleSite() {
+        return gateway.<Site>single(GET_SINGLE_SITE, EmptySqlParameterSource.INSTANCE, SITE_CURSOR)
                 .orElseThrow(() -> new IllegalStateException("PKG_COMMON.get_single_site returned no rows"));
     }
 

@@ -3,9 +3,9 @@ package com.meditriaje.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.meditriaje.config.CorsConfig;
 import com.meditriaje.config.SecurityConfig;
-import com.meditriaje.dto.availability.DisponibilidadSlotResponse;
+import com.meditriaje.dto.availability.AvailabilitySlotResponse;
 import com.meditriaje.dto.common.PaginatedResponse;
-import com.meditriaje.exception.DatosInvalidosException;
+import com.meditriaje.exception.InvalidDataException;
 import com.meditriaje.exception.GlobalExceptionHandler;
 import com.meditriaje.security.JwtService;
 import com.meditriaje.service.AvailabilityService;
@@ -56,17 +56,17 @@ class AvailabilityControllerTest {
 
     @BeforeEach
     void setUpTokens() {
-        when(jwtService.esValido(TOKEN_PACIENTE)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_PACIENTE)).thenReturn("paciente-uuid-1");
-        when(jwtService.extraerRoles(TOKEN_PACIENTE)).thenReturn(List.of("ROLE_PACIENTE"));
+        when(jwtService.isValid(TOKEN_PACIENTE)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_PACIENTE)).thenReturn("paciente-uuid-1");
+        when(jwtService.extractRoles(TOKEN_PACIENTE)).thenReturn(List.of("ROLE_PACIENTE"));
 
-        when(jwtService.esValido(TOKEN_PROFESIONAL)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_PROFESIONAL)).thenReturn("profesional-uuid-1");
-        when(jwtService.extraerRoles(TOKEN_PROFESIONAL)).thenReturn(List.of("ROLE_PROFESIONAL"));
+        when(jwtService.isValid(TOKEN_PROFESIONAL)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_PROFESIONAL)).thenReturn("profesional-uuid-1");
+        when(jwtService.extractRoles(TOKEN_PROFESIONAL)).thenReturn(List.of("ROLE_PROFESIONAL"));
 
-        when(jwtService.esValido(TOKEN_ADMIN)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_ADMIN)).thenReturn("admin-uuid-1");
-        when(jwtService.extraerRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
+        when(jwtService.isValid(TOKEN_ADMIN)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_ADMIN)).thenReturn("admin-uuid-1");
+        when(jwtService.extractRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
     }
 
     // =========================================================================
@@ -81,9 +81,9 @@ class AvailabilityControllerTest {
     }
 
     @Test
-    void getAvailability_conRolPaciente_retorna200Ok() throws Exception {
-        PaginatedResponse<DisponibilidadSlotResponse> respuestaVacia = PaginatedResponse.of(List.of(), 0, 10, 0L);
-        when(availabilityService.consultarDisponibilidad(any(), any(), any(), anyInt(), anyInt()))
+    void getAvailability_withPatientRole_returns200Ok() throws Exception {
+        PaginatedResponse<AvailabilitySlotResponse> respuestaVacia = PaginatedResponse.of(List.of(), 0, 10, 0L);
+        when(availabilityService.checkAvailability(any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(respuestaVacia);
 
         mockMvc.perform(get("/api/v1/availability")
@@ -94,9 +94,9 @@ class AvailabilityControllerTest {
     }
 
     @Test
-    void getAvailability_conRolProfesional_retorna200Ok() throws Exception {
-        PaginatedResponse<DisponibilidadSlotResponse> respuestaVacia = PaginatedResponse.of(List.of(), 0, 10, 0L);
-        when(availabilityService.consultarDisponibilidad(any(), any(), any(), anyInt(), anyInt()))
+    void getAvailability_withProfessionalRole_returns200Ok() throws Exception {
+        PaginatedResponse<AvailabilitySlotResponse> respuestaVacia = PaginatedResponse.of(List.of(), 0, 10, 0L);
+        when(availabilityService.checkAvailability(any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(respuestaVacia);
 
         mockMvc.perform(get("/api/v1/availability")
@@ -105,9 +105,9 @@ class AvailabilityControllerTest {
     }
 
     @Test
-    void getAvailability_conRolAdministrador_retorna200Ok() throws Exception {
-        PaginatedResponse<DisponibilidadSlotResponse> respuestaVacia = PaginatedResponse.of(List.of(), 0, 10, 0L);
-        when(availabilityService.consultarDisponibilidad(any(), any(), any(), anyInt(), anyInt()))
+    void getAvailability_withAdminRole_returns200Ok() throws Exception {
+        PaginatedResponse<AvailabilitySlotResponse> respuestaVacia = PaginatedResponse.of(List.of(), 0, 10, 0L);
+        when(availabilityService.checkAvailability(any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(respuestaVacia);
 
         mockMvc.perform(get("/api/v1/availability")
@@ -120,19 +120,19 @@ class AvailabilityControllerTest {
     // =========================================================================
 
     @Test
-    void getAvailability_conDatosValidos_retornaSlotsPaginados() throws Exception {
+    void getAvailability_withDataValid_returnsSlotsPaginados() throws Exception {
         Instant inicio = Instant.parse("2026-10-15T14:00:00Z");
         Instant fin = Instant.parse("2026-10-15T14:20:00Z");
 
-        DisponibilidadSlotResponse slot = new DisponibilidadSlotResponse(
+        AvailabilitySlotResponse slot = new AvailabilitySlotResponse(
                 "slot-1", "prof-1", "Dra. Carolina Gomez",
                 "esp-1", "Pediatria",
                 "sede-1", "Sede Central", "Carrera 7 # 40-62", "Bogota",
                 inicio, fin, "PRESENCIAL", 20
         );
-        PaginatedResponse<DisponibilidadSlotResponse> paginated = PaginatedResponse.of(List.of(slot), 0, 10, 1L);
+        PaginatedResponse<AvailabilitySlotResponse> paginated = PaginatedResponse.of(List.of(slot), 0, 10, 1L);
 
-        when(availabilityService.consultarDisponibilidad(
+        when(availabilityService.checkAvailability(
                 eq("esp-1"), eq("PRESENCIAL"), eq(LocalDate.of(2026, 10, 15)), eq(0), eq(10)
         )).thenReturn(paginated);
 
@@ -155,9 +155,9 @@ class AvailabilityControllerTest {
     }
 
     @Test
-    void getAvailability_priorizaEspecialidadPublicIdSobreEspecialidad() throws Exception {
-        PaginatedResponse<DisponibilidadSlotResponse> respuesta = PaginatedResponse.of(List.of(), 0, 10, 0L);
-        when(availabilityService.consultarDisponibilidad(eq("esp-uuid-prioritario"), any(), any(), anyInt(), anyInt()))
+    void getAvailability_prioritizesSpecialtyPublicIdOverSpecialty() throws Exception {
+        PaginatedResponse<AvailabilitySlotResponse> respuesta = PaginatedResponse.of(List.of(), 0, 10, 0L);
+        when(availabilityService.checkAvailability(eq("esp-uuid-prioritario"), any(), any(), anyInt(), anyInt()))
                 .thenReturn(respuesta);
 
         mockMvc.perform(get("/api/v1/availability")
@@ -166,15 +166,15 @@ class AvailabilityControllerTest {
                         .param("especialidadPublicId", "esp-uuid-prioritario"))
                 .andExpect(status().isOk());
 
-        verify(availabilityService).consultarDisponibilidad(
+        verify(availabilityService).checkAvailability(
                 eq("esp-uuid-prioritario"), isNull(), isNull(), eq(0), eq(10)
         );
     }
 
     @Test
-    void getAvailability_usaParametrosAlternativosCuandoPublicIdNoViene() throws Exception {
-        PaginatedResponse<DisponibilidadSlotResponse> respuesta = PaginatedResponse.of(List.of(), 0, 10, 0L);
-        when(availabilityService.consultarDisponibilidad(eq("esp-1"), any(), any(), anyInt(), anyInt()))
+    void getAvailability_usesParamsAlternativosWhenPublicIdNotViene() throws Exception {
+        PaginatedResponse<AvailabilitySlotResponse> respuesta = PaginatedResponse.of(List.of(), 0, 10, 0L);
+        when(availabilityService.checkAvailability(eq("esp-1"), any(), any(), anyInt(), anyInt()))
                 .thenReturn(respuesta);
 
         mockMvc.perform(get("/api/v1/availability")
@@ -182,15 +182,15 @@ class AvailabilityControllerTest {
                         .param("especialidad", "esp-1"))
                 .andExpect(status().isOk());
 
-        verify(availabilityService).consultarDisponibilidad(
+        verify(availabilityService).checkAvailability(
                 eq("esp-1"), isNull(), isNull(), eq(0), eq(10)
         );
     }
 
     @Test
-    void getAvailability_modalidadInvalida_retorna400BadRequest() throws Exception {
-        when(availabilityService.consultarDisponibilidad(any(), eq("VIRTUAL"), any(), anyInt(), anyInt()))
-                .thenThrow(new DatosInvalidosException("Modalidad inválida: 'VIRTUAL'"));
+    void getAvailability_modalityInvalid_returns400BadRequest() throws Exception {
+        when(availabilityService.checkAvailability(any(), eq("VIRTUAL"), any(), anyInt(), anyInt()))
+                .thenThrow(new InvalidDataException("Modalidad inválida: 'VIRTUAL'"));
 
         mockMvc.perform(get("/api/v1/availability")
                         .cookie(new Cookie("access_token", TOKEN_PACIENTE))
@@ -200,9 +200,9 @@ class AvailabilityControllerTest {
     }
 
     @Test
-    void getAvailability_sinDisponibilidad_retornaListaVacia() throws Exception {
-        PaginatedResponse<DisponibilidadSlotResponse> respuestaVacia = PaginatedResponse.of(List.of(), 0, 10, 0L);
-        when(availabilityService.consultarDisponibilidad(any(), any(), any(), anyInt(), anyInt()))
+    void getAvailability_withoutAvailability_returnsListEmpty() throws Exception {
+        PaginatedResponse<AvailabilitySlotResponse> respuestaVacia = PaginatedResponse.of(List.of(), 0, 10, 0L);
+        when(availabilityService.checkAvailability(any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(respuestaVacia);
 
         mockMvc.perform(get("/api/v1/availability")

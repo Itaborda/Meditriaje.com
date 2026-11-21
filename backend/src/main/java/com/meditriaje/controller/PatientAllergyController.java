@@ -1,8 +1,8 @@
 package com.meditriaje.controller;
 
-import com.meditriaje.dto.allergy.AlergiaResponse;
-import com.meditriaje.dto.allergy.InactivarAlergiaRequest;
-import com.meditriaje.dto.allergy.RegistrarAlergiaRequest;
+import com.meditriaje.dto.allergy.AllergyResponse;
+import com.meditriaje.dto.allergy.InactivateAllergyRequest;
+import com.meditriaje.dto.allergy.RegisterAllergyRequest;
 import com.meditriaje.service.AllergyService;
 import com.meditriaje.util.IpUtil;
 import jakarta.servlet.http.HttpServletRequest;
@@ -41,14 +41,14 @@ public class PatientAllergyController {
      * Consulta las alergias del propio paciente autenticado.
      */
     @GetMapping
-    public ResponseEntity<List<AlergiaResponse>> listarMisAlergias(
+    public ResponseEntity<List<AllergyResponse>> listMyAllergies(
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String usuarioPublicId = authentication.getName();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
+        String sourceIp = IpUtil.extractIp(httpRequest);
 
-        List<AlergiaResponse> alergias = allergyService.listarMisAlergias(usuarioPublicId, ipOrigen);
+        List<AllergyResponse> alergias = allergyService.listMyAllergies(usuarioPublicId, sourceIp);
         return ResponseEntity.ok(alergias);
     }
 
@@ -56,15 +56,15 @@ public class PatientAllergyController {
      * Registra una nueva alergia autorreportada por el paciente.
      */
     @PostMapping
-    public ResponseEntity<AlergiaResponse> registrarMiAlergia(
-            @Valid @RequestBody RegistrarAlergiaRequest request,
+    public ResponseEntity<AllergyResponse> registerMyAllergy(
+            @Valid @RequestBody RegisterAllergyRequest request,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String usuarioPublicId = authentication.getName();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
+        String sourceIp = IpUtil.extractIp(httpRequest);
 
-        AlergiaResponse response = allergyService.registrarMiAlergia(request, usuarioPublicId, ipOrigen);
+        AllergyResponse response = allergyService.registerMyAllergy(request, usuarioPublicId, sourceIp);
         URI location = URI.create("/api/v1/patients/me/allergies/" + response.publicId());
         return ResponseEntity.created(location).body(response);
     }
@@ -74,16 +74,16 @@ public class PatientAllergyController {
      * Solo permite inactivar alergias registradas por el propio paciente.
      */
     @PatchMapping("/{publicId}/deactivate")
-    public ResponseEntity<AlergiaResponse> inactivarMiAlergia(
-            @PathVariable String publicId,
-            @Valid @RequestBody InactivarAlergiaRequest request,
+    public ResponseEntity<AllergyResponse> inactivateMyAllergy(
+            @PathVariable("publicId") String publicId,
+            @Valid @RequestBody InactivateAllergyRequest request,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String usuarioPublicId = authentication.getName();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
+        String sourceIp = IpUtil.extractIp(httpRequest);
 
-        AlergiaResponse response = allergyService.inactivarMiAlergia(publicId, request, usuarioPublicId, ipOrigen);
+        AllergyResponse response = allergyService.inactivateMyAllergy(publicId, request, usuarioPublicId, sourceIp);
         return ResponseEntity.ok(response);
     }
 }

@@ -43,7 +43,7 @@ class ProdSecretsFailFastTest {
             "BREVO_API_KEY"
     })
     @DisplayName("Debe fallar al arrancar en perfil prod si falta cualquier secreto o variable obligatoria")
-    void debeFallarAlArrancarEnProdSiFaltaSecreto(String variableFaltante) {
+    void shouldFailStartupInProdWhenSecretMissing(String variableFaltante) {
         Map<String, Object> props = baseProdProperties();
         props.remove(variableFaltante);
 

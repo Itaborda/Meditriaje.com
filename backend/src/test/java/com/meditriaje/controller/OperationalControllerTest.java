@@ -56,13 +56,13 @@ class OperationalControllerTest {
 
     @BeforeEach
     void setUp() {
-        when(jwtService.esValido(TOKEN_ADMIN)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_ADMIN)).thenReturn("usr-admin-uuid");
-        when(jwtService.extraerRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
+        when(jwtService.isValid(TOKEN_ADMIN)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_ADMIN)).thenReturn("usr-admin-uuid");
+        when(jwtService.extractRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
 
-        when(jwtService.esValido(TOKEN_ENFERMERIA)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_ENFERMERIA)).thenReturn("usr-enf-uuid");
-        when(jwtService.extraerRoles(TOKEN_ENFERMERIA)).thenReturn(List.of("ROLE_ENFERMERIA"));
+        when(jwtService.isValid(TOKEN_ENFERMERIA)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_ENFERMERIA)).thenReturn("usr-enf-uuid");
+        when(jwtService.extractRoles(TOKEN_ENFERMERIA)).thenReturn(List.of("ROLE_ENFERMERIA"));
     }
 
     private Cookie cookie(String token) {
@@ -80,11 +80,11 @@ class OperationalControllerTest {
     @Test
     @DisplayName("O01: Administrador o enfermería consulta dashboard hospitalario y retorna 200 OK")
     void dashboard_conSesion_retorna200Ok() throws Exception {
-        DashboardHospitalarioResponse resp = new DashboardHospitalarioResponse(
+        HospitalDashboardResponse resp = new HospitalDashboardResponse(
                 "sede-1", "Sede Central", 50, 10, 38, 2, 0, 76.0, 5,
                 Map.of("II", 2L, "III", 3L), Map.of("II", 20.0), List.of()
         );
-        when(analyticsService.obtenerDashboardHospitalario(anyString(), anyString())).thenReturn(resp);
+        when(analyticsService.getHospitalDashboard(anyString(), anyString())).thenReturn(resp);
 
         mockMvc.perform(get("/api/v1/operational/dashboard")
                         .cookie(cookie(TOKEN_ADMIN))
@@ -97,8 +97,8 @@ class OperationalControllerTest {
 
     @Test
     @DisplayName("O02: Reconocer alerta operativa retorna 204 No Content")
-    void reconocerAlerta_retorna204NoContent() throws Exception {
-        ReconocerAlertaRequest req = new ReconocerAlertaRequest("Atendido por supervisor");
+    void acknowledgeAlert_returns204NotContent() throws Exception {
+        AcknowledgeAlertRequest req = new AcknowledgeAlertRequest("Atendido por supervisor");
 
         mockMvc.perform(post("/api/v1/operational/alerts/alerta-1/acknowledge")
                         .cookie(cookie(TOKEN_ENFERMERIA))
@@ -110,12 +110,12 @@ class OperationalControllerTest {
 
     @Test
     @DisplayName("O03: Generar código QR seguro de seguimiento retorna 201 Created")
-    void generarTrackingQr_retorna201Created() throws Exception {
-        QrSeguimientoResponse resp = new QrSeguimientoResponse(
+    void generateTrackingQr_returns201Created() throws Exception {
+        TrackingQrResponse resp = new TrackingQrResponse(
                 "qr-1", "ep-1", "NN-001", "QROP-ABCD", "/track/QROP-ABCD",
                 "SALA OBSERVACION", "EN_VALORACION", "II", "ACTIVO", now, now.plusSeconds(86400)
         );
-        when(analyticsService.generarQrSeguimiento(eq("ep-1"), anyString(), anyString())).thenReturn(resp);
+        when(analyticsService.generateTrackingQr(eq("ep-1"), anyString(), anyString())).thenReturn(resp);
 
         mockMvc.perform(post("/api/v1/operational/episodes/ep-1/tracking-qr")
                         .cookie(cookie(TOKEN_ENFERMERIA))
@@ -127,12 +127,12 @@ class OperationalControllerTest {
 
     @Test
     @DisplayName("O03: Consulta pública de QR de seguimiento retorna 200 OK con ubicación sin PHI")
-    void consultarTrackingQr_retorna200Ok() throws Exception {
-        QrSeguimientoResponse resp = new QrSeguimientoResponse(
+    void getTrackingQr_returns200Ok() throws Exception {
+        TrackingQrResponse resp = new TrackingQrResponse(
                 "qr-1", "ep-1", "NN-001", "QROP-ABCD", "/track/QROP-ABCD",
                 "PABELLON SAN ROQUE", "HOSPITALIZADO", "III", "ACTIVO", now, now.plusSeconds(86400)
         );
-        when(analyticsService.consultarPorTokenQr(eq("QROP-ABCD"), anyString())).thenReturn(resp);
+        when(analyticsService.getByQrToken(eq("QROP-ABCD"), anyString())).thenReturn(resp);
 
         mockMvc.perform(get("/api/v1/operational/tracking-qr/QROP-ABCD")
                         .header("X-Requested-With", "XMLHttpRequest"))

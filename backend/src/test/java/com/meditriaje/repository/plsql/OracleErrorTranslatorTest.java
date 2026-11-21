@@ -2,11 +2,11 @@ package com.meditriaje.repository.plsql;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.meditriaje.exception.AccesoNoAutorizadoException;
-import com.meditriaje.exception.ConflictoOperacionException;
-import com.meditriaje.exception.DatosInvalidosException;
+import com.meditriaje.exception.UnauthorizedAccessException;
+import com.meditriaje.exception.OperationConflictException;
+import com.meditriaje.exception.InvalidDataException;
 import com.meditriaje.exception.MediTriajeException;
-import com.meditriaje.exception.RecursoNoEncontradoException;
+import com.meditriaje.exception.ResourceNotFoundException;
 import java.sql.SQLException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -27,14 +27,14 @@ class OracleErrorTranslatorTest {
 
     @ParameterizedTest(name = "ORA-{0} -> {1}")
     @CsvSource({
-        "20000, ConflictoOperacionException",
-        "20031, ConflictoOperacionException",
-        "20100, RecursoNoEncontradoException",
-        "20200, ConflictoOperacionException",
-        "20300, DatosInvalidosException",
-        "20400, AccesoNoAutorizadoException",
-        "20500, DatosInvalidosException",
-        "20599, DatosInvalidosException"
+        "20000, OperationConflictException",
+        "20031, OperationConflictException",
+        "20100, ResourceNotFoundException",
+        "20200, OperationConflictException",
+        "20300, InvalidDataException",
+        "20400, UnauthorizedAccessException",
+        "20500, InvalidDataException",
+        "20599, InvalidDataException"
     })
     @DisplayName("cada rango de errores de aplicación se traduce a la excepción existente correspondiente")
     void mapsEveryApplicationRange(int code, String expected) {
@@ -51,8 +51,8 @@ class OracleErrorTranslatorTest {
 
         RuntimeException translated = translator.translate(oracleFailure(20300, raw));
 
-        assertThat(translated).isInstanceOf(DatosInvalidosException.class).hasMessage("La receta ya fue anulada.");
-        assertThat(((MediTriajeException) translated).getCodigo()).isEqualTo("DATOS_INVALIDOS");
+        assertThat(translated).isInstanceOf(InvalidDataException.class).hasMessage("La receta ya fue anulada.");
+        assertThat(((MediTriajeException) translated).getCode()).isEqualTo("DATOS_INVALIDOS");
     }
 
     @Test
@@ -62,7 +62,7 @@ class OracleErrorTranslatorTest {
                 translator.translate(oracleFailure(20100, "ORA-20100: No hay una sede hospitalaria configurada."));
 
         assertThat(translated)
-                .isInstanceOf(RecursoNoEncontradoException.class)
+                .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("No hay una sede hospitalaria configurada.");
     }
 
@@ -72,7 +72,7 @@ class OracleErrorTranslatorTest {
         RuntimeException translated = translator.translate(oracleFailure(20400, "ORA-20400: "));
 
         assertThat(translated)
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessage("No tiene permisos para realizar esta operacion.");
     }
 
@@ -82,7 +82,7 @@ class OracleErrorTranslatorTest {
         RuntimeException translated = translator.translate(oracleFailure(1, "ORA-00001: unique constraint violated"));
 
         assertThat(translated)
-                .isInstanceOf(ConflictoOperacionException.class)
+                .isInstanceOf(OperationConflictException.class)
                 .hasMessage("Ya existe un registro con esos datos.");
     }
 

@@ -1,6 +1,6 @@
 package com.meditriaje.controller;
 
-import com.meditriaje.dto.availability.DisponibilidadSlotResponse;
+import com.meditriaje.dto.availability.AvailabilitySlotResponse;
 import com.meditriaje.dto.common.PaginatedResponse;
 import com.meditriaje.service.AvailabilityService;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -30,39 +30,39 @@ public class AvailabilityController {
     }
 
     @GetMapping
-    public ResponseEntity<PaginatedResponse<DisponibilidadSlotResponse>> consultarDisponibilidad(
-            @RequestParam(required = false) String especialidad,
-            @RequestParam(required = false) String especialidadPublicId,
-            @RequestParam(required = false) String profesional,
-            @RequestParam(required = false) String profesionalPublicId,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha,
-            @RequestParam(required = false) String modalidad,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size
+    public ResponseEntity<PaginatedResponse<AvailabilitySlotResponse>> checkAvailability(
+            @RequestParam(value = "especialidad", required = false) String specialty,
+            @RequestParam(value = "especialidadPublicId", required = false) String specialtyPublicId,
+            @RequestParam(value = "profesional", required = false) String profesional,
+            @RequestParam(value = "profesionalPublicId", required = false) String professionalPublicId,
+            @RequestParam(value = "fecha", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(value = "modalidad", required = false) String modality,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size
     ) {
-        String espFiltro = (especialidadPublicId != null && !especialidadPublicId.isBlank())
-                ? especialidadPublicId
-                : especialidad;
+        String espFiltro = (specialtyPublicId != null && !specialtyPublicId.isBlank())
+                ? specialtyPublicId
+                : specialty;
 
-        String profFiltro = (profesionalPublicId != null && !profesionalPublicId.isBlank())
-                ? profesionalPublicId
+        String profFiltro = (professionalPublicId != null && !professionalPublicId.isBlank())
+                ? professionalPublicId
                 : profesional;
 
-        PaginatedResponse<DisponibilidadSlotResponse> response;
+        PaginatedResponse<AvailabilitySlotResponse> response;
         if (profFiltro != null && !profFiltro.isBlank()) {
-            response = availabilityService.consultarDisponibilidad(
+            response = availabilityService.checkAvailability(
                     espFiltro,
                     profFiltro,
-                    modalidad,
-                    fecha,
+                    modality,
+                    date,
                     page,
                     size
             );
         } else {
-            response = availabilityService.consultarDisponibilidad(
+            response = availabilityService.checkAvailability(
                     espFiltro,
-                    modalidad,
-                    fecha,
+                    modality,
+                    date,
                     page,
                     size
             );

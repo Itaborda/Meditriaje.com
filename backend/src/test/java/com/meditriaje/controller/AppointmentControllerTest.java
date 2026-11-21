@@ -3,13 +3,13 @@ package com.meditriaje.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.meditriaje.config.CorsConfig;
 import com.meditriaje.config.SecurityConfig;
-import com.meditriaje.dto.appointment.CancelarCitaRequest;
-import com.meditriaje.dto.appointment.CitaResponse;
-import com.meditriaje.dto.appointment.ReservarCitaRequest;
-import com.meditriaje.exception.AccesoNoAutorizadoException;
-import com.meditriaje.exception.CitaNoDisponibleException;
-import com.meditriaje.exception.ConflictoOperacionException;
-import com.meditriaje.exception.DatosInvalidosException;
+import com.meditriaje.dto.appointment.CancelAppointmentRequest;
+import com.meditriaje.dto.appointment.AppointmentResponse;
+import com.meditriaje.dto.appointment.BookAppointmentRequest;
+import com.meditriaje.exception.UnauthorizedAccessException;
+import com.meditriaje.exception.AppointmentUnavailableException;
+import com.meditriaje.exception.OperationConflictException;
+import com.meditriaje.exception.InvalidDataException;
 import com.meditriaje.exception.GlobalExceptionHandler;
 import com.meditriaje.security.JwtService;
 import com.meditriaje.service.AppointmentService;
@@ -64,17 +64,17 @@ class AppointmentControllerTest {
 
     @BeforeEach
     void setUpTokens() {
-        when(jwtService.esValido(TOKEN_PACIENTE)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_PACIENTE)).thenReturn(PACIENTE_UUID);
-        when(jwtService.extraerRoles(TOKEN_PACIENTE)).thenReturn(List.of("ROLE_PACIENTE"));
+        when(jwtService.isValid(TOKEN_PACIENTE)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_PACIENTE)).thenReturn(PACIENTE_UUID);
+        when(jwtService.extractRoles(TOKEN_PACIENTE)).thenReturn(List.of("ROLE_PACIENTE"));
 
-        when(jwtService.esValido(TOKEN_PROFESIONAL)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_PROFESIONAL)).thenReturn(PROFESIONAL_UUID);
-        when(jwtService.extraerRoles(TOKEN_PROFESIONAL)).thenReturn(List.of("ROLE_PROFESIONAL"));
+        when(jwtService.isValid(TOKEN_PROFESIONAL)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_PROFESIONAL)).thenReturn(PROFESIONAL_UUID);
+        when(jwtService.extractRoles(TOKEN_PROFESIONAL)).thenReturn(List.of("ROLE_PROFESIONAL"));
 
-        when(jwtService.esValido(TOKEN_ADMIN)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_ADMIN)).thenReturn(ADMIN_UUID);
-        when(jwtService.extraerRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
+        when(jwtService.isValid(TOKEN_ADMIN)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_ADMIN)).thenReturn(ADMIN_UUID);
+        when(jwtService.extractRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
     }
 
     // =========================================================================
@@ -83,7 +83,7 @@ class AppointmentControllerTest {
 
     @Test
     void postAppointment_sinAutenticacion_retorna401Unauthorized() throws Exception {
-        ReservarCitaRequest req = new ReservarCitaRequest("slot-uuid-1");
+        BookAppointmentRequest req = new BookAppointmentRequest("slot-uuid-1");
 
         mockMvc.perform(post("/api/v1/appointments")
                         .header("X-Requested-With", "XMLHttpRequest")
@@ -94,8 +94,8 @@ class AppointmentControllerTest {
     }
 
     @Test
-    void postAppointment_conRolProfesional_retorna403Forbidden() throws Exception {
-        ReservarCitaRequest req = new ReservarCitaRequest("slot-uuid-1");
+    void postAppointment_withProfessionalRole_returns403Forbidden() throws Exception {
+        BookAppointmentRequest req = new BookAppointmentRequest("slot-uuid-1");
 
         mockMvc.perform(post("/api/v1/appointments")
                         .cookie(new Cookie("access_token", TOKEN_PROFESIONAL))
@@ -111,11 +111,11 @@ class AppointmentControllerTest {
     // =========================================================================
 
     @Test
-    void postAppointment_conRolPacienteYDatosValidos_retorna201CreatedYLocationHeader() throws Exception {
-        ReservarCitaRequest req = new ReservarCitaRequest("slot-uuid-1");
+    void postAppointment_withPatientRoleAndDataValid_returns201CreatedAndLocationHeader() throws Exception {
+        BookAppointmentRequest req = new BookAppointmentRequest("slot-uuid-1");
         Instant ahora = Instant.now();
 
-        CitaResponse mockResponse = new CitaResponse(
+        AppointmentResponse mockResponse = new AppointmentResponse(
                 "cita-uuid-100", "slot-uuid-1", "pac-uuid-1", "Carlos Sanchez",
                 "prof-uuid-1", "Dra. Gomez", "esp-uuid-1", "Pediatria",
                 "sede-uuid-1", "Sede Central", "Carrera 7 # 40-62",
@@ -123,7 +123,7 @@ class AppointmentControllerTest {
                 "PRESENCIAL", "PROGRAMADA", null, null, ahora
         );
 
-        when(appointmentService.reservarCita(any(ReservarCitaRequest.class), eq(PACIENTE_UUID), anyString()))
+        when(appointmentService.bookAppointment(any(BookAppointmentRequest.class), eq(PACIENTE_UUID), anyString()))
                 .thenReturn(mockResponse);
 
         mockMvc.perform(post("/api/v1/appointments")
@@ -142,11 +142,11 @@ class AppointmentControllerTest {
     }
 
     @Test
-    void postAppointment_slotNoDisponible_retorna409Conflict() throws Exception {
-        ReservarCitaRequest req = new ReservarCitaRequest("slot-ocupado-uuid");
+    void postAppointment_slotUnavailable_returns409Conflict() throws Exception {
+        BookAppointmentRequest req = new BookAppointmentRequest("slot-ocupado-uuid");
 
-        when(appointmentService.reservarCita(any(ReservarCitaRequest.class), eq(PACIENTE_UUID), anyString()))
-                .thenThrow(new CitaNoDisponibleException("El slot de atencion ya ha sido reservado o no esta disponible."));
+        when(appointmentService.bookAppointment(any(BookAppointmentRequest.class), eq(PACIENTE_UUID), anyString()))
+                .thenThrow(new AppointmentUnavailableException("El slot de atencion ya ha sido reservado o no esta disponible."));
 
         mockMvc.perform(post("/api/v1/appointments")
                         .cookie(new Cookie("access_token", TOKEN_PACIENTE))
@@ -159,8 +159,8 @@ class AppointmentControllerTest {
     }
 
     @Test
-    void postAppointment_cuerpoInvalidoSlotBlanco_retorna400BadRequest() throws Exception {
-        ReservarCitaRequest req = new ReservarCitaRequest("   ");
+    void postAppointment_invalidBodyBlankSlot_returns400BadRequest() throws Exception {
+        BookAppointmentRequest req = new BookAppointmentRequest("   ");
 
         mockMvc.perform(post("/api/v1/appointments")
                         .cookie(new Cookie("access_token", TOKEN_PACIENTE))
@@ -186,10 +186,10 @@ class AppointmentControllerTest {
     }
 
     @Test
-    void cancelAppointment_conRolPacienteYAnticipacion_retorna200Ok() throws Exception {
-        CancelarCitaRequest req = new CancelarCitaRequest("Cancelacion anticipada");
+    void cancelAppointment_withPatientRoleAndAnticipacion_returns200Ok() throws Exception {
+        CancelAppointmentRequest req = new CancelAppointmentRequest("Cancelacion anticipada");
         Instant ahora = Instant.now();
-        CitaResponse mockResponse = new CitaResponse(
+        AppointmentResponse mockResponse = new AppointmentResponse(
                 "cita-uuid-1", "slot-uuid-1", "pac-uuid-1", "Carlos Sanchez",
                 "prof-uuid-1", "Dra. Gomez", "esp-uuid-1", "Pediatria",
                 "sede-uuid-1", "Sede Central", "Carrera 7 # 40-62",
@@ -197,7 +197,7 @@ class AppointmentControllerTest {
                 "PRESENCIAL", "CANCELADA", null, null, ahora
         );
 
-        when(appointmentService.cancelarCita(eq("cita-uuid-1"), any(CancelarCitaRequest.class), eq(PACIENTE_UUID), any(), anyString()))
+        when(appointmentService.cancelAppointment(eq("cita-uuid-1"), any(CancelAppointmentRequest.class), eq(PACIENTE_UUID), any(), anyString()))
                 .thenReturn(mockResponse);
 
         mockMvc.perform(patch("/api/v1/appointments/cita-uuid-1/cancel")
@@ -211,9 +211,9 @@ class AppointmentControllerTest {
     }
 
     @Test
-    void cancelAppointment_sinCuerpo_retorna200Ok() throws Exception {
+    void cancelAppointment_withoutBody_returns200Ok() throws Exception {
         Instant ahora = Instant.now();
-        CitaResponse mockResponse = new CitaResponse(
+        AppointmentResponse mockResponse = new AppointmentResponse(
                 "cita-uuid-1", "slot-uuid-1", "pac-uuid-1", "Carlos Sanchez",
                 "prof-uuid-1", "Dra. Gomez", "esp-uuid-1", "Pediatria",
                 "sede-uuid-1", "Sede Central", "Carrera 7 # 40-62",
@@ -221,7 +221,7 @@ class AppointmentControllerTest {
                 "PRESENCIAL", "CANCELADA", null, null, ahora
         );
 
-        when(appointmentService.cancelarCita(eq("cita-uuid-1"), any(), eq(PACIENTE_UUID), any(), anyString()))
+        when(appointmentService.cancelAppointment(eq("cita-uuid-1"), any(), eq(PACIENTE_UUID), any(), anyString()))
                 .thenReturn(mockResponse);
 
         mockMvc.perform(patch("/api/v1/appointments/cita-uuid-1/cancel")
@@ -233,9 +233,9 @@ class AppointmentControllerTest {
     }
 
     @Test
-    void cancelAppointment_conRolProfesional_retorna200Ok() throws Exception {
+    void cancelAppointment_withProfessionalRole_returns200Ok() throws Exception {
         Instant ahora = Instant.now();
-        CitaResponse mockResponse = new CitaResponse(
+        AppointmentResponse mockResponse = new AppointmentResponse(
                 "cita-uuid-1", "slot-uuid-1", "pac-uuid-1", "Carlos Sanchez",
                 "prof-uuid-1", "Dra. Gomez", "esp-uuid-1", "Pediatria",
                 "sede-uuid-1", "Sede Central", "Carrera 7 # 40-62",
@@ -243,7 +243,7 @@ class AppointmentControllerTest {
                 "PRESENCIAL", "CANCELADA", null, null, ahora
         );
 
-        when(appointmentService.cancelarCita(eq("cita-uuid-1"), any(), eq(PROFESIONAL_UUID), any(), anyString()))
+        when(appointmentService.cancelAppointment(eq("cita-uuid-1"), any(), eq(PROFESIONAL_UUID), any(), anyString()))
                 .thenReturn(mockResponse);
 
         mockMvc.perform(patch("/api/v1/appointments/cita-uuid-1/cancel")
@@ -255,9 +255,9 @@ class AppointmentControllerTest {
     }
 
     @Test
-    void cancelAppointment_conRolAdministrador_retorna200Ok() throws Exception {
+    void cancelAppointment_withAdminRole_returns200Ok() throws Exception {
         Instant ahora = Instant.now();
-        CitaResponse mockResponse = new CitaResponse(
+        AppointmentResponse mockResponse = new AppointmentResponse(
                 "cita-uuid-1", "slot-uuid-1", "pac-uuid-1", "Carlos Sanchez",
                 "prof-uuid-1", "Dra. Gomez", "esp-uuid-1", "Pediatria",
                 "sede-uuid-1", "Sede Central", "Carrera 7 # 40-62",
@@ -265,7 +265,7 @@ class AppointmentControllerTest {
                 "PRESENCIAL", "CANCELADA", null, null, ahora
         );
 
-        when(appointmentService.cancelarCita(eq("cita-uuid-1"), any(), eq(ADMIN_UUID), any(), anyString()))
+        when(appointmentService.cancelAppointment(eq("cita-uuid-1"), any(), eq(ADMIN_UUID), any(), anyString()))
                 .thenReturn(mockResponse);
 
         mockMvc.perform(patch("/api/v1/appointments/cita-uuid-1/cancel")
@@ -277,9 +277,9 @@ class AppointmentControllerTest {
     }
 
     @Test
-    void cancelAppointment_pacienteCancelaCitaAjena_retorna403Forbidden() throws Exception {
-        when(appointmentService.cancelarCita(eq("cita-uuid-1"), any(), eq(PACIENTE_UUID), any(), anyString()))
-                .thenThrow(new AccesoNoAutorizadoException("No tiene autorizacion para cancelar una cita ajena."));
+    void cancelAppointment_patientCancelaAppointmentOther_returns403Forbidden() throws Exception {
+        when(appointmentService.cancelAppointment(eq("cita-uuid-1"), any(), eq(PACIENTE_UUID), any(), anyString()))
+                .thenThrow(new UnauthorizedAccessException("No tiene autorizacion para cancelar una cita ajena."));
 
         mockMvc.perform(patch("/api/v1/appointments/cita-uuid-1/cancel")
                         .cookie(new Cookie("access_token", TOKEN_PACIENTE))
@@ -290,9 +290,9 @@ class AppointmentControllerTest {
     }
 
     @Test
-    void cancelAppointment_cancelacionTardia_retorna400BadRequest() throws Exception {
-        when(appointmentService.cancelarCita(eq("cita-uuid-1"), any(), eq(PACIENTE_UUID), any(), anyString()))
-                .thenThrow(new DatosInvalidosException("La cancelacion por parte del paciente solo esta permitida hasta 2 horas antes de la cita."));
+    void cancelAppointment_lateCancellation_returns400BadRequest() throws Exception {
+        when(appointmentService.cancelAppointment(eq("cita-uuid-1"), any(), eq(PACIENTE_UUID), any(), anyString()))
+                .thenThrow(new InvalidDataException("La cancelacion por parte del paciente solo esta permitida hasta 2 horas antes de la cita."));
 
         mockMvc.perform(patch("/api/v1/appointments/cita-uuid-1/cancel")
                         .cookie(new Cookie("access_token", TOKEN_PACIENTE))
@@ -303,9 +303,9 @@ class AppointmentControllerTest {
     }
 
     @Test
-    void cancelAppointment_transicionInvalida_retorna400BadRequest() throws Exception {
-        when(appointmentService.cancelarCita(eq("cita-uuid-1"), any(), eq(PACIENTE_UUID), any(), anyString()))
-                .thenThrow(new DatosInvalidosException("Transicion de estado no permitida de ATENDIDA a CANCELADA."));
+    void cancelAppointment_invalidTransition_returns400BadRequest() throws Exception {
+        when(appointmentService.cancelAppointment(eq("cita-uuid-1"), any(), eq(PACIENTE_UUID), any(), anyString()))
+                .thenThrow(new InvalidDataException("Transicion de estado no permitida de ATENDIDA a CANCELADA."));
 
         mockMvc.perform(patch("/api/v1/appointments/cita-uuid-1/cancel")
                         .cookie(new Cookie("access_token", TOKEN_PACIENTE))
@@ -316,9 +316,9 @@ class AppointmentControllerTest {
     }
 
     @Test
-    void cancelAppointment_conAtencionVinculada_retorna409Conflict() throws Exception {
-        when(appointmentService.cancelarCita(eq("cita-uuid-1"), any(), eq(PACIENTE_UUID), any(), anyString()))
-                .thenThrow(new ConflictoOperacionException("No es posible cancelar una cita que ya cuenta con una atencion clinica vinculada."));
+    void cancelAppointment_withLinkedAttention_returns409Conflict() throws Exception {
+        when(appointmentService.cancelAppointment(eq("cita-uuid-1"), any(), eq(PACIENTE_UUID), any(), anyString()))
+                .thenThrow(new OperationConflictException("No es posible cancelar una cita que ya cuenta con una atencion clinica vinculada."));
 
         mockMvc.perform(patch("/api/v1/appointments/cita-uuid-1/cancel")
                         .cookie(new Cookie("access_token", TOKEN_PACIENTE))
@@ -329,8 +329,8 @@ class AppointmentControllerTest {
     }
 
     @Test
-    void cancelAppointment_motivoExcede255Caracteres_retorna400BadRequest() throws Exception {
-        CancelarCitaRequest req = new CancelarCitaRequest("A".repeat(256));
+    void cancelAppointment_reasonExceeds255Chars_returns400BadRequest() throws Exception {
+        CancelAppointmentRequest req = new CancelAppointmentRequest("A".repeat(256));
 
         mockMvc.perform(patch("/api/v1/appointments/cita-uuid-1/cancel")
                         .cookie(new Cookie("access_token", TOKEN_PACIENTE))
@@ -347,8 +347,8 @@ class AppointmentControllerTest {
     // =========================================================================
 
     @Test
-    void noShow_porProfesionalAsignado_retorna200Ok() throws Exception {
-        CitaResponse mockResponse = new CitaResponse(
+    void notShow_byAssignedProfessional_returns200Ok() throws Exception {
+        AppointmentResponse mockResponse = new AppointmentResponse(
                 "cita-uuid-1", "slot-uuid-1", "paciente-uuid-1", "Pepito Perez",
                 "profesional-uuid-1", "Dr. House", "esp-uuid-1", "Medicina",
                 "sede-uuid-1", "Sede Central", "Calle 123",
@@ -356,7 +356,7 @@ class AppointmentControllerTest {
                 "NO_ASISTIO", null, null, Instant.now()
         );
 
-        when(appointmentService.marcarNoAsistio(eq("cita-uuid-1"), eq(PROFESIONAL_UUID), any(), anyString()))
+        when(appointmentService.markNoShow(eq("cita-uuid-1"), eq(PROFESIONAL_UUID), any(), anyString()))
                 .thenReturn(mockResponse);
 
         mockMvc.perform(patch("/api/v1/appointments/cita-uuid-1/no-show")
@@ -368,8 +368,8 @@ class AppointmentControllerTest {
     }
 
     @Test
-    void noShow_porAdmin_retorna200Ok() throws Exception {
-        CitaResponse mockResponse = new CitaResponse(
+    void notShow_byAdmin_returns200Ok() throws Exception {
+        AppointmentResponse mockResponse = new AppointmentResponse(
                 "cita-uuid-1", "slot-uuid-1", "paciente-uuid-1", "Pepito Perez",
                 "profesional-uuid-1", "Dr. House", "esp-uuid-1", "Medicina",
                 "sede-uuid-1", "Sede Central", "Calle 123",
@@ -377,7 +377,7 @@ class AppointmentControllerTest {
                 "NO_ASISTIO", null, null, Instant.now()
         );
 
-        when(appointmentService.marcarNoAsistio(eq("cita-uuid-1"), eq(ADMIN_UUID), any(), anyString()))
+        when(appointmentService.markNoShow(eq("cita-uuid-1"), eq(ADMIN_UUID), any(), anyString()))
                 .thenReturn(mockResponse);
 
         mockMvc.perform(patch("/api/v1/appointments/cita-uuid-1/no-show")
@@ -389,7 +389,7 @@ class AppointmentControllerTest {
     }
 
     @Test
-    void noShow_porPaciente_retorna403Forbidden() throws Exception {
+    void notShow_byPatient_returns403Forbidden() throws Exception {
         mockMvc.perform(patch("/api/v1/appointments/cita-uuid-1/no-show")
                         .cookie(new Cookie("access_token", TOKEN_PACIENTE))
                         .header("X-Requested-With", "XMLHttpRequest"))
@@ -397,16 +397,16 @@ class AppointmentControllerTest {
     }
 
     @Test
-    void noShow_sinAutenticacion_retorna401Unauthorized() throws Exception {
+    void notShow_withoutAuth_returns401Unauthorized() throws Exception {
         mockMvc.perform(patch("/api/v1/appointments/cita-uuid-1/no-show")
                         .header("X-Requested-With", "XMLHttpRequest"))
                 .andExpect(status().isUnauthorized());
     }
 
     @Test
-    void noShow_otroProfesional_retorna403Forbidden() throws Exception {
-        when(appointmentService.marcarNoAsistio(eq("cita-uuid-1"), eq(PROFESIONAL_UUID), any(), anyString()))
-                .thenThrow(new AccesoNoAutorizadoException("El profesional no tiene autorizacion para marcar inasistencia de citas de otro colega."));
+    void notShow_otherProfessional_returns403Forbidden() throws Exception {
+        when(appointmentService.markNoShow(eq("cita-uuid-1"), eq(PROFESIONAL_UUID), any(), anyString()))
+                .thenThrow(new UnauthorizedAccessException("El profesional no tiene autorizacion para marcar inasistencia de citas de otro colega."));
 
         mockMvc.perform(patch("/api/v1/appointments/cita-uuid-1/no-show")
                         .cookie(new Cookie("access_token", TOKEN_PROFESIONAL))
@@ -417,9 +417,9 @@ class AppointmentControllerTest {
     }
 
     @Test
-    void noShow_antesDeHoraInicio_retorna400BadRequest() throws Exception {
-        when(appointmentService.marcarNoAsistio(eq("cita-uuid-1"), eq(PROFESIONAL_UUID), any(), anyString()))
-                .thenThrow(new DatosInvalidosException("No es posible marcar inasistencia antes de la hora de inicio programada de la cita."));
+    void notShow_beforeTimeStart_returns400BadRequest() throws Exception {
+        when(appointmentService.markNoShow(eq("cita-uuid-1"), eq(PROFESIONAL_UUID), any(), anyString()))
+                .thenThrow(new InvalidDataException("No es posible marcar inasistencia antes de la hora de inicio programada de la cita."));
 
         mockMvc.perform(patch("/api/v1/appointments/cita-uuid-1/no-show")
                         .cookie(new Cookie("access_token", TOKEN_PROFESIONAL))
@@ -430,9 +430,9 @@ class AppointmentControllerTest {
     }
 
     @Test
-    void noShow_conAtencionVinculada_retorna409Conflict() throws Exception {
-        when(appointmentService.marcarNoAsistio(eq("cita-uuid-1"), eq(PROFESIONAL_UUID), any(), anyString()))
-                .thenThrow(new ConflictoOperacionException("No es posible marcar inasistencia para una cita que ya cuenta con una atencion clinica vinculada."));
+    void notShow_withLinkedAttention_returns409Conflict() throws Exception {
+        when(appointmentService.markNoShow(eq("cita-uuid-1"), eq(PROFESIONAL_UUID), any(), anyString()))
+                .thenThrow(new OperationConflictException("No es posible marcar inasistencia para una cita que ya cuenta con una atencion clinica vinculada."));
 
         mockMvc.perform(patch("/api/v1/appointments/cita-uuid-1/no-show")
                         .cookie(new Cookie("access_token", TOKEN_PROFESIONAL))
@@ -443,9 +443,9 @@ class AppointmentControllerTest {
     }
 
     @Test
-    void noShow_citaInexistente_retorna404NotFound() throws Exception {
-        when(appointmentService.marcarNoAsistio(eq("cita-fantasma"), eq(PROFESIONAL_UUID), any(), anyString()))
-                .thenThrow(new com.meditriaje.exception.RecursoNoEncontradoException("Cita no encontrada."));
+    void notShow_appointmentNotFound_returns404NotFound() throws Exception {
+        when(appointmentService.markNoShow(eq("cita-fantasma"), eq(PROFESIONAL_UUID), any(), anyString()))
+                .thenThrow(new com.meditriaje.exception.ResourceNotFoundException("Cita no encontrada."));
 
         mockMvc.perform(patch("/api/v1/appointments/cita-fantasma/no-show")
                         .cookie(new Cookie("access_token", TOKEN_PROFESIONAL))

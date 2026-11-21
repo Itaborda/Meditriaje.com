@@ -21,12 +21,12 @@ public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
-    @ExceptionHandler(RecursoNoEncontradoException.class)
-    public ResponseEntity<ApiError> handleRecursoNoEncontrado(RecursoNoEncontradoException ex) {
-        log.warn("Recurso no encontrado: codigo={}", ex.getCodigo());
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<ApiError> handleResourceNotFound(ResourceNotFoundException ex) {
+        log.warn("Recurso no encontrado: codigo={}", ex.getCode());
         return ResponseEntity
                 .status(HttpStatus.NOT_FOUND)
-                .body(ApiError.of(ex.getCodigo(), ex.getMessage(), null));
+                .body(ApiError.of(ex.getCode(), ex.getMessage(), null));
     }
 
     @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
@@ -37,36 +37,36 @@ public class GlobalExceptionHandler {
                 .body(ApiError.of("RECURSO_NO_ENCONTRADO", "El recurso solicitado no fue encontrado.", null));
     }
 
-    @ExceptionHandler(CredencialesInvalidasException.class)
-    public ResponseEntity<ApiError> handleCredencialesInvalidas(CredencialesInvalidasException ex) {
-        log.warn("Autenticacion fallida: codigo={}", ex.getCodigo());
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ResponseEntity<ApiError> handleInvalidCredentials(InvalidCredentialsException ex) {
+        log.warn("Autenticacion fallida: codigo={}", ex.getCode());
         return ResponseEntity
                 .status(HttpStatus.UNAUTHORIZED)
-                .body(ApiError.of(ex.getCodigo(), ex.getMessage(), null));
+                .body(ApiError.of(ex.getCode(), ex.getMessage(), null));
     }
 
-    @ExceptionHandler(TokenInvalidoException.class)
-    public ResponseEntity<ApiError> handleTokenInvalido(TokenInvalidoException ex) {
-        log.warn("Token invalido: codigo={}", ex.getCodigo());
+    @ExceptionHandler(InvalidTokenException.class)
+    public ResponseEntity<ApiError> handleInvalidToken(InvalidTokenException ex) {
+        log.warn("Token invalido: codigo={}", ex.getCode());
         return ResponseEntity
                 .status(HttpStatus.UNAUTHORIZED)
-                .body(ApiError.of(ex.getCodigo(), ex.getMessage(), null));
+                .body(ApiError.of(ex.getCode(), ex.getMessage(), null));
     }
 
-    @ExceptionHandler(DatosInvalidosException.class)
-    public ResponseEntity<ApiError> handleDatosInvalidos(DatosInvalidosException ex) {
-        log.warn("Datos invalidos: codigo={}", ex.getCodigo());
+    @ExceptionHandler(InvalidDataException.class)
+    public ResponseEntity<ApiError> handleInvalidData(InvalidDataException ex) {
+        log.warn("Datos invalidos: codigo={}", ex.getCode());
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
-                .body(ApiError.of(ex.getCodigo(), ex.getMessage(), null));
+                .body(ApiError.of(ex.getCode(), ex.getMessage(), null));
     }
 
-    @ExceptionHandler(AccesoNoAutorizadoException.class)
-    public ResponseEntity<ApiError> handleAccesoNoAutorizado(AccesoNoAutorizadoException ex) {
-        log.warn("Acceso no autorizado: codigo={}", ex.getCodigo());
+    @ExceptionHandler(UnauthorizedAccessException.class)
+    public ResponseEntity<ApiError> handleUnauthorizedAccess(UnauthorizedAccessException ex) {
+        log.warn("Acceso no autorizado: codigo={}", ex.getCode());
         return ResponseEntity
                 .status(HttpStatus.FORBIDDEN)
-                .body(ApiError.of(ex.getCodigo(), ex.getMessage(), null));
+                .body(ApiError.of(ex.getCode(), ex.getMessage(), null));
     }
 
     @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
@@ -85,31 +85,31 @@ public class GlobalExceptionHandler {
                 .body(ApiError.of("NO_AUTENTICADO", "Debe iniciar sesion para acceder a este recurso.", null));
     }
 
-    @ExceptionHandler({CitaNoDisponibleException.class, ConflictoOperacionException.class})
-    public ResponseEntity<ApiError> handleConflicto(MediTriajeException ex) {
-        log.warn("Conflicto de operacion o estado: codigo={}", ex.getCodigo());
+    @ExceptionHandler({AppointmentUnavailableException.class, OperationConflictException.class})
+    public ResponseEntity<ApiError> handleConflict(MediTriajeException ex) {
+        log.warn("Conflicto de operacion o estado: codigo={}", ex.getCode());
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
-                .body(ApiError.of(ex.getCodigo(), ex.getMessage(), null));
+                .body(ApiError.of(ex.getCode(), ex.getMessage(), null));
     }
 
-    @ExceptionHandler(LimitePeticionesExcedidoException.class)
-    public ResponseEntity<ApiError> handleLimitePeticionesExcedido(LimitePeticionesExcedidoException ex) {
-        log.warn("Limite de peticiones excedido: codigo={}", ex.getCodigo());
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<ApiError> handleRateLimitExceeded(RateLimitExceededException ex) {
+        log.warn("Limite de peticiones excedido: codigo={}", ex.getCode());
         return ResponseEntity
                 .status(HttpStatus.TOO_MANY_REQUESTS)
-                .body(ApiError.of(ex.getCodigo(), ex.getMessage(), null));
+                .body(ApiError.of(ex.getCode(), ex.getMessage(), null));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ApiError> handleValidacion(MethodArgumentNotValidException ex) {
-        String detalle = ex.getBindingResult().getFieldErrors().stream()
+    public ResponseEntity<ApiError> handleValidation(MethodArgumentNotValidException ex) {
+        String detail = ex.getBindingResult().getFieldErrors().stream()
                 .map(fe -> fe.getField() + ": " + fe.getDefaultMessage())
                 .collect(Collectors.joining("; "));
-        log.warn("Validacion fallida: {}", detalle);
+        log.warn("Validacion fallida: {}", detail);
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
-                .body(ApiError.of("VALIDACION_FALLIDA", detalle, null));
+                .body(ApiError.of("VALIDACION_FALLIDA", detail, null));
     }
 
     /**
@@ -117,7 +117,7 @@ public class GlobalExceptionHandler {
      * Logea el error internamente pero nunca expone el mensaje al cliente.
      */
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiError> handleGenerico(Exception ex) {
+    public ResponseEntity<ApiError> handleGeneric(Exception ex) {
         log.error("Error inesperado: tipo={}", ex.getClass().getSimpleName());
         return ResponseEntity
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)

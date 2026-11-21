@@ -1,6 +1,6 @@
 package com.meditriaje.controller.admin;
 
-import com.meditriaje.dto.admin.AdminCitaDetalleResponse;
+import com.meditriaje.dto.admin.AdminAppointmentDetailResponse;
 import com.meditriaje.dto.common.PaginatedResponse;
 import com.meditriaje.service.AdminAppointmentService;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -37,26 +37,26 @@ public class AdminAppointmentController {
      * Consulta paginada y filtrada de citas para el visor y calendario administrativo.
      */
     @GetMapping
-    public ResponseEntity<PaginatedResponse<AdminCitaDetalleResponse>> listarCitas(
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fechaDesde,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fechaHasta,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta,
-            @RequestParam(required = false) String profesionalPublicId,
-            @RequestParam(required = false) String especialidadPublicId,
-            @RequestParam(required = false) String estado,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "50") int size
+    public ResponseEntity<PaginatedResponse<AdminAppointmentDetailResponse>> listAppointments(
+            @RequestParam(value = "fechaDesde", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(value = "fechaHasta", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(value = "desde", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
+            @RequestParam(value = "hasta", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
+            @RequestParam(value = "profesionalPublicId", required = false) String professionalPublicId,
+            @RequestParam(value = "especialidadPublicId", required = false) String specialtyPublicId,
+            @RequestParam(value = "estado", required = false) String status,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "50") int size
     ) {
-        LocalDate fDesde = fechaDesde != null ? fechaDesde : desde;
-        LocalDate fHasta = fechaHasta != null ? fechaHasta : hasta;
+        LocalDate fDesde = dateFrom != null ? dateFrom : fromDate;
+        LocalDate fHasta = dateTo != null ? dateTo : toDate;
 
-        PaginatedResponse<AdminCitaDetalleResponse> response = adminAppointmentService.listarCitas(
+        PaginatedResponse<AdminAppointmentDetailResponse> response = adminAppointmentService.listAppointments(
                 fDesde,
                 fHasta,
-                profesionalPublicId,
-                especialidadPublicId,
-                estado,
+                professionalPublicId,
+                specialtyPublicId,
+                status,
                 page,
                 size
         );
@@ -67,24 +67,24 @@ public class AdminAppointmentController {
      * Exportación de citas a archivo CSV compatible con Microsoft Excel en formato nativo con BOM UTF-8.
      */
     @GetMapping("/export")
-    public ResponseEntity<byte[]> exportarCitas(
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fechaDesde,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fechaHasta,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta,
-            @RequestParam(required = false) String profesionalPublicId,
-            @RequestParam(required = false) String especialidadPublicId,
-            @RequestParam(required = false) String estado
+    public ResponseEntity<byte[]> exportAppointments(
+            @RequestParam(value = "fechaDesde", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(value = "fechaHasta", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(value = "desde", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
+            @RequestParam(value = "hasta", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
+            @RequestParam(value = "profesionalPublicId", required = false) String professionalPublicId,
+            @RequestParam(value = "especialidadPublicId", required = false) String specialtyPublicId,
+            @RequestParam(value = "estado", required = false) String status
     ) {
-        LocalDate fDesde = fechaDesde != null ? fechaDesde : desde;
-        LocalDate fHasta = fechaHasta != null ? fechaHasta : hasta;
+        LocalDate fDesde = dateFrom != null ? dateFrom : fromDate;
+        LocalDate fHasta = dateTo != null ? dateTo : toDate;
 
-        byte[] contenido = adminAppointmentService.exportarCitasExcelCsv(
+        byte[] contenido = adminAppointmentService.exportAppointmentsCsv(
                 fDesde,
                 fHasta,
-                profesionalPublicId,
-                especialidadPublicId,
-                estado
+                professionalPublicId,
+                specialtyPublicId,
+                status
         );
 
         String fechaSufijo = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));

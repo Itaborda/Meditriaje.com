@@ -4,9 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.meditriaje.db.OracleTestDatabase;
-import com.meditriaje.exception.AccesoNoAutorizadoException;
-import com.meditriaje.exception.DatosInvalidosException;
-import com.meditriaje.exception.RecursoNoEncontradoException;
+import com.meditriaje.exception.UnauthorizedAccessException;
+import com.meditriaje.exception.InvalidDataException;
+import com.meditriaje.exception.ResourceNotFoundException;
 import java.sql.Types;
 import java.util.List;
 import java.util.Map;
@@ -129,17 +129,17 @@ class PackageGatewayIT {
     @Test
     void businessRuleErrorIsTranslatedWithTheMessageOfThePackage() {
         assertThatThrownBy(() -> gateway.execute(RAISE_ERROR, error(-20300, "La receta ya fue anulada.")))
-                .isInstanceOf(DatosInvalidosException.class)
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessage("La receta ya fue anulada.");
     }
 
     @Test
     void notFoundAndAccessDeniedAreTranslated() {
         assertThatThrownBy(() -> gateway.execute(RAISE_ERROR, error(-20100, "Paciente no encontrado.")))
-                .isInstanceOf(RecursoNoEncontradoException.class)
+                .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("Paciente no encontrado.");
         assertThatThrownBy(() -> gateway.execute(RAISE_ERROR, error(-20400, "Acceso denegado.")))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessage("Acceso denegado.");
     }
 

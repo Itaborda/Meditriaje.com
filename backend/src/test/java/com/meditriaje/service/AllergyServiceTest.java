@@ -1,22 +1,22 @@
 package com.meditriaje.service;
 
-import com.meditriaje.dto.allergy.AlergiaResponse;
-import com.meditriaje.dto.allergy.InactivarAlergiaRequest;
-import com.meditriaje.dto.allergy.RegistrarAlergiaRequest;
-import com.meditriaje.exception.AccesoNoAutorizadoException;
-import com.meditriaje.exception.DatosInvalidosException;
-import com.meditriaje.exception.RecursoNoEncontradoException;
-import com.meditriaje.model.AccionAuditable;
-import com.meditriaje.model.Alergia;
-import com.meditriaje.model.EventoAuditoria;
-import com.meditriaje.model.Paciente;
-import com.meditriaje.model.Profesional;
-import com.meditriaje.model.Usuario;
-import com.meditriaje.repository.AlergiaRepository;
-import com.meditriaje.repository.AtencionRepository;
-import com.meditriaje.repository.PacienteRepository;
-import com.meditriaje.repository.ProfesionalRepository;
-import com.meditriaje.repository.UsuarioRepository;
+import com.meditriaje.dto.allergy.AllergyResponse;
+import com.meditriaje.dto.allergy.InactivateAllergyRequest;
+import com.meditriaje.dto.allergy.RegisterAllergyRequest;
+import com.meditriaje.exception.UnauthorizedAccessException;
+import com.meditriaje.exception.InvalidDataException;
+import com.meditriaje.exception.ResourceNotFoundException;
+import com.meditriaje.model.AuditableAction;
+import com.meditriaje.model.Allergy;
+import com.meditriaje.model.AuditEvent;
+import com.meditriaje.model.Patient;
+import com.meditriaje.model.Professional;
+import com.meditriaje.model.User;
+import com.meditriaje.repository.AllergyRepository;
+import com.meditriaje.repository.ClinicalAttentionRepository;
+import com.meditriaje.repository.PatientRepository;
+import com.meditriaje.repository.ProfessionalRepository;
+import com.meditriaje.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -49,19 +49,19 @@ import static org.mockito.Mockito.when;
 class AllergyServiceTest {
 
     @Mock
-    private AlergiaRepository alergiaRepository;
+    private AllergyRepository allergyRepository;
     @Mock
-    private PacienteRepository pacienteRepository;
+    private PatientRepository patientRepository;
     @Mock
-    private UsuarioRepository usuarioRepository;
+    private UserRepository userRepository;
     @Mock
-    private ProfesionalRepository profesionalRepository;
+    private ProfessionalRepository professionalRepository;
     @Mock
-    private AtencionRepository atencionRepository;
+    private ClinicalAttentionRepository attentionRepository;
     @Mock
-    private AccesoClinicoService accesoClinicoService;
+    private ClinicalAccessService clinicalAccessService;
     @Mock
-    private AuditoriaService auditoriaService;
+    private AuditService auditService;
 
     private Clock clock;
     private AllergyService allergyService;
@@ -72,13 +72,13 @@ class AllergyServiceTest {
     void setUp() {
         clock = Clock.fixed(now, ZoneId.of("America/Bogota"));
         allergyService = new AllergyService(
-                alergiaRepository,
-                pacienteRepository,
-                usuarioRepository,
-                profesionalRepository,
-                atencionRepository,
-                accesoClinicoService,
-                auditoriaService,
+                allergyRepository,
+                patientRepository,
+                userRepository,
+                professionalRepository,
+                attentionRepository,
+                clinicalAccessService,
+                auditService,
                 clock
         );
     }
@@ -89,45 +89,45 @@ class AllergyServiceTest {
 
     @Test
     @DisplayName("listarAlergiasPacienteParaProfesional: profesional con relación asistencial consulta y audita ALERGIA_CONSULTADA")
-    void listarAlergias_profesionalConRelacion_exito() {
-        Usuario usuario = new Usuario(1L, "usr-med-1", "med@hospital.co", "hash", "ACTIVO", 0, null, now);
-        Paciente paciente = new Paciente(10L, 2L, "pac-pub-1", "CC", "123456", "Juan", "Perez", null, null, now, now);
-        AlergiaResponse response = new AlergiaResponse(
+    void listAllergies_professionalWithRelationship_success() {
+        User usuario = new User(1L, "usr-med-1", "med@hospital.co", "hash", "ACTIVO", 0, null, now);
+        Patient paciente = new Patient(10L, 2L, "pac-pub-1", "CC", "123456", "Juan", "Perez", null, null, now, now);
+        AllergyResponse response = new AllergyResponse(
                 "ale-pub-1", "pac-pub-1", "Penicilina", "Urticaria", "MODERADA", "ACTIVA", "PROFESIONAL", false, null, now, null, null
         );
 
-        when(usuarioRepository.buscarPorPublicId("usr-med-1")).thenReturn(Optional.of(usuario));
-        when(pacienteRepository.buscarPorPublicId("pac-pub-1")).thenReturn(Optional.of(paciente));
-        when(alergiaRepository.listarPorPacientePublicId("pac-pub-1", false)).thenReturn(List.of(response));
+        when(userRepository.findByPublicId("usr-med-1")).thenReturn(Optional.of(usuario));
+        when(patientRepository.findByPublicId("pac-pub-1")).thenReturn(Optional.of(paciente));
+        when(allergyRepository.listByPatientPublicId("pac-pub-1", false)).thenReturn(List.of(response));
 
-        List<AlergiaResponse> resultado = allergyService.listarAlergiasPacienteParaProfesional(
+        List<AllergyResponse> resultado = allergyService.listPatientAllergiesForProfessional(
                 "pac-pub-1", false, "usr-med-1", List.of(new SimpleGrantedAuthority("ROLE_PROFESIONAL")), "127.0.0.1"
         );
 
         assertThat(resultado).hasSize(1);
-        assertThat(resultado.get(0).sustancia()).isEqualTo("Penicilina");
-        verify(accesoClinicoService).validarAccesoHistorialClinico(eq("usr-med-1"), eq("pac-pub-1"), any());
+        assertThat(resultado.get(0).substance()).isEqualTo("Penicilina");
+        verify(clinicalAccessService).validateClinicalHistoryAccess(eq("usr-med-1"), eq("pac-pub-1"), any());
 
-        ArgumentCaptor<EventoAuditoria> eventoCaptor = ArgumentCaptor.forClass(EventoAuditoria.class);
-        verify(auditoriaService).auditar(eventoCaptor.capture());
-        EventoAuditoria evento = eventoCaptor.getValue();
-        assertThat(evento.accion()).isEqualTo(AccionAuditable.ALERGIA_CONSULTADA);
-        assertThat(evento.recursoPublicId()).isEqualTo("pac-pub-1");
+        ArgumentCaptor<AuditEvent> eventoCaptor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).audit(eventoCaptor.capture());
+        AuditEvent evento = eventoCaptor.getValue();
+        assertThat(evento.action()).isEqualTo(AuditableAction.ALERGIA_CONSULTADA);
+        assertThat(evento.resourcePublicId()).isEqualTo("pac-pub-1");
     }
 
     @Test
     @DisplayName("listarAlergiasPacienteParaProfesional: sin autorización clínica lanza AccesoNoAutorizadoException")
-    void listarAlergias_sinAutorizacionClinica_lanzaAccesoNoAutorizado() {
-        Usuario usuario = new Usuario(1L, "usr-med-1", "med@hospital.co", "hash", "ACTIVO", 0, null, now);
-        when(usuarioRepository.buscarPorPublicId("usr-med-1")).thenReturn(Optional.of(usuario));
-        doThrow(new AccesoNoAutorizadoException("No existe relación asistencial activa."))
-                .when(accesoClinicoService).validarAccesoHistorialClinico(anyString(), anyString(), any());
+    void listAllergies_withoutClinicalAuth_throwsUnauthorizedAccess() {
+        User usuario = new User(1L, "usr-med-1", "med@hospital.co", "hash", "ACTIVO", 0, null, now);
+        when(userRepository.findByPublicId("usr-med-1")).thenReturn(Optional.of(usuario));
+        doThrow(new UnauthorizedAccessException("No existe relación asistencial activa."))
+                .when(clinicalAccessService).validateClinicalHistoryAccess(anyString(), anyString(), any());
 
-        assertThatThrownBy(() -> allergyService.listarAlergiasPacienteParaProfesional(
+        assertThatThrownBy(() -> allergyService.listPatientAllergiesForProfessional(
                 "pac-pub-1", false, "usr-med-1", List.of(new SimpleGrantedAuthority("ROLE_PROFESIONAL")), "127.0.0.1"
-        )).isInstanceOf(AccesoNoAutorizadoException.class);
+        )).isInstanceOf(UnauthorizedAccessException.class);
 
-        verify(alergiaRepository, never()).listarPorPacientePublicId(anyString(), anyBoolean());
+        verify(allergyRepository, never()).listByPatientPublicId(anyString(), anyBoolean());
     }
 
     // =========================================================================
@@ -136,74 +136,74 @@ class AllergyServiceTest {
 
     @Test
     @DisplayName("registrarAlergiaPorProfesional: profesional con relación ordinaria registra exitosamente y audita ALERGIA_REGISTRADA")
-    void registrarAlergia_profesionalConRelacionOrdinaria_exito() {
-        Usuario usuario = new Usuario(1L, "usr-med-1", "med@hospital.co", "hash", "ACTIVO", 0, null, now);
-        Profesional profesional = new Profesional(5L, 1L, "prof-pub-1", 100L, "RM-123", "Carlos", "Med", now, now);
-        Paciente paciente = new Paciente(10L, 2L, "pac-pub-1", "CC", "123456", "Juan", "Perez", null, null, now, now);
+    void registerAllergy_professionalWithRelationshipOrdinaria_success() {
+        User usuario = new User(1L, "usr-med-1", "med@hospital.co", "hash", "ACTIVO", 0, null, now);
+        Professional profesional = new Professional(5L, 1L, "prof-pub-1", 100L, "RM-123", "Carlos", "Med", now, now);
+        Patient paciente = new Patient(10L, 2L, "pac-pub-1", "CC", "123456", "Juan", "Perez", null, null, now, now);
 
-        when(usuarioRepository.buscarPorPublicId("usr-med-1")).thenReturn(Optional.of(usuario));
-        when(profesionalRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.of(profesional));
-        when(pacienteRepository.buscarPorPublicId("pac-pub-1")).thenReturn(Optional.of(paciente));
-        doNothing().when(accesoClinicoService).validarEscrituraClinica(5L, 10L);
-        when(alergiaRepository.existeActivaPorSustancia(10L, "Amoxicilina")).thenReturn(false);
-        when(alergiaRepository.crear(any(Alergia.class))).thenReturn(50L);
+        when(userRepository.findByPublicId("usr-med-1")).thenReturn(Optional.of(usuario));
+        when(professionalRepository.findByUserId(1L)).thenReturn(Optional.of(profesional));
+        when(patientRepository.findByPublicId("pac-pub-1")).thenReturn(Optional.of(paciente));
+        doNothing().when(clinicalAccessService).validateClinicalWriteAccess(5L, 10L);
+        when(allergyRepository.existsActiveBySubstance(10L, "Amoxicilina")).thenReturn(false);
+        when(allergyRepository.create(any(Allergy.class))).thenReturn(50L);
 
-        AlergiaResponse response = new AlergiaResponse(
+        AllergyResponse response = new AllergyResponse(
                 "ale-new-uuid", "pac-pub-1", "Amoxicilina", "Edema", "GRAVE", "ACTIVA", "PROFESIONAL", false, null, now, null, null
         );
-        when(alergiaRepository.buscarPorPublicId(anyString())).thenReturn(Optional.of(response));
+        when(allergyRepository.findByPublicId(anyString())).thenReturn(Optional.of(response));
 
-        RegistrarAlergiaRequest req = new RegistrarAlergiaRequest("Amoxicilina", "Edema", "GRAVE");
-        AlergiaResponse creada = allergyService.registrarAlergiaPorProfesional("pac-pub-1", req, "usr-med-1", "127.0.0.1");
+        RegisterAllergyRequest req = new RegisterAllergyRequest("Amoxicilina", "Edema", "GRAVE");
+        AllergyResponse creada = allergyService.registerAllergyByProfessional("pac-pub-1", req, "usr-med-1", "127.0.0.1");
 
-        assertThat(creada.sustancia()).isEqualTo("Amoxicilina");
-        assertThat(creada.autorreportada()).isFalse();
+        assertThat(creada.substance()).isEqualTo("Amoxicilina");
+        assertThat(creada.selfReported()).isFalse();
 
-        verify(accesoClinicoService).validarEscrituraClinica(5L, 10L);
-        verify(auditoriaService).auditar(any(EventoAuditoria.class));
+        verify(clinicalAccessService).validateClinicalWriteAccess(5L, 10L);
+        verify(auditService).audit(any(AuditEvent.class));
     }
 
     @Test
     @DisplayName("registrarAlergiaPorProfesional: break-glass solo lectura es rechazado para registrar alergia (403)")
-    void registrarAlergia_breakGlassSoloLectura_lanzaAccesoNoAutorizado() {
-        Usuario usuario = new Usuario(1L, "usr-med-1", "med@hospital.co", "hash", "ACTIVO", 0, null, now);
-        Profesional profesional = new Profesional(5L, 1L, "prof-pub-1", 100L, "RM-123", "Carlos", "Med", now, now);
-        Paciente paciente = new Paciente(10L, 2L, "pac-pub-1", "CC", "123456", "Juan", "Perez", null, null, now, now);
+    void registerAllergy_breakGlassOnlyLectura_throwsUnauthorizedAccess() {
+        User usuario = new User(1L, "usr-med-1", "med@hospital.co", "hash", "ACTIVO", 0, null, now);
+        Professional profesional = new Professional(5L, 1L, "prof-pub-1", 100L, "RM-123", "Carlos", "Med", now, now);
+        Patient paciente = new Patient(10L, 2L, "pac-pub-1", "CC", "123456", "Juan", "Perez", null, null, now, now);
 
-        when(usuarioRepository.buscarPorPublicId("usr-med-1")).thenReturn(Optional.of(usuario));
-        when(profesionalRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.of(profesional));
-        when(pacienteRepository.buscarPorPublicId("pac-pub-1")).thenReturn(Optional.of(paciente));
-        doThrow(new AccesoNoAutorizadoException("El acceso Break-Glass es de solo lectura; no permite registrar ni modificar informacion clinica."))
-                .when(accesoClinicoService).validarEscrituraClinica(5L, 10L);
+        when(userRepository.findByPublicId("usr-med-1")).thenReturn(Optional.of(usuario));
+        when(professionalRepository.findByUserId(1L)).thenReturn(Optional.of(profesional));
+        when(patientRepository.findByPublicId("pac-pub-1")).thenReturn(Optional.of(paciente));
+        doThrow(new UnauthorizedAccessException("El acceso Break-Glass es de solo lectura; no permite registrar ni modificar informacion clinica."))
+                .when(clinicalAccessService).validateClinicalWriteAccess(5L, 10L);
 
-        RegistrarAlergiaRequest req = new RegistrarAlergiaRequest("Aspirina", null, "MODERADA");
+        RegisterAllergyRequest req = new RegisterAllergyRequest("Aspirina", null, "MODERADA");
 
-        assertThatThrownBy(() -> allergyService.registrarAlergiaPorProfesional("pac-pub-1", req, "usr-med-1", "127.0.0.1"))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+        assertThatThrownBy(() -> allergyService.registerAllergyByProfessional("pac-pub-1", req, "usr-med-1", "127.0.0.1"))
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessageContaining("Break-Glass es de solo lectura");
 
-        verify(alergiaRepository, never()).crear(any());
+        verify(allergyRepository, never()).create(any());
     }
 
     @Test
     @DisplayName("registrarAlergiaPorProfesional: rechaza si la sustancia ya está activa para el paciente (400 DatosInvalidos)")
-    void registrarAlergia_sustanciaActivaDuplicada_lanzaDatosInvalidos() {
-        Usuario usuario = new Usuario(1L, "usr-med-1", "med@hospital.co", "hash", "ACTIVO", 0, null, now);
-        Profesional profesional = new Profesional(5L, 1L, "prof-pub-1", 100L, "RM-123", "Carlos", "Med", now, now);
-        Paciente paciente = new Paciente(10L, 2L, "pac-pub-1", "CC", "123456", "Juan", "Perez", null, null, now, now);
+    void registerAllergy_substanceActiveDuplicada_throwsInvalidData() {
+        User usuario = new User(1L, "usr-med-1", "med@hospital.co", "hash", "ACTIVO", 0, null, now);
+        Professional profesional = new Professional(5L, 1L, "prof-pub-1", 100L, "RM-123", "Carlos", "Med", now, now);
+        Patient paciente = new Patient(10L, 2L, "pac-pub-1", "CC", "123456", "Juan", "Perez", null, null, now, now);
 
-        when(usuarioRepository.buscarPorPublicId("usr-med-1")).thenReturn(Optional.of(usuario));
-        when(profesionalRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.of(profesional));
-        when(pacienteRepository.buscarPorPublicId("pac-pub-1")).thenReturn(Optional.of(paciente));
-        when(alergiaRepository.existeActivaPorSustancia(10L, "Penicilina")).thenReturn(true);
+        when(userRepository.findByPublicId("usr-med-1")).thenReturn(Optional.of(usuario));
+        when(professionalRepository.findByUserId(1L)).thenReturn(Optional.of(profesional));
+        when(patientRepository.findByPublicId("pac-pub-1")).thenReturn(Optional.of(paciente));
+        when(allergyRepository.existsActiveBySubstance(10L, "Penicilina")).thenReturn(true);
 
-        RegistrarAlergiaRequest req = new RegistrarAlergiaRequest("Penicilina", "Shock", "GRAVE");
+        RegisterAllergyRequest req = new RegisterAllergyRequest("Penicilina", "Shock", "GRAVE");
 
-        assertThatThrownBy(() -> allergyService.registrarAlergiaPorProfesional("pac-pub-1", req, "usr-med-1", "127.0.0.1"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> allergyService.registerAllergyByProfessional("pac-pub-1", req, "usr-med-1", "127.0.0.1"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("ya cuenta con una alergia activa");
 
-        verify(alergiaRepository, never()).crear(any());
+        verify(allergyRepository, never()).create(any());
     }
 
     // =========================================================================
@@ -212,48 +212,48 @@ class AllergyServiceTest {
 
     @Test
     @DisplayName("inactivarAlergiaPorProfesional: profesional con relación ordinaria inactiva exitosamente y audita ALERGIA_INACTIVADA")
-    void inactivarAlergia_profesional_exito() {
-        Usuario usuario = new Usuario(1L, "usr-med-1", "med@hospital.co", "hash", "ACTIVO", 0, null, now);
-        Profesional profesional = new Profesional(5L, 1L, "prof-pub-1", 100L, "RM-123", "Carlos", "Med", now, now);
-        Alergia alergia = new Alergia(20L, "ale-pub-1", 10L, "Penicilina", "Urticaria", "MODERADA", "ACTIVA", "PROFESIONAL", 1L, null, null, null, null, now, now);
+    void inactivateAllergy_professional_success() {
+        User usuario = new User(1L, "usr-med-1", "med@hospital.co", "hash", "ACTIVO", 0, null, now);
+        Professional profesional = new Professional(5L, 1L, "prof-pub-1", 100L, "RM-123", "Carlos", "Med", now, now);
+        Allergy alergia = new Allergy(20L, "ale-pub-1", 10L, "Penicilina", "Urticaria", "MODERADA", "ACTIVA", "PROFESIONAL", 1L, null, null, null, null, now, now);
 
-        when(usuarioRepository.buscarPorPublicId("usr-med-1")).thenReturn(Optional.of(usuario));
-        when(profesionalRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.of(profesional));
-        when(alergiaRepository.buscarEntidadPorPublicId("ale-pub-1")).thenReturn(Optional.of(alergia));
-        doNothing().when(accesoClinicoService).validarEscrituraClinica(5L, 10L);
-        when(alergiaRepository.inactivar(eq(20L), eq(1L), eq("Prueba negativa de hipersensibilidad"), any())).thenReturn(1);
+        when(userRepository.findByPublicId("usr-med-1")).thenReturn(Optional.of(usuario));
+        when(professionalRepository.findByUserId(1L)).thenReturn(Optional.of(profesional));
+        when(allergyRepository.findEntityByPublicId("ale-pub-1")).thenReturn(Optional.of(alergia));
+        doNothing().when(clinicalAccessService).validateClinicalWriteAccess(5L, 10L);
+        when(allergyRepository.inactivate(eq(20L), eq(1L), eq("Prueba negativa de hipersensibilidad"), any())).thenReturn(1);
 
-        AlergiaResponse response = new AlergiaResponse(
+        AllergyResponse response = new AllergyResponse(
                 "ale-pub-1", "pac-pub-1", "Penicilina", "Urticaria", "MODERADA", "INACTIVA", "PROFESIONAL", false, null, now, now, "Prueba negativa de hipersensibilidad"
         );
-        when(alergiaRepository.buscarPorPublicId("ale-pub-1")).thenReturn(Optional.of(response));
+        when(allergyRepository.findByPublicId("ale-pub-1")).thenReturn(Optional.of(response));
 
-        InactivarAlergiaRequest req = new InactivarAlergiaRequest("Prueba negativa de hipersensibilidad");
-        AlergiaResponse res = allergyService.inactivarAlergiaPorProfesional("ale-pub-1", req, "usr-med-1", "127.0.0.1");
+        InactivateAllergyRequest req = new InactivateAllergyRequest("Prueba negativa de hipersensibilidad");
+        AllergyResponse res = allergyService.inactivateAllergyByProfessional("ale-pub-1", req, "usr-med-1", "127.0.0.1");
 
-        assertThat(res.estado()).isEqualTo("INACTIVA");
-        assertThat(res.motivoInactivacion()).isEqualTo("Prueba negativa de hipersensibilidad");
-        verify(auditoriaService).auditar(any(EventoAuditoria.class));
+        assertThat(res.status()).isEqualTo("INACTIVA");
+        assertThat(res.inactivationReason()).isEqualTo("Prueba negativa de hipersensibilidad");
+        verify(auditService).audit(any(AuditEvent.class));
     }
 
     @Test
     @DisplayName("inactivarAlergiaPorProfesional: alergia ya inactiva lanza DatosInvalidosException")
-    void inactivarAlergia_yaInactiva_lanzaDatosInvalidos() {
-        Usuario usuario = new Usuario(1L, "usr-med-1", "med@hospital.co", "hash", "ACTIVO", 0, null, now);
-        Profesional profesional = new Profesional(5L, 1L, "prof-pub-1", 100L, "RM-123", "Carlos", "Med", now, now);
-        Alergia alergia = new Alergia(20L, "ale-pub-1", 10L, "Penicilina", "Urticaria", "MODERADA", "INACTIVA", "PROFESIONAL", 1L, null, now, 1L, "Inactivada antes", now, now);
+    void inactivateAllergy_alreadyInactive_throwsInvalidData() {
+        User usuario = new User(1L, "usr-med-1", "med@hospital.co", "hash", "ACTIVO", 0, null, now);
+        Professional profesional = new Professional(5L, 1L, "prof-pub-1", 100L, "RM-123", "Carlos", "Med", now, now);
+        Allergy alergia = new Allergy(20L, "ale-pub-1", 10L, "Penicilina", "Urticaria", "MODERADA", "INACTIVA", "PROFESIONAL", 1L, null, now, 1L, "Inactivada antes", now, now);
 
-        when(usuarioRepository.buscarPorPublicId("usr-med-1")).thenReturn(Optional.of(usuario));
-        when(profesionalRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.of(profesional));
-        when(alergiaRepository.buscarEntidadPorPublicId("ale-pub-1")).thenReturn(Optional.of(alergia));
+        when(userRepository.findByPublicId("usr-med-1")).thenReturn(Optional.of(usuario));
+        when(professionalRepository.findByUserId(1L)).thenReturn(Optional.of(profesional));
+        when(allergyRepository.findEntityByPublicId("ale-pub-1")).thenReturn(Optional.of(alergia));
 
-        InactivarAlergiaRequest req = new InactivarAlergiaRequest("Intento repetido de inactivacion");
+        InactivateAllergyRequest req = new InactivateAllergyRequest("Intento repetido de inactivacion");
 
-        assertThatThrownBy(() -> allergyService.inactivarAlergiaPorProfesional("ale-pub-1", req, "usr-med-1", "127.0.0.1"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> allergyService.inactivateAllergyByProfessional("ale-pub-1", req, "usr-med-1", "127.0.0.1"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("ya se encuentra inactiva");
 
-        verify(alergiaRepository, never()).inactivar(anyLong(), anyLong(), anyString(), any());
+        verify(allergyRepository, never()).inactivate(anyLong(), anyLong(), anyString(), any());
     }
 
     // =========================================================================
@@ -262,110 +262,110 @@ class AllergyServiceTest {
 
     @Test
     @DisplayName("listarMisAlergias: paciente consulta sus alergias y audita ALERGIA_CONSULTADA")
-    void listarMisAlergias_paciente_exito() {
-        Usuario usuario = new Usuario(2L, "usr-pac-1", "pac@test.co", "hash", "ACTIVO", 0, null, now);
-        Paciente paciente = new Paciente(10L, 2L, "pac-pub-1", "CC", "123456", "Juan", "Perez", null, null, now, now);
+    void listMyAllergies_patient_success() {
+        User usuario = new User(2L, "usr-pac-1", "pac@test.co", "hash", "ACTIVO", 0, null, now);
+        Patient paciente = new Patient(10L, 2L, "pac-pub-1", "CC", "123456", "Juan", "Perez", null, null, now, now);
 
-        when(usuarioRepository.buscarPorPublicId("usr-pac-1")).thenReturn(Optional.of(usuario));
-        when(pacienteRepository.buscarPorUsuarioId(2L)).thenReturn(Optional.of(paciente));
-        when(alergiaRepository.listarPorPacientePublicId("pac-pub-1", true)).thenReturn(List.of());
+        when(userRepository.findByPublicId("usr-pac-1")).thenReturn(Optional.of(usuario));
+        when(patientRepository.findByUserId(2L)).thenReturn(Optional.of(paciente));
+        when(allergyRepository.listByPatientPublicId("pac-pub-1", true)).thenReturn(List.of());
 
-        List<AlergiaResponse> lista = allergyService.listarMisAlergias("usr-pac-1", "127.0.0.1");
+        List<AllergyResponse> lista = allergyService.listMyAllergies("usr-pac-1", "127.0.0.1");
 
         assertThat(lista).isEmpty();
-        verify(auditoriaService).auditar(any(EventoAuditoria.class));
+        verify(auditService).audit(any(AuditEvent.class));
     }
 
     @Test
     @DisplayName("registrarMiAlergia: paciente declara alergia autorreportada (origen PACIENTE)")
-    void registrarMiAlergia_paciente_exito() {
-        Usuario usuario = new Usuario(2L, "usr-pac-1", "pac@test.co", "hash", "ACTIVO", 0, null, now);
-        Paciente paciente = new Paciente(10L, 2L, "pac-pub-1", "CC", "123456", "Juan", "Perez", null, null, now, now);
+    void registerMyAllergy_patient_success() {
+        User usuario = new User(2L, "usr-pac-1", "pac@test.co", "hash", "ACTIVO", 0, null, now);
+        Patient paciente = new Patient(10L, 2L, "pac-pub-1", "CC", "123456", "Juan", "Perez", null, null, now, now);
 
-        when(usuarioRepository.buscarPorPublicId("usr-pac-1")).thenReturn(Optional.of(usuario));
-        when(pacienteRepository.buscarPorUsuarioId(2L)).thenReturn(Optional.of(paciente));
-        when(alergiaRepository.existeActivaPorSustancia(10L, "Mariscos")).thenReturn(false);
-        when(alergiaRepository.crear(any(Alergia.class))).thenReturn(60L);
+        when(userRepository.findByPublicId("usr-pac-1")).thenReturn(Optional.of(usuario));
+        when(patientRepository.findByUserId(2L)).thenReturn(Optional.of(paciente));
+        when(allergyRepository.existsActiveBySubstance(10L, "Mariscos")).thenReturn(false);
+        when(allergyRepository.create(any(Allergy.class))).thenReturn(60L);
 
-        AlergiaResponse response = new AlergiaResponse(
+        AllergyResponse response = new AllergyResponse(
                 "ale-mar-1", "pac-pub-1", "Mariscos", "Prurito", "LEVE", "ACTIVA", "PACIENTE", true, null, now, null, null
         );
-        when(alergiaRepository.buscarPorPublicId(anyString())).thenReturn(Optional.of(response));
+        when(allergyRepository.findByPublicId(anyString())).thenReturn(Optional.of(response));
 
-        RegistrarAlergiaRequest req = new RegistrarAlergiaRequest("Mariscos", "Prurito", "LEVE");
-        AlergiaResponse res = allergyService.registrarMiAlergia(req, "usr-pac-1", "127.0.0.1");
+        RegisterAllergyRequest req = new RegisterAllergyRequest("Mariscos", "Prurito", "LEVE");
+        AllergyResponse res = allergyService.registerMyAllergy(req, "usr-pac-1", "127.0.0.1");
 
-        assertThat(res.sustancia()).isEqualTo("Mariscos");
-        assertThat(res.origen()).isEqualTo("PACIENTE");
-        assertThat(res.autorreportada()).isTrue();
+        assertThat(res.substance()).isEqualTo("Mariscos");
+        assertThat(res.origin()).isEqualTo("PACIENTE");
+        assertThat(res.selfReported()).isTrue();
 
-        ArgumentCaptor<Alergia> alergiaCaptor = ArgumentCaptor.forClass(Alergia.class);
-        verify(alergiaRepository).crear(alergiaCaptor.capture());
-        assertThat(alergiaCaptor.getValue().origen()).isEqualTo("PACIENTE");
-        assertThat(alergiaCaptor.getValue().registradaPorUsuarioId()).isEqualTo(2L);
+        ArgumentCaptor<Allergy> alergiaCaptor = ArgumentCaptor.forClass(Allergy.class);
+        verify(allergyRepository).create(alergiaCaptor.capture());
+        assertThat(alergiaCaptor.getValue().origin()).isEqualTo("PACIENTE");
+        assertThat(alergiaCaptor.getValue().registeredByUserId()).isEqualTo(2L);
     }
 
     @Test
     @DisplayName("inactivarMiAlergia: paciente puede inactivar su propia alergia autorreportada")
-    void inactivarMiAlergia_autorreportadaPropia_exito() {
-        Usuario usuario = new Usuario(2L, "usr-pac-1", "pac@test.co", "hash", "ACTIVO", 0, null, now);
-        Paciente paciente = new Paciente(10L, 2L, "pac-pub-1", "CC", "123456", "Juan", "Perez", null, null, now, now);
-        Alergia alergia = new Alergia(30L, "ale-pac-30", 10L, "Chocolate", "Granos", "LEVE", "ACTIVA", "PACIENTE", 2L, null, null, null, null, now, now);
+    void inactivateMyAllergy_selfReportedPropia_success() {
+        User usuario = new User(2L, "usr-pac-1", "pac@test.co", "hash", "ACTIVO", 0, null, now);
+        Patient paciente = new Patient(10L, 2L, "pac-pub-1", "CC", "123456", "Juan", "Perez", null, null, now, now);
+        Allergy alergia = new Allergy(30L, "ale-pac-30", 10L, "Chocolate", "Granos", "LEVE", "ACTIVA", "PACIENTE", 2L, null, null, null, null, now, now);
 
-        when(usuarioRepository.buscarPorPublicId("usr-pac-1")).thenReturn(Optional.of(usuario));
-        when(pacienteRepository.buscarPorUsuarioId(2L)).thenReturn(Optional.of(paciente));
-        when(alergiaRepository.buscarEntidadPorPublicId("ale-pac-30")).thenReturn(Optional.of(alergia));
-        when(alergiaRepository.inactivar(eq(30L), eq(2L), eq("Ya no me genera síntomas"), any())).thenReturn(1);
+        when(userRepository.findByPublicId("usr-pac-1")).thenReturn(Optional.of(usuario));
+        when(patientRepository.findByUserId(2L)).thenReturn(Optional.of(paciente));
+        when(allergyRepository.findEntityByPublicId("ale-pac-30")).thenReturn(Optional.of(alergia));
+        when(allergyRepository.inactivate(eq(30L), eq(2L), eq("Ya no me genera síntomas"), any())).thenReturn(1);
 
-        AlergiaResponse response = new AlergiaResponse(
+        AllergyResponse response = new AllergyResponse(
                 "ale-pac-30", "pac-pub-1", "Chocolate", "Granos", "LEVE", "INACTIVA", "PACIENTE", true, null, now, now, "Ya no me genera síntomas"
         );
-        when(alergiaRepository.buscarPorPublicId("ale-pac-30")).thenReturn(Optional.of(response));
+        when(allergyRepository.findByPublicId("ale-pac-30")).thenReturn(Optional.of(response));
 
-        InactivarAlergiaRequest req = new InactivarAlergiaRequest("Ya no me genera síntomas");
-        AlergiaResponse res = allergyService.inactivarMiAlergia("ale-pac-30", req, "usr-pac-1", "127.0.0.1");
+        InactivateAllergyRequest req = new InactivateAllergyRequest("Ya no me genera síntomas");
+        AllergyResponse res = allergyService.inactivateMyAllergy("ale-pac-30", req, "usr-pac-1", "127.0.0.1");
 
-        assertThat(res.estado()).isEqualTo("INACTIVA");
-        verify(auditoriaService).auditar(any(EventoAuditoria.class));
+        assertThat(res.status()).isEqualTo("INACTIVA");
+        verify(auditService).audit(any(AuditEvent.class));
     }
 
     @Test
     @DisplayName("inactivarMiAlergia: paciente NO puede inactivar una alergia diagnosticada por el profesional (403)")
-    void inactivarMiAlergia_origenProfesional_lanzaAccesoNoAutorizado() {
-        Usuario usuario = new Usuario(2L, "usr-pac-1", "pac@test.co", "hash", "ACTIVO", 0, null, now);
-        Paciente paciente = new Paciente(10L, 2L, "pac-pub-1", "CC", "123456", "Juan", "Perez", null, null, now, now);
-        Alergia alergia = new Alergia(40L, "ale-med-40", 10L, "Penicilina", "Shock", "GRAVE", "ACTIVA", "PROFESIONAL", 1L, null, null, null, null, now, now);
+    void inactivateMyAllergy_originProfessional_throwsUnauthorizedAccess() {
+        User usuario = new User(2L, "usr-pac-1", "pac@test.co", "hash", "ACTIVO", 0, null, now);
+        Patient paciente = new Patient(10L, 2L, "pac-pub-1", "CC", "123456", "Juan", "Perez", null, null, now, now);
+        Allergy alergia = new Allergy(40L, "ale-med-40", 10L, "Penicilina", "Shock", "GRAVE", "ACTIVA", "PROFESIONAL", 1L, null, null, null, null, now, now);
 
-        when(usuarioRepository.buscarPorPublicId("usr-pac-1")).thenReturn(Optional.of(usuario));
-        when(pacienteRepository.buscarPorUsuarioId(2L)).thenReturn(Optional.of(paciente));
-        when(alergiaRepository.buscarEntidadPorPublicId("ale-med-40")).thenReturn(Optional.of(alergia));
+        when(userRepository.findByPublicId("usr-pac-1")).thenReturn(Optional.of(usuario));
+        when(patientRepository.findByUserId(2L)).thenReturn(Optional.of(paciente));
+        when(allergyRepository.findEntityByPublicId("ale-med-40")).thenReturn(Optional.of(alergia));
 
-        InactivarAlergiaRequest req = new InactivarAlergiaRequest("Deseo quitarla porque no me gusta");
+        InactivateAllergyRequest req = new InactivateAllergyRequest("Deseo quitarla porque no me gusta");
 
-        assertThatThrownBy(() -> allergyService.inactivarMiAlergia("ale-med-40", req, "usr-pac-1", "127.0.0.1"))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+        assertThatThrownBy(() -> allergyService.inactivateMyAllergy("ale-med-40", req, "usr-pac-1", "127.0.0.1"))
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessageContaining("solo puede inactivar alergias autorreportadas");
 
-        verify(alergiaRepository, never()).inactivar(anyLong(), anyLong(), anyString(), any());
+        verify(allergyRepository, never()).inactivate(anyLong(), anyLong(), anyString(), any());
     }
 
     @Test
     @DisplayName("inactivarMiAlergia: paciente intentando inactivar alergia de otro paciente lanza AccesoNoAutorizadoException (403)")
-    void inactivarMiAlergia_otroPaciente_lanzaAccesoNoAutorizado() {
-        Usuario usuario = new Usuario(2L, "usr-pac-1", "pac@test.co", "hash", "ACTIVO", 0, null, now);
-        Paciente paciente = new Paciente(10L, 2L, "pac-pub-1", "CC", "123456", "Juan", "Perez", null, null, now, now);
-        Alergia alergiaAjena = new Alergia(50L, "ale-ajena-50", 99L, "Polen", "Rinitis", "LEVE", "ACTIVA", "PACIENTE", 99L, null, null, null, null, now, now);
+    void inactivateMyAllergy_otherPatient_throwsUnauthorizedAccess() {
+        User usuario = new User(2L, "usr-pac-1", "pac@test.co", "hash", "ACTIVO", 0, null, now);
+        Patient paciente = new Patient(10L, 2L, "pac-pub-1", "CC", "123456", "Juan", "Perez", null, null, now, now);
+        Allergy alergiaAjena = new Allergy(50L, "ale-ajena-50", 99L, "Polen", "Rinitis", "LEVE", "ACTIVA", "PACIENTE", 99L, null, null, null, null, now, now);
 
-        when(usuarioRepository.buscarPorPublicId("usr-pac-1")).thenReturn(Optional.of(usuario));
-        when(pacienteRepository.buscarPorUsuarioId(2L)).thenReturn(Optional.of(paciente));
-        when(alergiaRepository.buscarEntidadPorPublicId("ale-ajena-50")).thenReturn(Optional.of(alergiaAjena));
+        when(userRepository.findByPublicId("usr-pac-1")).thenReturn(Optional.of(usuario));
+        when(patientRepository.findByUserId(2L)).thenReturn(Optional.of(paciente));
+        when(allergyRepository.findEntityByPublicId("ale-ajena-50")).thenReturn(Optional.of(alergiaAjena));
 
-        InactivarAlergiaRequest req = new InactivarAlergiaRequest("Intento no autorizado");
+        InactivateAllergyRequest req = new InactivateAllergyRequest("Intento no autorizado");
 
-        assertThatThrownBy(() -> allergyService.inactivarMiAlergia("ale-ajena-50", req, "usr-pac-1", "127.0.0.1"))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+        assertThatThrownBy(() -> allergyService.inactivateMyAllergy("ale-ajena-50", req, "usr-pac-1", "127.0.0.1"))
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessageContaining("otro paciente");
 
-        verify(alergiaRepository, never()).inactivar(anyLong(), anyLong(), anyString(), any());
+        verify(allergyRepository, never()).inactivate(anyLong(), anyLong(), anyString(), any());
     }
 }

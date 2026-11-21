@@ -2,9 +2,9 @@ package com.meditriaje.controller;
 
 import com.meditriaje.config.CorsConfig;
 import com.meditriaje.config.SecurityConfig;
-import com.meditriaje.dto.clinical.DiagnosticoCie10Response;
+import com.meditriaje.dto.clinical.Cie10DiagnosisResponse;
 import com.meditriaje.exception.GlobalExceptionHandler;
-import com.meditriaje.repository.DiagnosticoCie10Repository;
+import com.meditriaje.repository.Cie10DiagnosisRepository;
 import com.meditriaje.security.JwtService;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,7 +34,7 @@ class Cie10CatalogControllerTest {
     private MockMvc mockMvc;
 
     @MockBean
-    private DiagnosticoCie10Repository diagnosticoCie10Repository;
+    private Cie10DiagnosisRepository diagnosticoCie10Repository;
 
     @MockBean
     private JwtService jwtService;
@@ -43,17 +43,17 @@ class Cie10CatalogControllerTest {
 
     @BeforeEach
     void setUpTokens() {
-        when(jwtService.esValido(TOKEN_PROFESIONAL)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_PROFESIONAL)).thenReturn("usr-prof-1");
-        when(jwtService.extraerRoles(TOKEN_PROFESIONAL)).thenReturn(List.of("ROLE_PROFESIONAL"));
+        when(jwtService.isValid(TOKEN_PROFESIONAL)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_PROFESIONAL)).thenReturn("usr-prof-1");
+        when(jwtService.extractRoles(TOKEN_PROFESIONAL)).thenReturn(List.of("ROLE_PROFESIONAL"));
     }
 
     @Test
     @DisplayName("GET /api/v1/catalogs/icd10 - Usuario autenticado: 200 OK")
-    void listarDiagnosticos_autenticado_retorna200Ok() throws Exception {
-        when(diagnosticoCie10Repository.listarActivos(any())).thenReturn(List.of(
-                new DiagnosticoCie10Response("J00", "Rinofaringitis aguda (resfriado comun)"),
-                new DiagnosticoCie10Response("J459", "Asma, no especificada")
+    void listDiagnoses_authenticated_returns200Ok() throws Exception {
+        when(diagnosticoCie10Repository.listActive(any())).thenReturn(List.of(
+                new Cie10DiagnosisResponse("J00", "Rinofaringitis aguda (resfriado comun)"),
+                new Cie10DiagnosisResponse("J459", "Asma, no especificada")
         ));
 
         mockMvc.perform(get("/api/v1/catalogs/icd10")
@@ -67,7 +67,7 @@ class Cie10CatalogControllerTest {
 
     @Test
     @DisplayName("GET /api/v1/catalogs/icd10 - Sin autenticación: 401 Unauthorized")
-    void listarDiagnosticos_sinAuth_retorna401() throws Exception {
+    void listDiagnoses_withoutAuth_returns401() throws Exception {
         mockMvc.perform(get("/api/v1/catalogs/icd10")
                         .header("X-Requested-With", "XMLHttpRequest"))
                 .andExpect(status().isUnauthorized());

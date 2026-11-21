@@ -1,30 +1,30 @@
 package com.meditriaje.service;
 
-import com.meditriaje.dto.clinical.AtencionResponse;
-import com.meditriaje.dto.emergency.ConsultarResumenRequest;
-import com.meditriaje.dto.emergency.summary.AlergiaEmergenciaDto;
-import com.meditriaje.dto.emergency.summary.AtencionResumenDto;
-import com.meditriaje.dto.emergency.summary.MedicamentoActivoDto;
-import com.meditriaje.dto.emergency.summary.PacienteEmergenciaDto;
-import com.meditriaje.dto.emergency.summary.ResumenSaludResponse;
-import com.meditriaje.dto.prescription.RecetaResponse;
-import com.meditriaje.exception.CredencialesInvalidasException;
-import com.meditriaje.exception.DatosInvalidosException;
-import com.meditriaje.exception.RecursoNoEncontradoException;
-import com.meditriaje.model.AccesoTemporalQr;
-import com.meditriaje.model.AccionAuditable;
-import com.meditriaje.model.Alergia;
-import com.meditriaje.model.EstadoAccesoQr;
-import com.meditriaje.model.EventoAuditoria;
-import com.meditriaje.model.Paciente;
-import com.meditriaje.model.ResultadoAuditoria;
-import com.meditriaje.model.Usuario;
-import com.meditriaje.repository.AccesoTemporalQrRepository;
-import com.meditriaje.repository.AlergiaRepository;
-import com.meditriaje.repository.AtencionRepository;
-import com.meditriaje.repository.PacienteRepository;
-import com.meditriaje.repository.RecetaRepository;
-import com.meditriaje.repository.UsuarioRepository;
+import com.meditriaje.dto.clinical.ClinicalAttentionResponse;
+import com.meditriaje.dto.emergency.ConsultSummaryRequest;
+import com.meditriaje.dto.emergency.summary.EmergencyAllergyDto;
+import com.meditriaje.dto.emergency.summary.AttentionSummaryDto;
+import com.meditriaje.dto.emergency.summary.ActiveMedicationDto;
+import com.meditriaje.dto.emergency.summary.EmergencyPatientDto;
+import com.meditriaje.dto.emergency.summary.HealthSummaryResponse;
+import com.meditriaje.dto.prescription.PrescriptionResponse;
+import com.meditriaje.exception.InvalidCredentialsException;
+import com.meditriaje.exception.InvalidDataException;
+import com.meditriaje.exception.ResourceNotFoundException;
+import com.meditriaje.model.TemporaryQrAccess;
+import com.meditriaje.model.AuditableAction;
+import com.meditriaje.model.Allergy;
+import com.meditriaje.model.QrAccessStatus;
+import com.meditriaje.model.AuditEvent;
+import com.meditriaje.model.Patient;
+import com.meditriaje.model.AuditResult;
+import com.meditriaje.model.User;
+import com.meditriaje.repository.TemporaryQrAccessRepository;
+import com.meditriaje.repository.AllergyRepository;
+import com.meditriaje.repository.ClinicalAttentionRepository;
+import com.meditriaje.repository.PatientRepository;
+import com.meditriaje.repository.PrescriptionRepository;
+import com.meditriaje.repository.UserRepository;
 import com.meditriaje.security.TokenHashUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
@@ -51,61 +51,61 @@ public class EmergencySummaryService {
 
     private static final Logger log = LoggerFactory.getLogger(EmergencySummaryService.class);
 
-    public static final ZoneId ZONE_BOGOTA = ZoneId.of("America/Bogota");
-    public static final String ADVERTENCIA_LEGAL = "El presente resumen clinico es un documento temporal de orientacion medica generado por el paciente bajo acceso controlado. No sustituye la historia clinica integral.";
+    public static final ZoneId BOGOTA_ZONE = ZoneId.of("America/Bogota");
+    public static final String LEGAL_WARNING = "El presente resumen clinico es un documento temporal de orientacion medica generado por el paciente bajo acceso controlado. No sustituye la historia clinica integral.";
 
-    private final AccesoTemporalQrRepository accesoTemporalQrRepository;
-    private final PacienteRepository pacienteRepository;
-    private final UsuarioRepository usuarioRepository;
-    private final AlergiaRepository alergiaRepository;
-    private final RecetaRepository recetaRepository;
-    private final AtencionRepository atencionRepository;
-    private final AuditoriaService auditoriaService;
+    private final TemporaryQrAccessRepository temporaryQrAccessRepository;
+    private final PatientRepository patientRepository;
+    private final UserRepository userRepository;
+    private final AllergyRepository allergyRepository;
+    private final PrescriptionRepository prescriptionRepository;
+    private final ClinicalAttentionRepository attentionRepository;
+    private final AuditService auditService;
     private final PasswordEncoder passwordEncoder;
     private final Clock clock;
 
     @Autowired
     public EmergencySummaryService(
-            AccesoTemporalQrRepository accesoTemporalQrRepository,
-            PacienteRepository pacienteRepository,
-            UsuarioRepository usuarioRepository,
-            AlergiaRepository alergiaRepository,
-            RecetaRepository recetaRepository,
-            AtencionRepository atencionRepository,
-            AuditoriaService auditoriaService,
+            TemporaryQrAccessRepository temporaryQrAccessRepository,
+            PatientRepository patientRepository,
+            UserRepository userRepository,
+            AllergyRepository allergyRepository,
+            PrescriptionRepository prescriptionRepository,
+            ClinicalAttentionRepository attentionRepository,
+            AuditService auditService,
             PasswordEncoder passwordEncoder
     ) {
         this(
-                accesoTemporalQrRepository,
-                pacienteRepository,
-                usuarioRepository,
-                alergiaRepository,
-                recetaRepository,
-                atencionRepository,
-                auditoriaService,
+                temporaryQrAccessRepository,
+                patientRepository,
+                userRepository,
+                allergyRepository,
+                prescriptionRepository,
+                attentionRepository,
+                auditService,
                 passwordEncoder,
                 Clock.systemUTC()
         );
     }
 
     public EmergencySummaryService(
-            AccesoTemporalQrRepository accesoTemporalQrRepository,
-            PacienteRepository pacienteRepository,
-            UsuarioRepository usuarioRepository,
-            AlergiaRepository alergiaRepository,
-            RecetaRepository recetaRepository,
-            AtencionRepository atencionRepository,
-            AuditoriaService auditoriaService,
+            TemporaryQrAccessRepository temporaryQrAccessRepository,
+            PatientRepository patientRepository,
+            UserRepository userRepository,
+            AllergyRepository allergyRepository,
+            PrescriptionRepository prescriptionRepository,
+            ClinicalAttentionRepository attentionRepository,
+            AuditService auditService,
             PasswordEncoder passwordEncoder,
             Clock clock
     ) {
-        this.accesoTemporalQrRepository = Objects.requireNonNull(accesoTemporalQrRepository, "accesoTemporalQrRepository no puede ser nulo");
-        this.pacienteRepository = Objects.requireNonNull(pacienteRepository, "pacienteRepository no puede ser nulo");
-        this.usuarioRepository = Objects.requireNonNull(usuarioRepository, "usuarioRepository no puede ser nulo");
-        this.alergiaRepository = Objects.requireNonNull(alergiaRepository, "alergiaRepository no puede ser nulo");
-        this.recetaRepository = Objects.requireNonNull(recetaRepository, "recetaRepository no puede ser nulo");
-        this.atencionRepository = Objects.requireNonNull(atencionRepository, "atencionRepository no puede ser nulo");
-        this.auditoriaService = Objects.requireNonNull(auditoriaService, "auditoriaService no puede ser nulo");
+        this.temporaryQrAccessRepository = Objects.requireNonNull(temporaryQrAccessRepository, "accesoTemporalQrRepository no puede ser nulo");
+        this.patientRepository = Objects.requireNonNull(patientRepository, "pacienteRepository no puede ser nulo");
+        this.userRepository = Objects.requireNonNull(userRepository, "usuarioRepository no puede ser nulo");
+        this.allergyRepository = Objects.requireNonNull(allergyRepository, "alergiaRepository no puede ser nulo");
+        this.prescriptionRepository = Objects.requireNonNull(prescriptionRepository, "recetaRepository no puede ser nulo");
+        this.attentionRepository = Objects.requireNonNull(attentionRepository, "atencionRepository no puede ser nulo");
+        this.auditService = Objects.requireNonNull(auditService, "auditoriaService no puede ser nulo");
         this.passwordEncoder = Objects.requireNonNull(passwordEncoder, "passwordEncoder no puede ser nulo");
         this.clock = Objects.requireNonNull(clock, "clock no puede ser nulo");
     }
@@ -114,31 +114,31 @@ public class EmergencySummaryService {
      * Consulta pública protegida del resumen clínico de salud mediante token criptográfico y PIN opcional.
      * Valida vigencia, consume un acceso atómicamente y audita el evento sin exponer datos clínicos en bitácora.
      */
-    @Transactional(noRollbackFor = CredencialesInvalidasException.class)
-    public ResumenSaludResponse consultarResumenPorToken(String token, ConsultarResumenRequest request, String ipOrigen) {
+    @Transactional(noRollbackFor = InvalidCredentialsException.class)
+    public HealthSummaryResponse getSummaryByToken(String token, ConsultSummaryRequest request, String ipOrigen) {
         if (token == null || token.isBlank()) {
-            throw new RecursoNoEncontradoException("Acceso de emergencia no valido o inexistente.");
+            throw new ResourceNotFoundException("Acceso de emergencia no valido o inexistente.");
         }
 
         String tokenHash = TokenHashUtil.hash(token.trim());
-        AccesoTemporalQr acceso = accesoTemporalQrRepository.buscarPorTokenHash(tokenHash)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Acceso de emergencia no valido o inexistente."));
+        TemporaryQrAccess acceso = temporaryQrAccessRepository.findByTokenHash(tokenHash)
+                .orElseThrow(() -> new ResourceNotFoundException("Acceso de emergencia no valido o inexistente."));
 
         Instant now = Instant.now(clock);
-        EstadoAccesoQr estado = acceso.resolverEstado(now);
+        QrAccessStatus estado = acceso.resolveStatus(now);
 
-        if (estado == EstadoAccesoQr.REVOCADO) {
-            throw new DatosInvalidosException("El acceso QR ha sido revocado por el paciente.");
+        if (estado == QrAccessStatus.REVOCADO) {
+            throw new InvalidDataException("El acceso QR ha sido revocado por el paciente.");
         }
-        if (estado == EstadoAccesoQr.EXPIRADO) {
-            throw new DatosInvalidosException("El acceso QR ha expirado.");
+        if (estado == QrAccessStatus.EXPIRADO) {
+            throw new InvalidDataException("El acceso QR ha expirado.");
         }
-        if (estado == EstadoAccesoQr.AGOTADO) {
-            throw new DatosInvalidosException("El acceso QR ha superado el limite maximo de lecturas permitidas.");
+        if (estado == QrAccessStatus.AGOTADO) {
+            throw new InvalidDataException("El acceso QR ha superado el limite maximo de lecturas permitidas.");
         }
 
         // Validación de PIN de seguridad si el token lo requiere (SEC-002)
-        if (acceso.requierePin()) {
+        if (acceso.requiresPin()) {
             String pinProporcionado = (request != null && request.pin() != null) ? request.pin().trim() : "";
             // Comparación de PIN en tiempo constante con Argon2id
             String pinAValidar = pinProporcionado.isBlank() ? "----" : pinProporcionado;
@@ -152,20 +152,20 @@ public class EmergencySummaryService {
 
             if (!pinValido) {
                 // Registrar intento fallido: incrementa fallos, cuenta para MAX_ACCESOS y revoca tras 3 fallos
-                accesoTemporalQrRepository.registrarPinFallido(acceso.id());
-                int nuevosFallos = acceso.intentosPinFallidos() + 1;
+                temporaryQrAccessRepository.recordFailedPin(acceso.id());
+                int nuevosFallos = acceso.failedPinAttempts() + 1;
                 boolean bloqueado = (nuevosFallos >= 3);
 
                 try {
-                    Paciente pac = pacienteRepository.buscarPorId(acceso.pacienteId()).orElse(null);
-                    Long usuarioId = (pac != null) ? pac.usuarioId() : null;
+                    Patient pac = patientRepository.findById(acceso.patientId()).orElse(null);
+                    Long usuarioId = (pac != null) ? pac.userId() : null;
                     if (usuarioId != null) {
-                        auditoriaService.auditar(new EventoAuditoria(
+                        auditService.audit(new AuditEvent(
                                 usuarioId,
-                                AccionAuditable.ACCESO_EMERGENCIA_QR,
+                                AuditableAction.ACCESO_EMERGENCIA_QR,
                                 "RESUMEN_SALUD",
                                 acceso.publicId(),
-                                bloqueado ? ResultadoAuditoria.BLOQUEADO : ResultadoAuditoria.FALLO,
+                                bloqueado ? AuditResult.BLOQUEADO : AuditResult.FALLO,
                                 ipOrigen
                         ));
                     }
@@ -173,7 +173,7 @@ public class EmergencySummaryService {
                     log.warn("Fallo no bloqueante al auditar intento fallido de PIN QR: {}", ex.getMessage());
                 }
 
-                throw new CredencialesInvalidasException(
+                throw new InvalidCredentialsException(
                         bloqueado
                                 ? "El acceso QR ha sido revocado por superar el limite de intentos fallidos de PIN."
                                 : "El PIN de seguridad proporcionado es incorrecto o el acceso ha sido revocado."
@@ -182,75 +182,75 @@ public class EmergencySummaryService {
         }
 
         // Registro atómico de acceso (decrementa cupo disponible en BD)
-        int actualizados = accesoTemporalQrRepository.registrarAcceso(acceso.id(), now);
+        int actualizados = temporaryQrAccessRepository.recordAccess(acceso.id(), now);
         if (actualizados == 0) {
-            throw new DatosInvalidosException("El acceso QR ya no se encuentra disponible.");
+            throw new InvalidDataException("El acceso QR ya no se encuentra disponible.");
         }
 
-        Paciente paciente = pacienteRepository.buscarPorId(acceso.pacienteId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado."));
+        Patient paciente = patientRepository.findById(acceso.patientId())
+                .orElseThrow(() -> new ResourceNotFoundException("Paciente no encontrado."));
 
-        Usuario usuario = usuarioRepository.buscarPorId(paciente.usuarioId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado."));
+        User usuario = userRepository.findById(paciente.userId())
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
 
         // Auditoría obligatoria inmutable (ADR-010, ADR-011)
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.ACCESO_EMERGENCIA_QR,
+                AuditableAction.ACCESO_EMERGENCIA_QR,
                 "RESUMEN_SALUD",
                 acceso.publicId(),
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
         // 1. Datos básicos del paciente
-        LocalDate fechaHoy = LocalDate.ofInstant(now, ZONE_BOGOTA);
-        int edad = paciente.fechaNacimiento() != null
-                ? Period.between(paciente.fechaNacimiento(), fechaHoy).getYears()
+        LocalDate fechaHoy = LocalDate.ofInstant(now, BOGOTA_ZONE);
+        int edad = paciente.birthDate() != null
+                ? Period.between(paciente.birthDate(), fechaHoy).getYears()
                 : 0;
 
-        String telefono = acceso.incluirContacto() ? paciente.telefono() : null;
-        String email = acceso.incluirContacto() ? usuario.email() : null;
+        String telefono = acceso.includeContact() ? paciente.phone() : null;
+        String email = acceso.includeContact() ? usuario.email() : null;
 
-        PacienteEmergenciaDto pacienteDto = new PacienteEmergenciaDto(
-                paciente.nombres() + " " + paciente.apellidos(),
-                paciente.tipoDocumento(),
-                paciente.numeroDocumento(),
-                paciente.fechaNacimiento(),
+        EmergencyPatientDto pacienteDto = new EmergencyPatientDto(
+                paciente.firstNames() + " " + paciente.lastNames(),
+                paciente.documentType(),
+                paciente.documentNumber(),
+                paciente.birthDate(),
                 edad,
                 telefono,
                 email
         );
 
         // 2. Alergias registradas (si el alcance lo autoriza)
-        List<AlergiaEmergenciaDto> alergiasList = new ArrayList<>();
-        if (acceso.incluirAlergias()) {
-            List<Alergia> alergias = alergiaRepository.listarPorPacienteId(paciente.id());
-            for (Alergia a : alergias) {
-                alergiasList.add(new AlergiaEmergenciaDto(a.sustancia(), a.reaccion(), a.severidad(), a.origen()));
+        List<EmergencyAllergyDto> alergiasList = new ArrayList<>();
+        if (acceso.includeAllergies()) {
+            List<Allergy> alergias = allergyRepository.listByPatientId(paciente.id());
+            for (Allergy a : alergias) {
+                alergiasList.add(new EmergencyAllergyDto(a.substance(), a.reaction(), a.severity(), a.origin()));
             }
         }
 
         // 3. Medicamentos activos de recetas vigentes (si el alcance lo autoriza)
-        List<MedicamentoActivoDto> medicamentosList = new ArrayList<>();
-        if (acceso.incluirMedicamentos()) {
-            List<RecetaResponse> recetas = recetaRepository.listarPorPacienteId(paciente.id(), 0, 50);
-            for (RecetaResponse r : recetas) {
-                if (r.createdAt() != null && r.createdAt().plus(r.vigenciaDias(), ChronoUnit.DAYS).isAfter(now)) {
-                    if (r.detalles() != null) {
-                        for (var d : r.detalles()) {
-                            medicamentosList.add(new MedicamentoActivoDto(
-                                    d.nombreComercial(),
-                                    d.principioActivo(),
-                                    d.presentacion(),
-                                    d.concentracion(),
-                                    d.dosis(),
-                                    d.frecuencia(),
-                                    d.duracionDias(),
-                                    d.cantidad(),
-                                    d.indicaciones(),
+        List<ActiveMedicationDto> medicamentosList = new ArrayList<>();
+        if (acceso.includeMedications()) {
+            List<PrescriptionResponse> recetas = prescriptionRepository.listByPatientId(paciente.id(), 0, 50);
+            for (PrescriptionResponse r : recetas) {
+                if (r.createdAt() != null && r.createdAt().plus(r.validityDays(), ChronoUnit.DAYS).isAfter(now)) {
+                    if (r.details() != null) {
+                        for (var d : r.details()) {
+                            medicamentosList.add(new ActiveMedicationDto(
+                                    d.brandName(),
+                                    d.activeIngredient(),
+                                    d.presentation(),
+                                    d.concentration(),
+                                    d.dose(),
+                                    d.frequency(),
+                                    d.durationDays(),
+                                    d.quantity(),
+                                    d.instructions(),
                                     r.createdAt(),
-                                    r.vigenciaDias()
+                                    r.validityDays()
                             ));
                         }
                     }
@@ -259,29 +259,29 @@ public class EmergencySummaryService {
         }
 
         // 4. Antecedentes / Atenciones clínicas recientes (si el alcance lo autoriza)
-        List<AtencionResumenDto> atencionesList = new ArrayList<>();
-        if (acceso.incluirAtenciones()) {
-            List<AtencionResponse> atenciones = atencionRepository.listarHistoriaPaciente(paciente.id(), 0, 5);
-            for (AtencionResponse at : atenciones) {
-                Instant fechaAtencion = at.fechaCierre() != null ? at.fechaCierre() : at.createdAt();
-                atencionesList.add(new AtencionResumenDto(
+        List<AttentionSummaryDto> atencionesList = new ArrayList<>();
+        if (acceso.includeAttentions()) {
+            List<ClinicalAttentionResponse> atenciones = attentionRepository.listPatientHistory(paciente.id(), 0, 5);
+            for (ClinicalAttentionResponse at : atenciones) {
+                Instant fechaAtencion = at.closedAt() != null ? at.closedAt() : at.createdAt();
+                atencionesList.add(new AttentionSummaryDto(
                         fechaAtencion,
-                        at.especialidadNombre(),
-                        at.diagnosticoCodigo(),
-                        at.diagnosticoDescripcion(),
-                        at.motivoConsulta(),
-                        at.indicaciones()
+                        at.specialtyName(),
+                        at.diagnosisCode(),
+                        at.diagnosisDescription(),
+                        at.consultationReason(),
+                        at.instructions()
                 ));
             }
         }
 
-        return new ResumenSaludResponse(
+        return new HealthSummaryResponse(
                 pacienteDto,
                 alergiasList,
                 medicamentosList,
                 atencionesList,
                 now,
-                ADVERTENCIA_LEGAL
+                LEGAL_WARNING
         );
     }
 }

@@ -1,19 +1,19 @@
 package com.meditriaje.service;
 
-import com.meditriaje.dto.emergency.AccesoQrResponse;
-import com.meditriaje.dto.emergency.GenerarQrRequest;
-import com.meditriaje.dto.emergency.GenerarQrResponse;
-import com.meditriaje.dto.emergency.VerificarQrResponse;
-import com.meditriaje.exception.AccesoNoAutorizadoException;
-import com.meditriaje.exception.RecursoNoEncontradoException;
-import com.meditriaje.model.AccesoTemporalQr;
-import com.meditriaje.model.AccionAuditable;
-import com.meditriaje.model.EventoAuditoria;
-import com.meditriaje.model.Paciente;
-import com.meditriaje.model.Usuario;
-import com.meditriaje.repository.AccesoTemporalQrRepository;
-import com.meditriaje.repository.PacienteRepository;
-import com.meditriaje.repository.UsuarioRepository;
+import com.meditriaje.dto.emergency.QrAccessResponse;
+import com.meditriaje.dto.emergency.GenerateQrRequest;
+import com.meditriaje.dto.emergency.GenerateQrResponse;
+import com.meditriaje.dto.emergency.VerifyQrResponse;
+import com.meditriaje.exception.UnauthorizedAccessException;
+import com.meditriaje.exception.ResourceNotFoundException;
+import com.meditriaje.model.TemporaryQrAccess;
+import com.meditriaje.model.AuditableAction;
+import com.meditriaje.model.AuditEvent;
+import com.meditriaje.model.Patient;
+import com.meditriaje.model.User;
+import com.meditriaje.repository.TemporaryQrAccessRepository;
+import com.meditriaje.repository.PatientRepository;
+import com.meditriaje.repository.UserRepository;
 import com.meditriaje.security.TokenHashUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -43,16 +43,16 @@ import static org.mockito.Mockito.when;
 class EmergencyQrServiceTest {
 
     @Mock
-    private AccesoTemporalQrRepository accesoTemporalQrRepository;
+    private TemporaryQrAccessRepository temporaryQrAccessRepository;
 
     @Mock
-    private PacienteRepository pacienteRepository;
+    private PatientRepository patientRepository;
 
     @Mock
-    private UsuarioRepository usuarioRepository;
+    private UserRepository userRepository;
 
     @Mock
-    private AuditoriaService auditoriaService;
+    private AuditService auditService;
 
     @Mock
     private PasswordEncoder passwordEncoder;
@@ -62,8 +62,8 @@ class EmergencyQrServiceTest {
 
     private EmergencyQrService emergencyQrService;
 
-    private Usuario usuarioPaciente;
-    private Paciente paciente;
+    private User usuarioPaciente;
+    private Patient paciente;
 
     @BeforeEach
     void setUp() {
@@ -71,15 +71,15 @@ class EmergencyQrServiceTest {
         fixedClock = Clock.fixed(fixedInstant, ZoneOffset.UTC);
 
         emergencyQrService = new EmergencyQrService(
-                accesoTemporalQrRepository,
-                pacienteRepository,
-                usuarioRepository,
-                auditoriaService,
+                temporaryQrAccessRepository,
+                patientRepository,
+                userRepository,
+                auditService,
                 passwordEncoder,
                 fixedClock
         );
 
-        usuarioPaciente = new Usuario(
+        usuarioPaciente = new User(
                 10L,
                 "user-pac-uuid",
                 "paciente@test.com",
@@ -94,7 +94,7 @@ class EmergencyQrServiceTest {
                 null
         );
 
-        paciente = new Paciente(
+        paciente = new Patient(
                 20L,
                 10L,
                 "pac-uuid-1",
@@ -111,183 +111,183 @@ class EmergencyQrServiceTest {
 
     @Test
     @DisplayName("generarAccesoQr: genera token de 256 bits, hash SHA-256, expira en 15 min y audita")
-    void generarAccesoQr_exitoSinPin() {
-        when(usuarioRepository.buscarPorPublicId("user-pac-uuid")).thenReturn(Optional.of(usuarioPaciente));
-        when(pacienteRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.of(paciente));
-        when(accesoTemporalQrRepository.crear(any(AccesoTemporalQr.class))).thenReturn(100L);
+    void generateAccessQr_successWithoutPin() {
+        when(userRepository.findByPublicId("user-pac-uuid")).thenReturn(Optional.of(usuarioPaciente));
+        when(patientRepository.findByUserId(10L)).thenReturn(Optional.of(paciente));
+        when(temporaryQrAccessRepository.create(any(TemporaryQrAccess.class))).thenReturn(100L);
 
-        GenerarQrRequest request = new GenerarQrRequest(null, true, true, true, true);
-        GenerarQrResponse response = emergencyQrService.generarAccesoQr(request, "user-pac-uuid", "192.168.1.1");
+        GenerateQrRequest request = new GenerateQrRequest(null, true, true, true, true);
+        GenerateQrResponse response = emergencyQrService.generateQrAccess(request, "user-pac-uuid", "192.168.1.1");
 
         assertThat(response).isNotNull();
         assertThat(response.token()).isNotBlank();
         assertThat(response.token().length()).isGreaterThan(30);
         assertThat(response.qrUrl()).isEqualTo("#/emergency-summary/" + response.token());
-        assertThat(response.expiraAt()).isEqualTo(fixedInstant.plus(15, ChronoUnit.MINUTES));
-        assertThat(response.maxAccesos()).isEqualTo(3);
-        assertThat(response.requierePin()).isFalse();
-        assertThat(response.incluirAlergias()).isTrue();
-        assertThat(response.incluirMedicamentos()).isTrue();
-        assertThat(response.incluirAtenciones()).isTrue();
-        assertThat(response.incluirContacto()).isTrue();
+        assertThat(response.expiresAt()).isEqualTo(fixedInstant.plus(15, ChronoUnit.MINUTES));
+        assertThat(response.maxAccesses()).isEqualTo(3);
+        assertThat(response.requiresPin()).isFalse();
+        assertThat(response.includeAllergies()).isTrue();
+        assertThat(response.includeMedications()).isTrue();
+        assertThat(response.includeAttentions()).isTrue();
+        assertThat(response.includeContact()).isTrue();
 
-        ArgumentCaptor<AccesoTemporalQr> captor = ArgumentCaptor.forClass(AccesoTemporalQr.class);
-        verify(accesoTemporalQrRepository).crear(captor.capture());
-        AccesoTemporalQr guardado = captor.getValue();
-        assertThat(guardado.pacienteId()).isEqualTo(20L);
+        ArgumentCaptor<TemporaryQrAccess> captor = ArgumentCaptor.forClass(TemporaryQrAccess.class);
+        verify(temporaryQrAccessRepository).create(captor.capture());
+        TemporaryQrAccess guardado = captor.getValue();
+        assertThat(guardado.patientId()).isEqualTo(20L);
         assertThat(guardado.tokenHash()).isEqualTo(TokenHashUtil.hash(response.token()));
         assertThat(guardado.pinHash()).isNull();
-        assertThat(guardado.maxAccesos()).isEqualTo(3);
-        assertThat(guardado.accesosRealizados()).isZero();
-        assertThat(guardado.revocado()).isFalse();
+        assertThat(guardado.maxAccesses()).isEqualTo(3);
+        assertThat(guardado.accessCount()).isZero();
+        assertThat(guardado.revoked()).isFalse();
 
-        ArgumentCaptor<EventoAuditoria> auditCaptor = ArgumentCaptor.forClass(EventoAuditoria.class);
-        verify(auditoriaService).auditar(auditCaptor.capture());
-        EventoAuditoria evento = auditCaptor.getValue();
-        assertThat(evento.accion()).isEqualTo(AccionAuditable.GENERACION_QR_EMERGENCIA);
-        assertThat(evento.tipoRecurso()).isEqualTo("ACCESO_TEMPORAL_QR");
-        assertThat(evento.recursoPublicId()).isEqualTo(response.publicId());
-        assertThat(evento.ipOrigen()).isEqualTo("192.168.1.1");
+        ArgumentCaptor<AuditEvent> auditCaptor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).audit(auditCaptor.capture());
+        AuditEvent evento = auditCaptor.getValue();
+        assertThat(evento.action()).isEqualTo(AuditableAction.GENERACION_QR_EMERGENCIA);
+        assertThat(evento.resourceType()).isEqualTo("ACCESO_TEMPORAL_QR");
+        assertThat(evento.resourcePublicId()).isEqualTo(response.publicId());
+        assertThat(evento.sourceIp()).isEqualTo("192.168.1.1");
     }
 
     @Test
     @DisplayName("generarAccesoQr: con PIN numérico de 4 dígitos, lo hashea con PasswordEncoder")
-    void generarAccesoQr_exitoConPin() {
-        when(usuarioRepository.buscarPorPublicId("user-pac-uuid")).thenReturn(Optional.of(usuarioPaciente));
-        when(pacienteRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.of(paciente));
+    void generateAccessQr_successWithPin() {
+        when(userRepository.findByPublicId("user-pac-uuid")).thenReturn(Optional.of(usuarioPaciente));
+        when(patientRepository.findByUserId(10L)).thenReturn(Optional.of(paciente));
         when(passwordEncoder.encode("4321")).thenReturn("argon2id$hashedpin");
-        when(accesoTemporalQrRepository.crear(any(AccesoTemporalQr.class))).thenReturn(101L);
+        when(temporaryQrAccessRepository.create(any(TemporaryQrAccess.class))).thenReturn(101L);
 
-        GenerarQrRequest request = new GenerarQrRequest("4321", true, false, true, false);
-        GenerarQrResponse response = emergencyQrService.generarAccesoQr(request, "user-pac-uuid", "127.0.0.1");
+        GenerateQrRequest request = new GenerateQrRequest("4321", true, false, true, false);
+        GenerateQrResponse response = emergencyQrService.generateQrAccess(request, "user-pac-uuid", "127.0.0.1");
 
-        assertThat(response.requierePin()).isTrue();
-        assertThat(response.incluirMedicamentos()).isFalse();
-        assertThat(response.incluirContacto()).isFalse();
+        assertThat(response.requiresPin()).isTrue();
+        assertThat(response.includeMedications()).isFalse();
+        assertThat(response.includeContact()).isFalse();
 
-        ArgumentCaptor<AccesoTemporalQr> captor = ArgumentCaptor.forClass(AccesoTemporalQr.class);
-        verify(accesoTemporalQrRepository).crear(captor.capture());
+        ArgumentCaptor<TemporaryQrAccess> captor = ArgumentCaptor.forClass(TemporaryQrAccess.class);
+        verify(temporaryQrAccessRepository).create(captor.capture());
         assertThat(captor.getValue().pinHash()).isEqualTo("argon2id$hashedpin");
-        assertThat(captor.getValue().incluirMedicamentos()).isFalse();
+        assertThat(captor.getValue().includeMedications()).isFalse();
     }
 
     @Test
     @DisplayName("generarAccesoQr: lanza AccesoNoAutorizadoException si usuario no es paciente")
-    void generarAccesoQr_usuarioNoPaciente_lanzaExcepcion() {
-        when(usuarioRepository.buscarPorPublicId("user-pac-uuid")).thenReturn(Optional.of(usuarioPaciente));
-        when(pacienteRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.empty());
+    void generateAccessQr_userNotPatient_throwsException() {
+        when(userRepository.findByPublicId("user-pac-uuid")).thenReturn(Optional.of(usuarioPaciente));
+        when(patientRepository.findByUserId(10L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> emergencyQrService.generarAccesoQr(new GenerarQrRequest(null, true, true, true, true), "user-pac-uuid", "127.0.0.1"))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+        assertThatThrownBy(() -> emergencyQrService.generateQrAccess(new GenerateQrRequest(null, true, true, true, true), "user-pac-uuid", "127.0.0.1"))
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessageContaining("Solo pacientes registrados");
     }
 
     @Test
     @DisplayName("listarMisAccesosQr: resuelve estado dinámicamente según instante actual")
-    void listarMisAccesosQr_resuelveEstados() {
-        when(usuarioRepository.buscarPorPublicId("user-pac-uuid")).thenReturn(Optional.of(usuarioPaciente));
-        when(pacienteRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.of(paciente));
+    void listMyAccessesQr_resolvesStatuses() {
+        when(userRepository.findByPublicId("user-pac-uuid")).thenReturn(Optional.of(usuarioPaciente));
+        when(patientRepository.findByUserId(10L)).thenReturn(Optional.of(paciente));
 
-        AccesoTemporalQr activo = new AccesoTemporalQr(
+        TemporaryQrAccess activo = new TemporaryQrAccess(
                 1L, "qr-1", 20L, "hash1", null, true, true, true, true, 3, 1, false,
                 fixedInstant.plus(10, ChronoUnit.MINUTES), fixedInstant, fixedInstant
         );
 
-        AccesoTemporalQr expirado = new AccesoTemporalQr(
+        TemporaryQrAccess expirado = new TemporaryQrAccess(
                 2L, "qr-2", 20L, "hash2", null, true, true, true, true, 3, 0, false,
                 fixedInstant.minus(1, ChronoUnit.MINUTES), fixedInstant.minus(16, ChronoUnit.MINUTES), fixedInstant
         );
 
-        AccesoTemporalQr agotado = new AccesoTemporalQr(
+        TemporaryQrAccess agotado = new TemporaryQrAccess(
                 3L, "qr-3", 20L, "hash3", null, true, true, true, true, 3, 3, false,
                 fixedInstant.plus(10, ChronoUnit.MINUTES), fixedInstant, fixedInstant
         );
 
-        AccesoTemporalQr revocado = new AccesoTemporalQr(
+        TemporaryQrAccess revocado = new TemporaryQrAccess(
                 4L, "qr-4", 20L, "hash4", null, true, true, true, true, 3, 0, true,
                 fixedInstant.plus(10, ChronoUnit.MINUTES), fixedInstant, fixedInstant
         );
 
-        when(accesoTemporalQrRepository.listarPorPacienteId(20L))
+        when(temporaryQrAccessRepository.listByPatientId(20L))
                 .thenReturn(List.of(activo, expirado, agotado, revocado));
 
-        List<AccesoQrResponse> lista = emergencyQrService.listarMisAccesosQr("user-pac-uuid");
+        List<QrAccessResponse> lista = emergencyQrService.listMyQrAccesses("user-pac-uuid");
 
         assertThat(lista).hasSize(4);
-        assertThat(lista.get(0).estado()).isEqualTo("ACTIVO");
-        assertThat(lista.get(1).estado()).isEqualTo("EXPIRADO");
-        assertThat(lista.get(2).estado()).isEqualTo("AGOTADO");
-        assertThat(lista.get(3).estado()).isEqualTo("REVOCADO");
+        assertThat(lista.get(0).status()).isEqualTo("ACTIVO");
+        assertThat(lista.get(1).status()).isEqualTo("EXPIRADO");
+        assertThat(lista.get(2).status()).isEqualTo("AGOTADO");
+        assertThat(lista.get(3).status()).isEqualTo("REVOCADO");
     }
 
     @Test
     @DisplayName("revocarAccesoQr: revoca exitosamente y audita si es el paciente titular")
-    void revocarAccesoQr_exito() {
-        when(usuarioRepository.buscarPorPublicId("user-pac-uuid")).thenReturn(Optional.of(usuarioPaciente));
-        when(pacienteRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.of(paciente));
+    void revokeAccessQr_success() {
+        when(userRepository.findByPublicId("user-pac-uuid")).thenReturn(Optional.of(usuarioPaciente));
+        when(patientRepository.findByUserId(10L)).thenReturn(Optional.of(paciente));
 
-        AccesoTemporalQr acceso = new AccesoTemporalQr(
+        TemporaryQrAccess acceso = new TemporaryQrAccess(
                 1L, "qr-uuid", 20L, "hash1", null, true, true, true, true, 3, 0, false,
                 fixedInstant.plus(10, ChronoUnit.MINUTES), fixedInstant, fixedInstant
         );
-        when(accesoTemporalQrRepository.buscarPorPublicId("qr-uuid")).thenReturn(Optional.of(acceso));
+        when(temporaryQrAccessRepository.findByPublicId("qr-uuid")).thenReturn(Optional.of(acceso));
 
-        emergencyQrService.revocarAccesoQr("qr-uuid", "user-pac-uuid", "192.168.1.1");
+        emergencyQrService.revokeQrAccess("qr-uuid", "user-pac-uuid", "192.168.1.1");
 
-        verify(accesoTemporalQrRepository).revocar("qr-uuid", 20L);
+        verify(temporaryQrAccessRepository).revoke("qr-uuid", 20L);
 
-        ArgumentCaptor<EventoAuditoria> auditCaptor = ArgumentCaptor.forClass(EventoAuditoria.class);
-        verify(auditoriaService).auditar(auditCaptor.capture());
-        EventoAuditoria evento = auditCaptor.getValue();
-        assertThat(evento.accion()).isEqualTo(AccionAuditable.REVOCACION_QR_EMERGENCIA);
-        assertThat(evento.recursoPublicId()).isEqualTo("qr-uuid");
+        ArgumentCaptor<AuditEvent> auditCaptor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).audit(auditCaptor.capture());
+        AuditEvent evento = auditCaptor.getValue();
+        assertThat(evento.action()).isEqualTo(AuditableAction.REVOCACION_QR_EMERGENCIA);
+        assertThat(evento.resourcePublicId()).isEqualTo("qr-uuid");
     }
 
     @Test
     @DisplayName("revocarAccesoQr: rechaza si el QR pertenece a otro paciente")
-    void revocarAccesoQr_pacienteAjeno_lanzaExcepcion() {
-        when(usuarioRepository.buscarPorPublicId("user-pac-uuid")).thenReturn(Optional.of(usuarioPaciente));
-        when(pacienteRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.of(paciente));
+    void revokeAccessQr_otherPatient_throwsException() {
+        when(userRepository.findByPublicId("user-pac-uuid")).thenReturn(Optional.of(usuarioPaciente));
+        when(patientRepository.findByUserId(10L)).thenReturn(Optional.of(paciente));
 
-        AccesoTemporalQr accesoAjeno = new AccesoTemporalQr(
+        TemporaryQrAccess accesoAjeno = new TemporaryQrAccess(
                 1L, "qr-uuid", 999L, "hash1", null, true, true, true, true, 3, 0, false,
                 fixedInstant.plus(10, ChronoUnit.MINUTES), fixedInstant, fixedInstant
         );
-        when(accesoTemporalQrRepository.buscarPorPublicId("qr-uuid")).thenReturn(Optional.of(accesoAjeno));
+        when(temporaryQrAccessRepository.findByPublicId("qr-uuid")).thenReturn(Optional.of(accesoAjeno));
 
-        assertThatThrownBy(() -> emergencyQrService.revocarAccesoQr("qr-uuid", "user-pac-uuid", "192.168.1.1"))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+        assertThatThrownBy(() -> emergencyQrService.revokeQrAccess("qr-uuid", "user-pac-uuid", "192.168.1.1"))
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessageContaining("No tiene autorizacion para revocar un acceso QR ajeno");
     }
 
     @Test
     @DisplayName("verificarTokenPublico: verifica vigencia, estado y requerimiento de PIN")
-    void verificarTokenPublico_variosEscenarios() {
+    void verifyTokenPublic_variousScenarios() {
         String tokenPlano = "secure-random-token-xyz-1234567890";
         String tokenHash = TokenHashUtil.hash(tokenPlano);
 
         // Caso 1: Token activo con PIN
-        AccesoTemporalQr activoConPin = new AccesoTemporalQr(
+        TemporaryQrAccess activoConPin = new TemporaryQrAccess(
                 1L, "qr-1", 20L, tokenHash, "argon2id$pin", true, true, true, true, 3, 0, false,
                 fixedInstant.plus(10, ChronoUnit.MINUTES), fixedInstant, fixedInstant
         );
-        when(accesoTemporalQrRepository.buscarPorTokenHash(tokenHash)).thenReturn(Optional.of(activoConPin));
+        when(temporaryQrAccessRepository.findByTokenHash(tokenHash)).thenReturn(Optional.of(activoConPin));
 
-        VerificarQrResponse resp1 = emergencyQrService.verificarTokenPublico(tokenPlano);
-        assertThat(resp1.valido()).isTrue();
-        assertThat(resp1.requierePin()).isTrue();
-        assertThat(resp1.estado()).isEqualTo("ACTIVO");
-        assertThat(resp1.expiraAt()).isEqualTo(fixedInstant.plus(10, ChronoUnit.MINUTES));
+        VerifyQrResponse resp1 = emergencyQrService.verifyPublicToken(tokenPlano);
+        assertThat(resp1.valid()).isTrue();
+        assertThat(resp1.requiresPin()).isTrue();
+        assertThat(resp1.status()).isEqualTo("ACTIVO");
+        assertThat(resp1.expiresAt()).isEqualTo(fixedInstant.plus(10, ChronoUnit.MINUTES));
 
         // Caso 2: Token no existe
-        when(accesoTemporalQrRepository.buscarPorTokenHash(TokenHashUtil.hash("inexistente")))
+        when(temporaryQrAccessRepository.findByTokenHash(TokenHashUtil.hash("inexistente")))
                 .thenReturn(Optional.empty());
-        VerificarQrResponse resp2 = emergencyQrService.verificarTokenPublico("inexistente");
-        assertThat(resp2.valido()).isFalse();
-        assertThat(resp2.estado()).isEqualTo("EXPIRADO");
+        VerifyQrResponse resp2 = emergencyQrService.verifyPublicToken("inexistente");
+        assertThat(resp2.valid()).isFalse();
+        assertThat(resp2.status()).isEqualTo("EXPIRADO");
 
         // Caso 3: Token nulo o vacío
-        VerificarQrResponse resp3 = emergencyQrService.verificarTokenPublico("");
-        assertThat(resp3.valido()).isFalse();
+        VerifyQrResponse resp3 = emergencyQrService.verifyPublicToken("");
+        assertThat(resp3.valid()).isFalse();
     }
 }

@@ -27,8 +27,8 @@ class Base32UtilTest {
     }
 
     @Test
-    void generarSecreto_generaCadenaBase32DeLongitudEsperada() {
-        String secret = Base32Util.generarSecreto(20);
+    void generateSecret_generatesCadenaDatabase32OfLongitudExpected() {
+        String secret = Base32Util.generateSecret(20);
 
         assertThat(secret).hasSize(32);
         assertThat(secret).matches("^[A-Z2-7]{32}$");
@@ -38,7 +38,7 @@ class Base32UtilTest {
     }
 
     @Test
-    void decode_conCaracterInvalido_lanzaExcepcion() {
+    void decode_withCharInvalid_throwsException() {
         assertThatThrownBy(() -> Base32Util.decode("MZXW6Y8!"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("invalido");

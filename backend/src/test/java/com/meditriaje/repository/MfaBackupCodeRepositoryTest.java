@@ -23,37 +23,37 @@ class MfaBackupCodeRepositoryTest {
     private final MfaBackupCodeRepository repository = new MfaBackupCodeRepository(gateway);
 
     @Test
-    void guardarLote_conListaVaciaONula_noLlamaALaBase() {
-        repository.guardarLote(1L, List.of());
-        repository.guardarLote(1L, null);
+    void saveBatch_withEmptyOrNullList_doesNotCallDatabase() {
+        repository.saveBatch(1L, List.of());
+        repository.saveBatch(1L, null);
 
         verifyNoInteractions(gateway);
     }
 
     @Test
-    void guardarLote_registraCadaHash() {
-        repository.guardarLote(1L, List.of("h1", "h2", "h3"));
+    void saveBatch_recordsEachHash() {
+        repository.saveBatch(1L, List.of("h1", "h2", "h3"));
 
         verify(gateway, times(3)).execute(eq(MfaBackupCodeRepository.ADD_MFA_BACKUP_CODE), any(SqlParameterSource.class));
     }
 
     @Test
-    void consumirCodigo_segunFilasActualizadas() {
+    void consumeCode_basedOnUpdatedRows() {
         when(gateway.execute(eq(MfaBackupCodeRepository.CONSUME_MFA_BACKUP_CODE), any(SqlParameterSource.class)))
                 .thenReturn(Map.of("o_updated", BigDecimal.ONE))
                 .thenReturn(Map.of("o_updated", BigDecimal.ZERO));
 
-        assertThat(repository.consumirCodigo(1L, "h")).isTrue();
-        assertThat(repository.consumirCodigo(1L, "h")).isFalse();
+        assertThat(repository.consumeCode(1L, "h")).isTrue();
+        assertThat(repository.consumeCode(1L, "h")).isFalse();
     }
 
     @Test
-    void contarDisponibles_nullEsCero() {
+    void countAvailable_nullIsZero() {
         when(gateway.callFunction(eq(MfaBackupCodeRepository.COUNT_AVAILABLE_BACKUP_CODES), any(SqlParameterSource.class)))
                 .thenReturn(new BigDecimal("8"))
                 .thenReturn(null);
 
-        assertThat(repository.contarDisponibles(1L)).isEqualTo(8);
-        assertThat(repository.contarDisponibles(1L)).isZero();
+        assertThat(repository.countAvailable(1L)).isEqualTo(8);
+        assertThat(repository.countAvailable(1L)).isZero();
     }
 }

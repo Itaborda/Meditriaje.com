@@ -1,8 +1,8 @@
 package com.meditriaje.service;
 
 import com.meditriaje.dto.hospital.*;
-import com.meditriaje.exception.AccesoNoAutorizadoException;
-import com.meditriaje.exception.ConflictoOperacionException;
+import com.meditriaje.exception.UnauthorizedAccessException;
+import com.meditriaje.exception.OperationConflictException;
 import com.meditriaje.model.*;
 import com.meditriaje.repository.*;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,209 +28,209 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class HospitalServiceTest {
 
-    @Mock private AreaHospitalariaRepository areaRepository;
-    @Mock private HabitacionSalaRepository habitacionRepository;
-    @Mock private CamaHospitalariaRepository camaRepository;
-    @Mock private OcupacionCamaRepository ocupacionRepository;
-    @Mock private MovimientoPacienteRepository movimientoRepository;
-    @Mock private ProcedimientoHospitalarioRepository procedimientoRepository;
-    @Mock private EgresoHospitalarioRepository egresoRepository;
-    @Mock private EpisodioAtencionRepository episodioRepository;
+    @Mock private HospitalAreaRepository areaRepository;
+    @Mock private HospitalRoomRepository roomRepository;
+    @Mock private HospitalBedRepository bedRepository;
+    @Mock private BedOccupancyRepository occupancyRepository;
+    @Mock private PatientMovementRepository movementRepository;
+    @Mock private HospitalProcedureRepository procedureRepository;
+    @Mock private HospitalDischargeRepository dischargeRepository;
+    @Mock private CareEpisodeRepository episodeRepository;
     @Mock private SiteRepository siteRepository;
-    @Mock private UsuarioRepository usuarioRepository;
-    @Mock private ProfesionalRepository profesionalRepository;
-    @Mock private AuditoriaService auditoriaService;
+    @Mock private UserRepository userRepository;
+    @Mock private ProfessionalRepository professionalRepository;
+    @Mock private AuditService auditService;
 
     private HospitalService hospitalService;
 
     private static final Instant AHORA = Instant.parse("2026-10-10T02:00:00Z");
     private static final Clock CLOCK = Clock.fixed(AHORA, ZoneId.of("UTC"));
 
-    private Usuario enfermeroMock;
-    private Usuario medicoUsuarioMock;
-    private Profesional medicoMock;
-    private EpisodioAtencion episodioMock;
-    private CamaHospitalaria camaDispMock;
-    private HabitacionSala habitacionMock;
-    private AreaHospitalaria areaMock;
-    private Sede sedeMock;
+    private User enfermeroMock;
+    private User medicoUsuarioMock;
+    private Professional medicoMock;
+    private CareEpisode episodioMock;
+    private HospitalBed camaDispMock;
+    private HospitalRoom habitacionMock;
+    private HospitalArea areaMock;
+    private Site sedeMock;
 
     @BeforeEach
     void setUp() {
         hospitalService = new HospitalService(
                 areaRepository,
-                habitacionRepository,
-                camaRepository,
-                ocupacionRepository,
-                movimientoRepository,
-                procedimientoRepository,
-                egresoRepository,
-                episodioRepository,
+                roomRepository,
+                bedRepository,
+                occupancyRepository,
+                movementRepository,
+                procedureRepository,
+                dischargeRepository,
+                episodeRepository,
                 siteRepository,
-                usuarioRepository,
-                profesionalRepository,
-                auditoriaService,
+                userRepository,
+                professionalRepository,
+                auditService,
                 CLOCK
         );
 
-        enfermeroMock = new Usuario(10L, "enf-pub-id", "enfermera@hospital.com", "hash", "ACTIVO", 0, null, AHORA, false, false, null, null);
-        medicoUsuarioMock = new Usuario(20L, "med-pub-id", "medico@hospital.com", "hash", "ACTIVO", 0, null, AHORA, false, false, null, null);
-        medicoMock = new Profesional(5L, 20L, "med-prof-pub-id", 1L, "CC", "1234", "RM-999", "Roberto", "Gomez", "300", AHORA, AHORA);
+        enfermeroMock = new User(10L, "enf-pub-id", "enfermera@hospital.com", "hash", "ACTIVO", 0, null, AHORA, false, false, null, null);
+        medicoUsuarioMock = new User(20L, "med-pub-id", "medico@hospital.com", "hash", "ACTIVO", 0, null, AHORA, false, false, null, null);
+        medicoMock = new Professional(5L, 20L, "med-prof-pub-id", 1L, "CC", "1234", "RM-999", "Roberto", "Gomez", "300", AHORA, AHORA);
 
-        sedeMock = new Sede(1L, 1L, "sede-pub", "Hospital Central", "Calle 16", "Valledupar", "ACTIVO");
-        areaMock = new AreaHospitalaria(1L, "area-pub", 1L, "URG", "Pabellón de Urgencias", "URGENCIAS", "1", "ACTIVA", AHORA);
-        habitacionMock = new HabitacionSala(2L, "hab-pub", 1L, "OBS-01", "COMPARTIDA", "ACTIVA", AHORA);
-        camaDispMock = new CamaHospitalaria(3L, "cama-pub", 2L, "CAMA-01", "DISPONIBLE", AHORA, AHORA);
+        sedeMock = new Site(1L, 1L, "sede-pub", "Hospital Central", "Calle 16", "Valledupar", "ACTIVO");
+        areaMock = new HospitalArea(1L, "area-pub", 1L, "URG", "Pabellón de Urgencias", "URGENCIAS", "1", "ACTIVA", AHORA);
+        habitacionMock = new HospitalRoom(2L, "hab-pub", 1L, "OBS-01", "COMPARTIDA", "ACTIVA", AHORA);
+        camaDispMock = new HospitalBed(3L, "cama-pub", 2L, "CAMA-01", "DISPONIBLE", AHORA, AHORA);
 
-        episodioMock = new EpisodioAtencion(100L, "ep-pub", 50L, "URGENCIA", 1L, "EN_TRIAJE", AHORA, null, "Dolor agudo", AHORA, AHORA);
+        episodioMock = new CareEpisode(100L, "ep-pub", 50L, "URGENCIA", 1L, "EN_TRIAJE", AHORA, null, "Dolor agudo", AHORA, AHORA);
     }
 
     @Test
     @DisplayName("H01/H02: Asignación de cama disponible a episodio exitosa")
-    void asignarCama_disponible_exito() {
-        AsignarCamaRequest req = new AsignarCamaRequest("cama-pub", "Paciente requiere observación inmediata");
+    void assignBed_available_success() {
+        AssignBedRequest req = new AssignBedRequest("cama-pub", "Paciente requiere observación inmediata");
 
-        when(episodioRepository.buscarPorPublicId("ep-pub")).thenReturn(Optional.of(episodioMock));
-        when(usuarioRepository.buscarPorPublicId("enf-pub-id")).thenReturn(Optional.of(enfermeroMock));
-        when(camaRepository.buscarPorPublicId("cama-pub")).thenReturn(Optional.of(camaDispMock));
-        when(camaRepository.reservarCamaSiDisponible(3L)).thenReturn(true);
-        when(habitacionRepository.buscarPorId(2L)).thenReturn(Optional.of(habitacionMock));
-        when(areaRepository.buscarPorId(1L)).thenReturn(Optional.of(areaMock));
-        when(ocupacionRepository.buscarActivaPorEpisodioId(100L)).thenReturn(Optional.empty());
+        when(episodeRepository.findByPublicId("ep-pub")).thenReturn(Optional.of(episodioMock));
+        when(userRepository.findByPublicId("enf-pub-id")).thenReturn(Optional.of(enfermeroMock));
+        when(bedRepository.findByPublicId("cama-pub")).thenReturn(Optional.of(camaDispMock));
+        when(bedRepository.reserveBedIfAvailable(3L)).thenReturn(true);
+        when(roomRepository.findById(2L)).thenReturn(Optional.of(habitacionMock));
+        when(areaRepository.findById(1L)).thenReturn(Optional.of(areaMock));
+        when(occupancyRepository.findActiveByEpisodeId(100L)).thenReturn(Optional.empty());
 
-        OcupacionCama ocCreada = new OcupacionCama(1L, "oc-pub", 100L, 3L, AHORA, null, "ACTIVA", 10L, "Obs", AHORA);
-        when(ocupacionRepository.guardar(any())).thenReturn(ocCreada);
+        BedOccupancy ocCreada = new BedOccupancy(1L, "oc-pub", 100L, 3L, AHORA, null, "ACTIVA", 10L, "Obs", AHORA);
+        when(occupancyRepository.save(any())).thenReturn(ocCreada);
 
-        CamaDetalleResponse detalle = new CamaDetalleResponse("cama-pub", "hab-pub", "OBS-01", "area-pub", "Urgencias", "sede-pub", "Hospital", "CAMA-01", "OCUPADA", "ep-pub", "Juan Gomez", "oc-pub");
-        when(camaRepository.buscarDetallePorPublicId("cama-pub")).thenReturn(Optional.of(detalle));
+        BedDetailResponse detalle = new BedDetailResponse("cama-pub", "hab-pub", "OBS-01", "area-pub", "Urgencias", "sede-pub", "Hospital", "CAMA-01", "OCUPADA", "ep-pub", "Juan Gomez", "oc-pub");
+        when(bedRepository.findDetailByPublicId("cama-pub")).thenReturn(Optional.of(detalle));
 
-        CamaDetalleResponse resp = hospitalService.asignarCama("ep-pub", req, "enf-pub-id", "127.0.0.1");
+        BedDetailResponse resp = hospitalService.assignBed("ep-pub", req, "enf-pub-id", "127.0.0.1");
 
         assertThat(resp).isNotNull();
-        assertThat(resp.estado()).isEqualTo("OCUPADA");
-        verify(camaRepository).reservarCamaSiDisponible(3L);
-        verify(movimientoRepository).guardar(any());
-        verify(episodioRepository).actualizarEstado(100L, "OBSERVACION");
-        verify(auditoriaService).auditar(any());
+        assertThat(resp.status()).isEqualTo("OCUPADA");
+        verify(bedRepository).reserveBedIfAvailable(3L);
+        verify(movementRepository).save(any());
+        verify(episodeRepository).updateStatus(100L, "OBSERVACION");
+        verify(auditService).audit(any());
     }
 
     @Test
     @DisplayName("H02: Conflicto si la cama seleccionada no está DISPONIBLE")
-    void asignarCama_noDisponible_lanzaConflicto() {
-        AsignarCamaRequest req = new AsignarCamaRequest("cama-pub", "Asignación");
-        CamaHospitalaria camaOcupada = new CamaHospitalaria(3L, "cama-pub", 2L, "CAMA-01", "OCUPADA", AHORA, AHORA);
+    void assignBed_notAvailable_throwsConflict() {
+        AssignBedRequest req = new AssignBedRequest("cama-pub", "Asignación");
+        HospitalBed camaOcupada = new HospitalBed(3L, "cama-pub", 2L, "CAMA-01", "OCUPADA", AHORA, AHORA);
 
-        when(episodioRepository.buscarPorPublicId("ep-pub")).thenReturn(Optional.of(episodioMock));
-        when(usuarioRepository.buscarPorPublicId("enf-pub-id")).thenReturn(Optional.of(enfermeroMock));
-        when(camaRepository.buscarPorPublicId("cama-pub")).thenReturn(Optional.of(camaOcupada));
+        when(episodeRepository.findByPublicId("ep-pub")).thenReturn(Optional.of(episodioMock));
+        when(userRepository.findByPublicId("enf-pub-id")).thenReturn(Optional.of(enfermeroMock));
+        when(bedRepository.findByPublicId("cama-pub")).thenReturn(Optional.of(camaOcupada));
 
-        assertThatThrownBy(() -> hospitalService.asignarCama("ep-pub", req, "enf-pub-id", "127.0.0.1"))
-                .isInstanceOf(ConflictoOperacionException.class)
+        assertThatThrownBy(() -> hospitalService.assignBed("ep-pub", req, "enf-pub-id", "127.0.0.1"))
+                .isInstanceOf(OperationConflictException.class)
                 .hasMessageContaining("no está disponible");
     }
 
     @Test
     @DisplayName("H03: Traslado intrahospitalario longitudinal finaliza cama anterior y asigna destino")
-    void trasladarPaciente_exito() {
-        TrasladarPacienteRequest req = new TrasladarPacienteRequest("cama-dest-pub", "Traslado a UCI");
-        OcupacionCama ocupActual = new OcupacionCama(1L, "oc-1", 100L, 3L, AHORA, null, "ACTIVA", 10L, "Obs", AHORA);
-        CamaHospitalaria camaDest = new CamaHospitalaria(4L, "cama-dest-pub", 2L, "CAMA-02", "DISPONIBLE", AHORA, AHORA);
+    void transferPatient_success() {
+        TransferPatientRequest req = new TransferPatientRequest("cama-dest-pub", "Traslado a UCI");
+        BedOccupancy ocupActual = new BedOccupancy(1L, "oc-1", 100L, 3L, AHORA, null, "ACTIVA", 10L, "Obs", AHORA);
+        HospitalBed camaDest = new HospitalBed(4L, "cama-dest-pub", 2L, "CAMA-02", "DISPONIBLE", AHORA, AHORA);
 
-        when(episodioRepository.buscarPorPublicId("ep-pub")).thenReturn(Optional.of(episodioMock));
-        when(usuarioRepository.buscarPorPublicId("enf-pub-id")).thenReturn(Optional.of(enfermeroMock));
-        when(ocupacionRepository.buscarActivaPorEpisodioId(100L)).thenReturn(Optional.of(ocupActual));
-        when(camaRepository.buscarPorPublicId("cama-dest-pub")).thenReturn(Optional.of(camaDest));
-        when(camaRepository.reservarCamaSiDisponible(4L)).thenReturn(true);
-        when(camaRepository.buscarPorId(3L)).thenReturn(Optional.of(camaDispMock));
-        when(habitacionRepository.buscarPorId(2L)).thenReturn(Optional.of(habitacionMock));
-        when(areaRepository.buscarPorId(1L)).thenReturn(Optional.of(areaMock));
+        when(episodeRepository.findByPublicId("ep-pub")).thenReturn(Optional.of(episodioMock));
+        when(userRepository.findByPublicId("enf-pub-id")).thenReturn(Optional.of(enfermeroMock));
+        when(occupancyRepository.findActiveByEpisodeId(100L)).thenReturn(Optional.of(ocupActual));
+        when(bedRepository.findByPublicId("cama-dest-pub")).thenReturn(Optional.of(camaDest));
+        when(bedRepository.reserveBedIfAvailable(4L)).thenReturn(true);
+        when(bedRepository.findById(3L)).thenReturn(Optional.of(camaDispMock));
+        when(roomRepository.findById(2L)).thenReturn(Optional.of(habitacionMock));
+        when(areaRepository.findById(1L)).thenReturn(Optional.of(areaMock));
 
-        MovimientoResponse resp = hospitalService.trasladarPaciente("ep-pub", req, "enf-pub-id", "127.0.0.1");
+        MovementResponse resp = hospitalService.transferPatient("ep-pub", req, "enf-pub-id", "127.0.0.1");
 
         assertThat(resp).isNotNull();
-        verify(ocupacionRepository).finalizarOcupacion(1L, AHORA);
-        verify(camaRepository).actualizarEstado(3L, "LIMPIEZA");
-        verify(camaRepository).reservarCamaSiDisponible(4L);
-        verify(movimientoRepository).guardar(any());
+        verify(occupancyRepository).finishOccupancy(1L, AHORA);
+        verify(bedRepository).updateStatus(3L, "LIMPIEZA");
+        verify(bedRepository).reserveBedIfAvailable(4L);
+        verify(movementRepository).save(any());
     }
 
     @Test
     @DisplayName("H04: Registro de procedimiento clínico actualiza episodio a QUIROFANO")
-    void registrarProcedimiento_exito() {
-        RegistrarProcedimientoRequest req = new RegistrarProcedimientoRequest(
+    void registerProcedure_success() {
+        RegisterProcedureRequest req = new RegisterProcedureRequest(
                 "APENDICECTOMIA", "Intervención urgente por apendicitis aguda", "med-prof-pub-id", "hab-pub", "Sin complicaciones iniciales"
         );
 
-        when(episodioRepository.buscarPorPublicId("ep-pub")).thenReturn(Optional.of(episodioMock));
-        when(usuarioRepository.buscarPorPublicId("med-pub-id")).thenReturn(Optional.of(medicoUsuarioMock));
-        when(profesionalRepository.buscarPorPublicId("med-prof-pub-id")).thenReturn(Optional.of(medicoMock));
-        when(habitacionRepository.buscarPorPublicId("hab-pub")).thenReturn(Optional.of(habitacionMock));
+        when(episodeRepository.findByPublicId("ep-pub")).thenReturn(Optional.of(episodioMock));
+        when(userRepository.findByPublicId("med-pub-id")).thenReturn(Optional.of(medicoUsuarioMock));
+        when(professionalRepository.findByPublicId("med-prof-pub-id")).thenReturn(Optional.of(medicoMock));
+        when(roomRepository.findByPublicId("hab-pub")).thenReturn(Optional.of(habitacionMock));
 
-        ProcedimientoResponse resp = hospitalService.registrarProcedimiento("ep-pub", req, "med-pub-id", "127.0.0.1");
+        ProcedureResponse resp = hospitalService.registerProcedure("ep-pub", req, "med-pub-id", "127.0.0.1");
 
         assertThat(resp).isNotNull();
-        assertThat(resp.tipoProcedimiento()).isEqualTo("APENDICECTOMIA");
-        verify(procedimientoRepository).guardar(any());
-        verify(episodioRepository).actualizarEstado(100L, "QUIROFANO");
+        assertThat(resp.procedureType()).isEqualTo("APENDICECTOMIA");
+        verify(procedureRepository).save(any());
+        verify(episodeRepository).updateStatus(100L, "QUIROFANO");
     }
 
     @Test
     @DisplayName("H05: Egreso hospitalario libera cama, cierra episodio y audita evento")
-    void registrarEgresoHospitalario_medico_liberaCamaYEgresa() {
-        RegistrarEgresoRequest req = new RegistrarEgresoRequest(
+    void registerDischargeHospital_physician_releasesBedAndEgresa() {
+        RegisterDischargeRequest req = new RegisterDischargeRequest(
                 "ALTA_DOMICILIO", "Resolución favorable de cuadro agudo", "Paciente afebril con signos estables", "Reposo 5 días y amoxicilina"
         );
 
-        OcupacionCama ocActiva = new OcupacionCama(1L, "oc-1", 100L, 3L, AHORA, null, "ACTIVA", 10L, "Obs", AHORA);
+        BedOccupancy ocActiva = new BedOccupancy(1L, "oc-1", 100L, 3L, AHORA, null, "ACTIVA", 10L, "Obs", AHORA);
 
-        when(episodioRepository.buscarPorPublicId("ep-pub")).thenReturn(Optional.of(episodioMock));
-        when(usuarioRepository.buscarPorPublicId("med-pub-id")).thenReturn(Optional.of(medicoUsuarioMock));
-        when(profesionalRepository.buscarPorUsuarioId(20L)).thenReturn(Optional.of(medicoMock));
-        when(ocupacionRepository.buscarActivaPorEpisodioId(100L)).thenReturn(Optional.of(ocActiva));
+        when(episodeRepository.findByPublicId("ep-pub")).thenReturn(Optional.of(episodioMock));
+        when(userRepository.findByPublicId("med-pub-id")).thenReturn(Optional.of(medicoUsuarioMock));
+        when(professionalRepository.findByUserId(20L)).thenReturn(Optional.of(medicoMock));
+        when(occupancyRepository.findActiveByEpisodeId(100L)).thenReturn(Optional.of(ocActiva));
 
-        hospitalService.registrarEgresoHospitalario(
+        hospitalService.registerHospitalDischarge(
                 "ep-pub", req, "med-pub-id", List.of(new SimpleGrantedAuthority("ROLE_PROFESIONAL")), "127.0.0.1"
         );
 
-        verify(ocupacionRepository).finalizarOcupacion(1L, AHORA);
-        verify(camaRepository).actualizarEstado(3L, "LIMPIEZA");
-        verify(egresoRepository).guardar(any());
-        verify(episodioRepository).cerrarEpisodio(100L, AHORA);
+        verify(occupancyRepository).finishOccupancy(1L, AHORA);
+        verify(bedRepository).updateStatus(3L, "LIMPIEZA");
+        verify(dischargeRepository).save(any());
+        verify(episodeRepository).closeEpisode(100L, AHORA);
     }
 
     @Test
     @DisplayName("H05: Usuario sin rol médico (ej. enfermero) es rechazado con 403 al intentar dar egreso definitivo")
-    void registrarEgresoHospitalario_noMedico_lanzaAccesoNoAutorizado() {
-        RegistrarEgresoRequest req = new RegistrarEgresoRequest("ALTA_DOMICILIO", "Diag", "Epicrisis", "Plan");
+    void registerDischargeHospital_notPhysician_throwsUnauthorizedAccess() {
+        RegisterDischargeRequest req = new RegisterDischargeRequest("ALTA_DOMICILIO", "Diag", "Epicrisis", "Plan");
 
-        assertThatThrownBy(() -> hospitalService.registrarEgresoHospitalario(
+        assertThatThrownBy(() -> hospitalService.registerHospitalDischarge(
                 "ep-pub", req, "enf-pub-id", List.of(new SimpleGrantedAuthority("ROLE_ENFERMERIA")), "127.0.0.1"
         ))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessageContaining("Solo profesionales médicos pueden emitir órdenes de egreso");
     }
 
     @Test
     @DisplayName("H06: Centro de Control calcula censo de camas e indicadores de ocupación")
-    void obtenerCensoCamas_calculaOcupacionCorrectamente() {
+    void getCensusBeds_calculaOccupancyCorrectly() {
         when(siteRepository.getSingleSite()).thenReturn(sedeMock);
 
-        CamaDetalleResponse c1 = new CamaDetalleResponse("c-1", "h-1", "H1", "a-1", "Urgencias", "sede-pub", "Hospital", "C1", "OCUPADA", "ep-1", "Paciente 1", "oc-1");
-        CamaDetalleResponse c2 = new CamaDetalleResponse("c-2", "h-1", "H1", "a-1", "Urgencias", "sede-pub", "Hospital", "C2", "DISPONIBLE", null, null, null);
-        CamaDetalleResponse c3 = new CamaDetalleResponse("c-3", "h-1", "H1", "a-1", "Urgencias", "sede-pub", "Hospital", "C3", "LIMPIEZA", null, null, null);
-        CamaDetalleResponse c4 = new CamaDetalleResponse("c-4", "h-1", "H1", "a-1", "Urgencias", "sede-pub", "Hospital", "C4", "MANTENIMIENTO", null, null, null);
+        BedDetailResponse c1 = new BedDetailResponse("c-1", "h-1", "H1", "a-1", "Urgencias", "sede-pub", "Hospital", "C1", "OCUPADA", "ep-1", "Paciente 1", "oc-1");
+        BedDetailResponse c2 = new BedDetailResponse("c-2", "h-1", "H1", "a-1", "Urgencias", "sede-pub", "Hospital", "C2", "DISPONIBLE", null, null, null);
+        BedDetailResponse c3 = new BedDetailResponse("c-3", "h-1", "H1", "a-1", "Urgencias", "sede-pub", "Hospital", "C3", "LIMPIEZA", null, null, null);
+        BedDetailResponse c4 = new BedDetailResponse("c-4", "h-1", "H1", "a-1", "Urgencias", "sede-pub", "Hospital", "C4", "MANTENIMIENTO", null, null, null);
 
-        when(camaRepository.listarDetallePorSedeId(1L)).thenReturn(List.of(c1, c2, c3, c4));
-        when(areaRepository.listarPorSedeId(1L)).thenReturn(List.of(areaMock));
+        when(bedRepository.listDetailsBySiteId(1L)).thenReturn(List.of(c1, c2, c3, c4));
+        when(areaRepository.listBySiteId(1L)).thenReturn(List.of(areaMock));
 
-        CensoCamasResponse censo = hospitalService.obtenerCensoCamas();
+        BedCensusResponse censo = hospitalService.getBedCensus();
 
         assertThat(censo).isNotNull();
-        assertThat(censo.totalCamas()).isEqualTo(4);
-        assertThat(censo.ocupadas()).isEqualTo(1);
-        assertThat(censo.disponibles()).isEqualTo(1);
-        assertThat(censo.enLimpieza()).isEqualTo(1);
-        assertThat(censo.enMantenimiento()).isEqualTo(1);
-        assertThat(censo.tasaOcupacionPorcentaje()).isEqualTo(25.0);
+        assertThat(censo.totalBeds()).isEqualTo(4);
+        assertThat(censo.occupied()).isEqualTo(1);
+        assertThat(censo.available()).isEqualTo(1);
+        assertThat(censo.inCleaning()).isEqualTo(1);
+        assertThat(censo.inMaintenance()).isEqualTo(1);
+        assertThat(censo.occupancyRatePercentage()).isEqualTo(25.0);
     }
 }

@@ -3,10 +3,10 @@ package com.meditriaje.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.meditriaje.db.OracleTestDatabase;
-import com.meditriaje.dto.emergency.EpisodioUrgenciaResponse;
-import com.meditriaje.dto.emergency.ItemColaUrgenciaResponse;
-import com.meditriaje.model.EpisodioAtencion;
-import com.meditriaje.model.IngresoUrgencia;
+import com.meditriaje.dto.emergency.EmergencyEpisodeResponse;
+import com.meditriaje.dto.emergency.EmergencyQueueItemResponse;
+import com.meditriaje.model.CareEpisode;
+import com.meditriaje.model.EmergencyAdmission;
 import com.meditriaje.repository.plsql.OracleErrorTranslator;
 import com.meditriaje.repository.plsql.PackageGateway;
 import java.time.Duration;
@@ -35,8 +35,8 @@ class PkgEmergencyIT {
 
     private static OracleContainer oracle;
     private static JdbcTemplate owner;
-    private static EpisodioAtencionRepository episodes;
-    private static IngresoUrgenciaRepository admissions;
+    private static CareEpisodeRepository episodes;
+    private static EmergencyAdmissionRepository admissions;
     private static Long siteId;
     private static Long patientId;
     private static Long staffUserId;
@@ -53,8 +53,8 @@ class PkgEmergencyIT {
         DataSource appDs =
                 OracleTestDatabase.dataSource(oracle, OracleTestDatabase.APP_USER, OracleTestDatabase.APP_PASSWORD);
         PackageGateway gateway = new PackageGateway(appDs, OWNER, new OracleErrorTranslator());
-        episodes = new EpisodioAtencionRepository(gateway);
-        admissions = new IngresoUrgenciaRepository(gateway);
+        episodes = new CareEpisodeRepository(gateway);
+        admissions = new EmergencyAdmissionRepository(gateway);
 
         siteId = owner.queryForObject("SELECT MIN(ID) FROM CONFIGURACION_HOSPITAL", Long.class);
         patientId = owner.queryForObject("SELECT ID FROM PACIENTE WHERE PUBLIC_ID = 'fx-patient-1'", Long.class);
@@ -72,43 +72,43 @@ class PkgEmergencyIT {
     @Test
     void episodeLifecycleUsesTheSingleSite() {
         Instant admitted = Instant.now().truncatedTo(ChronoUnit.MILLIS);
-        EpisodioAtencion saved = episodes.guardar(newEpisode(null, admitted, "REGISTRADO"));
+        CareEpisode saved = episodes.save(newEpisode(null, admitted, "REGISTRADO"));
 
         assertThat(saved.id()).isNotNull();
-        EpisodioAtencion read = episodes.buscarPorPublicId(saved.publicId()).orElseThrow();
-        assertThat(read.sedeId()).isEqualTo(siteId);
-        assertThat(read.pacienteId()).isNull();
-        assertThat(read.ingresoAt()).isEqualTo(admitted);
-        assertThat(episodes.buscarPorId(saved.id())).contains(read);
-        assertThat(episodes.buscarPorPublicId("no-existe")).isEmpty();
+        CareEpisode read = episodes.findByPublicId(saved.publicId()).orElseThrow();
+        assertThat(read.siteId()).isEqualTo(siteId);
+        assertThat(read.patientId()).isNull();
+        assertThat(read.admittedAt()).isEqualTo(admitted);
+        assertThat(episodes.findById(saved.id())).contains(read);
+        assertThat(episodes.findByPublicId("no-existe")).isEmpty();
 
-        assertThat(episodes.actualizarEstado(saved.id(), "EN_TRIAJE")).isEqualTo(1);
-        assertThat(episodes.vincularPaciente(saved.id(), patientId)).isEqualTo(1);
-        assertThat(episodes.actualizarEstado(-1L, "EN_TRIAJE")).isZero();
+        assertThat(episodes.updateStatus(saved.id(), "EN_TRIAJE")).isEqualTo(1);
+        assertThat(episodes.linkPatient(saved.id(), patientId)).isEqualTo(1);
+        assertThat(episodes.updateStatus(-1L, "EN_TRIAJE")).isZero();
 
         Instant discharged = admitted.plusSeconds(3600);
-        assertThat(episodes.cerrarEpisodio(saved.id(), discharged)).isEqualTo(1);
-        EpisodioAtencion closed = episodes.buscarPorId(saved.id()).orElseThrow();
-        assertThat(closed.estado()).isEqualTo("EGRESADO");
-        assertThat(closed.egresoAt()).isEqualTo(discharged);
-        assertThat(closed.pacienteId()).isEqualTo(patientId);
+        assertThat(episodes.closeEpisode(saved.id(), discharged)).isEqualTo(1);
+        CareEpisode closed = episodes.findById(saved.id()).orElseThrow();
+        assertThat(closed.status()).isEqualTo("EGRESADO");
+        assertThat(closed.dischargedAt()).isEqualTo(discharged);
+        assertThat(closed.patientId()).isEqualTo(patientId);
     }
 
     @Test
     void admissionAndDetailShowTriageLevelProvisionalIdentityAndDoctor() {
-        EpisodioAtencion episode = episodes.guardar(newEpisode(null, Instant.now(), "REGISTRADO"));
-        IngresoUrgencia admission = admissions.guardar(new IngresoUrgencia(
+        CareEpisode episode = episodes.save(newEpisode(null, Instant.now(), "REGISTRADO"));
+        EmergencyAdmission admission = admissions.save(new EmergencyAdmission(
                 null, UUID.randomUUID().toString(), episode.id(), "AMBULANCIA", "Acompanante", "3000000000",
                 "Dolor toracico", null, staffUserId, null));
         assertThat(admission.id()).isNotNull();
-        assertThat(admissions.buscarPorEpisodioId(episode.id())).get()
-                .extracting(IngresoUrgencia::medioLlegada).isEqualTo("AMBULANCIA");
-        assertThat(admissions.buscarPorEpisodioId(-1L)).isEmpty();
+        assertThat(admissions.findByEpisodeId(episode.id())).get()
+                .extracting(EmergencyAdmission::arrivalMode).isEqualTo("AMBULANCIA");
+        assertThat(admissions.findByEpisodeId(-1L)).isEmpty();
 
-        EpisodioUrgenciaResponse pending = episodes.buscarDetallePorPublicId(episode.publicId()).orElseThrow();
-        assertThat(pending.nivelTriajeActual()).isEqualTo("PENDIENTE_VALORACION");
-        assertThat(pending.esIdentidadProvisional()).isFalse();
-        assertThat(pending.motivoLlegada()).isEqualTo("Dolor toracico");
+        EmergencyEpisodeResponse pending = episodes.findDetailByPublicId(episode.publicId()).orElseThrow();
+        assertThat(pending.currentTriageLevel()).isEqualTo("PENDIENTE_VALORACION");
+        assertThat(pending.isProvisionalIdentity()).isFalse();
+        assertThat(pending.arrivalReason()).isEqualTo("Dolor toracico");
 
         owner.update("INSERT INTO IDENTIDAD_PROVISIONAL (PUBLIC_ID, EPISODIO_ID, CODIGO_PROVISIONAL) VALUES (?, ?, ?)",
                 UUID.randomUUID().toString(), episode.id(), "NN-0001");
@@ -118,43 +118,43 @@ class PkgEmergencyIT {
                         + "ASIGNADO_POR_USUARIO_ID) VALUES (?, ?, ?, 'MEDICO_TRATANTE', ?)",
                 UUID.randomUUID().toString(), episode.id(), professionalId, staffUserId);
 
-        EpisodioUrgenciaResponse detail = episodes.buscarDetallePorPublicId(episode.publicId()).orElseThrow();
-        assertThat(detail.nivelTriajeActual()).isEqualTo("II");
-        assertThat(detail.esIdentidadProvisional()).isTrue();
-        assertThat(detail.codigoProvisional()).isEqualTo("NN-0001");
-        assertThat(detail.profesionalTratanteNombre()).isEqualTo("Pedro Medico");
-        assertThat(episodes.buscarDetallePorPublicId("no-existe")).isEmpty();
+        EmergencyEpisodeResponse detail = episodes.findDetailByPublicId(episode.publicId()).orElseThrow();
+        assertThat(detail.currentTriageLevel()).isEqualTo("II");
+        assertThat(detail.isProvisionalIdentity()).isTrue();
+        assertThat(detail.provisionalCode()).isEqualTo("NN-0001");
+        assertThat(detail.attendingProfessionalName()).isEqualTo("Pedro Medico");
+        assertThat(episodes.findDetailByPublicId("no-existe")).isEmpty();
     }
 
     @Test
     void queueIsOrderedByTriageLevelThenArrivalAndHonoursFilters() {
         Instant base = Instant.now().minus(2, ChronoUnit.HOURS);
-        EpisodioAtencion pending = episodes.guardar(newEpisode(null, base, "OBSERVACION"));
-        EpisodioAtencion levelTwo = episodes.guardar(newEpisode(null, base.plusSeconds(60), "OBSERVACION"));
-        EpisodioAtencion levelOne = episodes.guardar(newEpisode(null, base.plusSeconds(120), "OBSERVACION"));
-        EpisodioAtencion levelTwoLater = episodes.guardar(newEpisode(null, base.plusSeconds(180), "OBSERVACION"));
+        CareEpisode pending = episodes.save(newEpisode(null, base, "OBSERVACION"));
+        CareEpisode levelTwo = episodes.save(newEpisode(null, base.plusSeconds(60), "OBSERVACION"));
+        CareEpisode levelOne = episodes.save(newEpisode(null, base.plusSeconds(120), "OBSERVACION"));
+        CareEpisode levelTwoLater = episodes.save(newEpisode(null, base.plusSeconds(180), "OBSERVACION"));
         insertTriage(levelTwo.id(), 1, "II");
         insertTriage(levelOne.id(), 1, "I");
         insertTriage(levelTwoLater.id(), 1, "II");
 
-        List<ItemColaUrgenciaResponse> queue = episodes.listarColaUrgenciaPorSede(null, "OBSERVACION");
-        assertThat(queue).extracting(ItemColaUrgenciaResponse::episodioPublicId).containsExactly(
+        List<EmergencyQueueItemResponse> queue = episodes.listEmergencyQueueBySite(null, "OBSERVACION");
+        assertThat(queue).extracting(EmergencyQueueItemResponse::episodePublicId).containsExactly(
                 levelOne.publicId(), levelTwo.publicId(), levelTwoLater.publicId(), pending.publicId());
-        assertThat(queue.get(3).nivelTriaje()).isEqualTo("PENDIENTE_VALORACION");
-        assertThat(queue.get(3).identificadorVisible()).isEqualTo("Paciente no identificado");
-        assertThat(queue.get(0).minutosEspera()).isBetween(100L, 130L);
+        assertThat(queue.get(3).triageLevel()).isEqualTo("PENDIENTE_VALORACION");
+        assertThat(queue.get(3).visibleIdentifier()).isEqualTo("Paciente no identificado");
+        assertThat(queue.get(0).waitMinutes()).isBetween(100L, 130L);
 
-        assertThat(episodes.listarColaUrgenciaPorSede(siteId, " ")).extracting(ItemColaUrgenciaResponse::episodioPublicId)
+        assertThat(episodes.listEmergencyQueueBySite(siteId, " ")).extracting(EmergencyQueueItemResponse::episodePublicId)
                 .contains(pending.publicId(), levelOne.publicId());
-        assertThat(episodes.listarColaUrgenciaPorSede(-1L, null)).isEmpty();
+        assertThat(episodes.listEmergencyQueueBySite(-1L, null)).isEmpty();
 
-        episodes.cerrarEpisodio(levelOne.id(), null);
-        assertThat(episodes.listarColaUrgenciaPorSede(null, "OBSERVACION"))
-                .extracting(ItemColaUrgenciaResponse::episodioPublicId).doesNotContain(levelOne.publicId());
+        episodes.closeEpisode(levelOne.id(), null);
+        assertThat(episodes.listEmergencyQueueBySite(null, "OBSERVACION"))
+                .extracting(EmergencyQueueItemResponse::episodePublicId).doesNotContain(levelOne.publicId());
     }
 
-    private static EpisodioAtencion newEpisode(Long patient, Instant admitted, String status) {
-        return new EpisodioAtencion(null, UUID.randomUUID().toString(), patient, "URGENCIA", siteId, status,
+    private static CareEpisode newEpisode(Long patient, Instant admitted, String status) {
+        return new CareEpisode(null, UUID.randomUUID().toString(), patient, "URGENCIA", siteId, status,
                 admitted, null, "Motivo de ingreso", null, null);
     }
 

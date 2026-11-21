@@ -1,5 +1,6 @@
 package com.meditriaje.dto.admin;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.time.Instant;
 
 /**
@@ -7,15 +8,25 @@ import java.time.Instant;
  */
 public record SlotResponse(
         String publicId,
-        String profesionalPublicId,
-        String profesionalNombre,
-        String sedePublicId,
-        String sedeNombre,
-        String especialidadPublicId,
-        String especialidadNombre,
-        Instant fechaHoraInicio,
-        Instant fechaHoraFin,
-        String modalidad,
-        String estado
+        @JsonProperty("profesionalPublicId")
+        String professionalPublicId,
+        @JsonProperty("profesionalNombre")
+        String professionalName,
+        @JsonProperty("sedePublicId")
+        String sitePublicId,
+        @JsonProperty("sedeNombre")
+        String siteName,
+        @JsonProperty("especialidadPublicId")
+        String specialtyPublicId,
+        @JsonProperty("especialidadNombre")
+        String specialtyName,
+        @JsonProperty("fechaHoraInicio")
+        Instant startDateTime,
+        @JsonProperty("fechaHoraFin")
+        Instant endDateTime,
+        @JsonProperty("modalidad")
+        String modality,
+        @JsonProperty("estado")
+        String status
 ) {
 }

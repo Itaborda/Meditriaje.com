@@ -30,7 +30,7 @@ public final class Base32Util {
      * Genera un secreto aleatorio en Base32 del tamaño en bytes especificado.
      * Para TOTP RFC 6238 se recomiendan 20 bytes (160 bits = 32 caracteres Base32).
      */
-    public static String generarSecreto(int numBytes) {
+    public static String generateSecret(int numBytes) {
         if (numBytes <= 0) {
             throw new IllegalArgumentException("El numero de bytes debe ser positivo");
         }

@@ -1,8 +1,8 @@
 package com.meditriaje.service;
 
 import com.meditriaje.dto.affiliation.*;
-import com.meditriaje.exception.ConflictoOperacionException;
-import com.meditriaje.exception.RecursoNoEncontradoException;
+import com.meditriaje.exception.OperationConflictException;
+import com.meditriaje.exception.ResourceNotFoundException;
 import com.meditriaje.model.*;
 import com.meditriaje.repository.*;
 import org.apache.poi.openxml4j.util.ZipSecureFile;
@@ -24,42 +24,42 @@ import java.util.*;
 @Service
 public class AffiliationService {
 
-    private final EntidadEpsRepository epsRepository;
-    private final AfiliacionPacienteRepository afiliacionRepository;
-    private final LoteImportacionEpsRepository loteRepository;
-    private final AusenciaMedicaRepository ausenciaRepository;
-    private final RepresentacionLegalRepository representacionRepository;
-    private final PacienteRepository pacienteRepository;
-    private final ProfesionalRepository profesionalRepository;
-    private final UsuarioRepository usuarioRepository;
-    private final AuditoriaService auditoriaService;
+    private final EpsEntityRepository epsRepository;
+    private final PatientAffiliationRepository affiliationRepository;
+    private final EpsImportBatchRepository batchRepository;
+    private final MedicalAbsenceRepository absenceRepository;
+    private final LegalRepresentationRepository representationRepository;
+    private final PatientRepository patientRepository;
+    private final ProfessionalRepository professionalRepository;
+    private final UserRepository userRepository;
+    private final AuditService auditService;
     private final Clock clock;
 
-    private static final Set<String> TIPOS_DOC_VALIDOS = Set.of("CC", "TI", "RC", "CE", "PA", "PE", "PPT");
-    private static final Set<String> REGIMENES_VALIDOS = Set.of("CONTRIBUTIVO", "SUBSIDIADO", "ESPECIAL", "NO_ASEGURADO");
-    private static final int MAX_FILAS_LOTE = 5000;
+    private static final Set<String> VALID_DOCUMENT_TYPES = Set.of("CC", "TI", "RC", "CE", "PA", "PE", "PPT");
+    private static final Set<String> VALID_REGIMES = Set.of("CONTRIBUTIVO", "SUBSIDIADO", "ESPECIAL", "NO_ASEGURADO");
+    private static final int MAX_BATCH_ROWS = 5000;
 
     public AffiliationService(
-            EntidadEpsRepository epsRepository,
-            AfiliacionPacienteRepository afiliacionRepository,
-            LoteImportacionEpsRepository loteRepository,
-            AusenciaMedicaRepository ausenciaRepository,
-            RepresentacionLegalRepository representacionRepository,
-            PacienteRepository pacienteRepository,
-            ProfesionalRepository profesionalRepository,
-            UsuarioRepository usuarioRepository,
-            AuditoriaService auditoriaService,
+            EpsEntityRepository epsRepository,
+            PatientAffiliationRepository affiliationRepository,
+            EpsImportBatchRepository batchRepository,
+            MedicalAbsenceRepository absenceRepository,
+            LegalRepresentationRepository representationRepository,
+            PatientRepository patientRepository,
+            ProfessionalRepository professionalRepository,
+            UserRepository userRepository,
+            AuditService auditService,
             Clock clock
     ) {
         this.epsRepository = Objects.requireNonNull(epsRepository);
-        this.afiliacionRepository = Objects.requireNonNull(afiliacionRepository);
-        this.loteRepository = Objects.requireNonNull(loteRepository);
-        this.ausenciaRepository = Objects.requireNonNull(ausenciaRepository);
-        this.representacionRepository = Objects.requireNonNull(representacionRepository);
-        this.pacienteRepository = Objects.requireNonNull(pacienteRepository);
-        this.profesionalRepository = Objects.requireNonNull(profesionalRepository);
-        this.usuarioRepository = Objects.requireNonNull(usuarioRepository);
-        this.auditoriaService = Objects.requireNonNull(auditoriaService);
+        this.affiliationRepository = Objects.requireNonNull(affiliationRepository);
+        this.batchRepository = Objects.requireNonNull(batchRepository);
+        this.absenceRepository = Objects.requireNonNull(absenceRepository);
+        this.representationRepository = Objects.requireNonNull(representationRepository);
+        this.patientRepository = Objects.requireNonNull(patientRepository);
+        this.professionalRepository = Objects.requireNonNull(professionalRepository);
+        this.userRepository = Objects.requireNonNull(userRepository);
+        this.auditService = Objects.requireNonNull(auditService);
         this.clock = Objects.requireNonNull(clock);
     }
 
@@ -68,7 +68,7 @@ public class AffiliationService {
      * Aplica protección contra Zip Bomb, sanitización de fórmulas y aislamiento transaccional.
      */
     @Transactional
-    public LotePreviewResponse procesarArchivoExcelPreview(
+    public BatchPreviewResponse previewExcelImport(
             byte[] archivoBytes,
             String nombreArchivo,
             String epsPublicId,
@@ -77,24 +77,24 @@ public class AffiliationService {
     ) {
         Objects.requireNonNull(archivoBytes, "archivoBytes no puede ser nulo");
         if (archivoBytes.length == 0) {
-            throw new ConflictoOperacionException("El archivo suministrado está vacío.");
+            throw new OperationConflictException("El archivo suministrado está vacío.");
         }
         if (archivoBytes.length > 10 * 1024 * 1024) {
-            throw new ConflictoOperacionException("El archivo supera el tamaño máximo permitido de 10 MB.");
+            throw new OperationConflictException("El archivo supera el tamaño máximo permitido de 10 MB.");
         }
 
-        EntidadEps eps = epsRepository.buscarPorPublicId(epsPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("EPS no encontrada: " + epsPublicId));
+        EpsEntity eps = epsRepository.findByPublicId(epsPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("EPS no encontrada: " + epsPublicId));
 
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
 
-        String hashSha256 = calcularSha256(archivoBytes);
+        String hashSha256 = computeSha256(archivoBytes);
 
         // Mitigación Zip Bomb (CVE-2014-3529 / POI threshold)
         ZipSecureFile.setMinInflateRatio(0.01);
 
-        List<DetalleImportacionEps> filasStaging = new ArrayList<>();
+        List<EpsImportDetail> filasStaging = new ArrayList<>();
         int totalFilas = 0;
         int filasValidas = 0;
         int filasFallidas = 0;
@@ -104,30 +104,30 @@ public class AffiliationService {
 
             Sheet sheet = workbook.getSheetAt(0);
             if (sheet == null) {
-                throw new ConflictoOperacionException("El archivo Excel no contiene hojas de cálculo legibles.");
+                throw new OperationConflictException("El archivo Excel no contiene hojas de cálculo legibles.");
             }
 
             int lastRow = sheet.getLastRowNum();
-            if (lastRow > MAX_FILAS_LOTE) {
-                throw new ConflictoOperacionException("El archivo supera el límite de " + MAX_FILAS_LOTE + " filas por lote.");
+            if (lastRow > MAX_BATCH_ROWS) {
+                throw new OperationConflictException("El archivo supera el límite de " + MAX_BATCH_ROWS + " filas por lote.");
             }
 
             // Fila 0 es encabezado (TIPO_DOCUMENTO, NUMERO_DOCUMENTO, NOMBRES, APELLIDOS, REGIMEN, TIPO_AFILIADO)
             for (int r = 1; r <= lastRow; r++) {
                 Row row = sheet.getRow(r);
-                if (row == null || celdaVacia(row.getCell(0))) {
+                if (row == null || isEmptyCell(row.getCell(0))) {
                     continue;
                 }
 
                 totalFilas++;
-                String tipoDoc = sanitizarValorCelda(obtenerValorCelda(row.getCell(0)));
-                String numDoc = sanitizarValorCelda(obtenerValorCelda(row.getCell(1)));
-                String nombres = sanitizarValorCelda(obtenerValorCelda(row.getCell(2)));
-                String apellidos = sanitizarValorCelda(obtenerValorCelda(row.getCell(3)));
-                String regimen = sanitizarValorCelda(obtenerValorCelda(row.getCell(4)));
-                String tipoAfiliado = sanitizarValorCelda(obtenerValorCelda(row.getCell(5)));
+                String tipoDoc = sanitizeCellValue(getCellValue(row.getCell(0)));
+                String numDoc = sanitizeCellValue(getCellValue(row.getCell(1)));
+                String nombres = sanitizeCellValue(getCellValue(row.getCell(2)));
+                String apellidos = sanitizeCellValue(getCellValue(row.getCell(3)));
+                String regimen = sanitizeCellValue(getCellValue(row.getCell(4)));
+                String tipoAfiliado = sanitizeCellValue(getCellValue(row.getCell(5)));
 
-                String errorMotivo = validarFila(tipoDoc, numDoc, regimen);
+                String errorMotivo = validateRow(tipoDoc, numDoc, regimen);
                 boolean esValida = errorMotivo == null;
 
                 if (esValida) {
@@ -136,7 +136,7 @@ public class AffiliationService {
                     filasFallidas++;
                 }
 
-                filasStaging.add(new DetalleImportacionEps(
+                filasStaging.add(new EpsImportDetail(
                         null,
                         null,
                         r + 1,
@@ -144,7 +144,7 @@ public class AffiliationService {
                         numDoc,
                         nombres,
                         apellidos,
-                        regimen != null ? regimen.toUpperCase() : eps.regimenHabitual(),
+                        regimen != null ? regimen.toUpperCase() : eps.defaultRegime(),
                         tipoAfiliado != null ? tipoAfiliado.toUpperCase() : "COTIZANTE",
                         esValida ? "VALIDO" : "ERROR",
                         errorMotivo
@@ -152,17 +152,17 @@ public class AffiliationService {
             }
 
         } catch (Exception e) {
-            if (e instanceof ConflictoOperacionException) throw (ConflictoOperacionException) e;
-            throw new ConflictoOperacionException("Error al procesar el archivo Excel: " + e.getMessage());
+            if (e instanceof OperationConflictException) throw (OperationConflictException) e;
+            throw new OperationConflictException("Error al procesar el archivo Excel: " + e.getMessage());
         }
 
         if (totalFilas == 0) {
-            throw new ConflictoOperacionException("El archivo Excel no contiene filas de datos para procesar.");
+            throw new OperationConflictException("El archivo Excel no contiene filas de datos para procesar.");
         }
 
         String lotePubId = UUID.randomUUID().toString();
         Instant ahora = Instant.now(clock);
-        LoteImportacionEps lote = new LoteImportacionEps(
+        EpsImportBatch lote = new EpsImportBatch(
                 null,
                 lotePubId,
                 nombreArchivo != null ? nombreArchivo : "afiliados.xlsx",
@@ -177,36 +177,36 @@ public class AffiliationService {
                 null
         );
 
-        LoteImportacionEps guardado = loteRepository.guardarLote(lote);
-        loteRepository.guardarDetallesBatch(guardado.id(), filasStaging);
+        EpsImportBatch guardado = batchRepository.saveBatch(lote);
+        batchRepository.saveBatchDetails(guardado.id(), filasStaging);
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.IMPORTACION_EPS_PREVIEW,
+                AuditableAction.IMPORTACION_EPS_PREVIEW,
                 "LOTE_IMPORTACION_EPS",
                 lotePubId,
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
-        List<DetalleImportacionEps> muestra = loteRepository.listarDetalles(guardado.id(), 20);
-        List<LotePreviewResponse.FilaPreviewItem> itemsMuestra = muestra.stream().map(d -> new LotePreviewResponse.FilaPreviewItem(
-                d.numeroFila(),
-                d.tipoDocumento(),
-                d.numeroDocumento(),
-                d.nombres(),
-                d.apellidos(),
-                d.regimen(),
-                d.tipoAfiliado(),
-                d.estadoFila(),
-                d.errorMotivo()
+        List<EpsImportDetail> muestra = batchRepository.listDetails(guardado.id(), 20);
+        List<BatchPreviewResponse.RowPreviewItem> itemsMuestra = muestra.stream().map(d -> new BatchPreviewResponse.RowPreviewItem(
+                d.rowNumber(),
+                d.documentType(),
+                d.documentNumber(),
+                d.firstNames(),
+                d.lastNames(),
+                d.regime(),
+                d.affiliateType(),
+                d.rowStatus(),
+                d.errorReason()
         )).toList();
 
-        return new LotePreviewResponse(
+        return new BatchPreviewResponse(
                 lotePubId,
-                guardado.nombreArchivo(),
-                eps.codigoMinSalud(),
-                eps.nombre(),
+                guardado.fileName(),
+                eps.minSaludCode(),
+                eps.name(),
                 totalFilas,
                 filasValidas,
                 filasFallidas,
@@ -219,57 +219,57 @@ public class AffiliationService {
      * Aplica el commit definitivo de un lote en staging a la base de datos (A03, A04).
      */
     @Transactional
-    public void commitLote(
+    public void commitBatch(
             String lotePublicId,
-            CommitLoteRequest request,
+            CommitBatchRequest request,
             String usuarioAutenticadoPublicId,
             String ipOrigen
     ) {
-        LoteImportacionEps lote = loteRepository.buscarPorPublicId(lotePublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Lote no encontrado: " + lotePublicId));
+        EpsImportBatch lote = batchRepository.findByPublicId(lotePublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Lote no encontrado: " + lotePublicId));
 
-        if (!"PREVIEW".equals(lote.estado())) {
-            throw new ConflictoOperacionException("El lote ya fue procesado o no se encuentra en estado PREVIEW (Estado: " + lote.estado() + ").");
+        if (!"PREVIEW".equals(lote.status())) {
+            throw new OperationConflictException("El lote ya fue procesado o no se encuentra en estado PREVIEW (Estado: " + lote.status() + ").");
         }
 
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
 
-        String modo = request != null && request.modoCommit() != null ? request.modoCommit() : "VALID_ROWS";
-        if ("ATOMIC_ALL".equals(modo) && lote.filasFallidas() > 0) {
-            throw new ConflictoOperacionException("El lote contiene " + lote.filasFallidas() + " filas con error y el modo seleccionado es ATOMIC_ALL.");
+        String modo = request != null && request.commitMode() != null ? request.commitMode() : "VALID_ROWS";
+        if ("ATOMIC_ALL".equals(modo) && lote.failedRows() > 0) {
+            throw new OperationConflictException("El lote contiene " + lote.failedRows() + " filas con error y el modo seleccionado es ATOMIC_ALL.");
         }
 
-        List<DetalleImportacionEps> filasValidas = loteRepository.listarFilasValidas(lote.id());
+        List<EpsImportDetail> filasValidas = batchRepository.listValidRows(lote.id());
         Instant ahora = Instant.now(clock);
 
-        for (DetalleImportacionEps fila : filasValidas) {
+        for (EpsImportDetail fila : filasValidas) {
             // Verificar si el paciente ya tiene registro civil en PACIENTE
-            Optional<Paciente> pacienteOpt = pacienteRepository.buscarPorDocumento(fila.tipoDocumento(), fila.numeroDocumento());
-            Long pacienteId = pacienteOpt.map(Paciente::id).orElse(null);
+            Optional<Patient> pacienteOpt = patientRepository.findByDocument(fila.documentType(), fila.documentNumber());
+            Long pacienteId = pacienteOpt.map(Patient::id).orElse(null);
 
-            Optional<AfiliacionPaciente> previa = afiliacionRepository.buscarPorDocumento(fila.tipoDocumento(), fila.numeroDocumento());
+            Optional<PatientAffiliation> previa = affiliationRepository.findByDocument(fila.documentType(), fila.documentNumber());
             if (previa.isPresent()) {
                 // Actualizar cobertura EPS existente
-                afiliacionRepository.actualizarAfiliacion(
+                affiliationRepository.updateAffiliation(
                         previa.get().id(),
                         lote.epsId(),
-                        fila.regimen(),
-                        fila.tipoAfiliado(),
+                        fila.regime(),
+                        fila.affiliateType(),
                         "ACTIVO",
                         ahora
                 );
             } else {
                 // Insertar nueva afiliación
-                AfiliacionPaciente nueva = new AfiliacionPaciente(
+                PatientAffiliation nueva = new PatientAffiliation(
                         null,
                         UUID.randomUUID().toString(),
                         pacienteId,
-                        fila.tipoDocumento(),
-                        fila.numeroDocumento(),
+                        fila.documentType(),
+                        fila.documentNumber(),
                         lote.epsId(),
-                        fila.regimen(),
-                        fila.tipoAfiliado(),
+                        fila.regime(),
+                        fila.affiliateType(),
                         "ACTIVO",
                         LocalDate.now(clock),
                         "CARGA_MASIVA",
@@ -277,18 +277,18 @@ public class AffiliationService {
                         ahora,
                         ahora
                 );
-                afiliacionRepository.guardar(nueva);
+                affiliationRepository.save(nueva);
             }
         }
 
-        loteRepository.cambiarEstadoLote(lote.id(), "PROCESADO", ahora);
+        batchRepository.changeBatchStatus(lote.id(), "PROCESADO", ahora);
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.IMPORTACION_EPS_COMMIT,
+                AuditableAction.IMPORTACION_EPS_COMMIT,
                 "LOTE_IMPORTACION_EPS",
                 lote.publicId(),
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
     }
@@ -297,30 +297,30 @@ public class AffiliationService {
      * Consulta el estado de afiliación y aseguramiento EPS de un paciente (A05).
      * Nunca bloquea la atención médica de urgencias si el paciente no tiene EPS activa.
      */
-    public AfiliacionResponse consultarAfiliacion(
+    public AffiliationResponse getAffiliation(
             String tipoDocumento,
             String numeroDocumento,
             String usuarioAutenticadoPublicId,
             String ipOrigen
     ) {
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario autenticado no encontrado."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario autenticado no encontrado."));
 
-        Optional<AfiliacionResponse> detalle = afiliacionRepository.buscarDetallePorDocumento(tipoDocumento, numeroDocumento);
+        Optional<AffiliationResponse> detalle = affiliationRepository.findDetailByDocument(tipoDocumento, numeroDocumento);
 
         // S-04: Registrar identificador seudónimo en auditoría para no exponer documento de identidad en bitácora
-        String idRecursoAuditoria = detalle.map(AfiliacionResponse::publicId).orElse("SIN_REGISTRO_PREVIO");
+        String idRecursoAuditoria = detalle.map(AffiliationResponse::publicId).orElse("SIN_REGISTRO_PREVIO");
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.AFILIACION_CONSULTADA,
+                AuditableAction.AFILIACION_CONSULTADA,
                 "AFILIACION_PACIENTE",
                 idRecursoAuditoria,
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
-        return detalle.orElse(new AfiliacionResponse(
+        return detalle.orElse(new AffiliationResponse(
                 null,
                 null,
                 tipoDocumento,
@@ -341,57 +341,57 @@ public class AffiliationService {
      * Registra una ausencia médica o bloqueo de agenda (C02).
      */
     @Transactional
-    public AusenciaResponse registrarAusenciaMedica(
-            RegistrarAusenciaRequest request,
+    public AbsenceResponse registerMedicalAbsence(
+            RegisterAbsenceRequest request,
             String usuarioAutenticadoPublicId,
             String ipOrigen
     ) {
         Objects.requireNonNull(request, "request no puede ser nulo");
-        if (request.fechaFin().isBefore(request.fechaInicio())) {
-            throw new ConflictoOperacionException("fechaFin no puede ser anterior a fechaInicio.");
+        if (request.endDate().isBefore(request.startDate())) {
+            throw new OperationConflictException("fechaFin no puede ser anterior a fechaInicio.");
         }
 
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
 
-        Profesional prof = profesionalRepository.buscarPorPublicId(request.profesionalPublicId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Profesional no encontrado: " + request.profesionalPublicId()));
+        Professional prof = professionalRepository.findByPublicId(request.professionalPublicId())
+                .orElseThrow(() -> new ResourceNotFoundException("Profesional no encontrado: " + request.professionalPublicId()));
 
-        if (ausenciaRepository.existeTraslapeAusencia(prof.id(), request.fechaInicio(), request.fechaFin())) {
-            throw new ConflictoOperacionException("Ya existe una ausencia médica activa registrada en ese rango horario.");
+        if (absenceRepository.existsAbsenceOverlap(prof.id(), request.startDate(), request.endDate())) {
+            throw new OperationConflictException("Ya existe una ausencia médica activa registrada en ese rango horario.");
         }
 
         Instant ahora = Instant.now(clock);
         String ausenciaPubId = UUID.randomUUID().toString();
-        AusenciaMedica ausencia = new AusenciaMedica(
+        MedicalAbsence ausencia = new MedicalAbsence(
                 null,
                 ausenciaPubId,
                 prof.id(),
-                request.fechaInicio(),
-                request.fechaFin(),
-                request.motivo(),
+                request.startDate(),
+                request.endDate(),
+                request.reason(),
                 "ACTIVA",
                 usuario.id(),
                 ahora
         );
-        ausenciaRepository.guardar(ausencia);
+        absenceRepository.save(ausencia);
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.AUSENCIA_MEDICA_REGISTRADA,
+                AuditableAction.AUSENCIA_MEDICA_REGISTRADA,
                 "AUSENCIA_MEDICA",
                 ausenciaPubId,
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
-        return new AusenciaResponse(
+        return new AbsenceResponse(
                 ausenciaPubId,
                 prof.publicId(),
-                prof.nombres() + " " + prof.apellidos(),
-                request.fechaInicio(),
-                request.fechaFin(),
-                request.motivo(),
+                prof.firstNames() + " " + prof.lastNames(),
+                request.startDate(),
+                request.endDate(),
+                request.reason(),
                 "ACTIVA"
         );
     }
@@ -400,93 +400,93 @@ public class AffiliationService {
      * Registra el vínculo de representación legal para menores de edad (C03).
      */
     @Transactional
-    public RepresentacionLegalResponse registrarRepresentacionLegal(
-            RepresentacionLegalRequest request,
+    public LegalRepresentationResponse registerLegalRepresentation(
+            LegalRepresentationRequest request,
             String usuarioAutenticadoPublicId,
             String ipOrigen
     ) {
         Objects.requireNonNull(request, "request no puede ser nulo");
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
 
-        Paciente menor = pacienteRepository.buscarPorPublicId(request.menorPublicId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Menor de edad no encontrado: " + request.menorPublicId()));
+        Patient menor = patientRepository.findByPublicId(request.minorPublicId())
+                .orElseThrow(() -> new ResourceNotFoundException("Menor de edad no encontrado: " + request.minorPublicId()));
 
-        Paciente rep = pacienteRepository.buscarPorPublicId(request.representantePublicId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Representante legal no encontrado: " + request.representantePublicId()));
+        Patient rep = patientRepository.findByPublicId(request.representativePublicId())
+                .orElseThrow(() -> new ResourceNotFoundException("Representante legal no encontrado: " + request.representativePublicId()));
 
         if (menor.id().equals(rep.id())) {
-            throw new ConflictoOperacionException("El menor y el representante legal no pueden ser el mismo paciente.");
+            throw new OperationConflictException("El menor y el representante legal no pueden ser el mismo paciente.");
         }
 
         Instant ahora = Instant.now(clock);
         String repPubId = UUID.randomUUID().toString();
-        RepresentacionLegal rl = new RepresentacionLegal(
+        LegalRepresentation rl = new LegalRepresentation(
                 null,
                 repPubId,
                 menor.id(),
                 rep.id(),
-                request.parentesco(),
-                request.documentoSoporte(),
+                request.relationship(),
+                request.supportingDocument(),
                 true,
                 ahora
         );
-        representacionRepository.guardar(rl);
+        representationRepository.save(rl);
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.REPRESENTACION_LEGAL_REGISTRADA,
+                AuditableAction.REPRESENTACION_LEGAL_REGISTRADA,
                 "REPRESENTACION_LEGAL",
                 repPubId,
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
-        return new RepresentacionLegalResponse(
+        return new LegalRepresentationResponse(
                 repPubId,
                 menor.publicId(),
-                menor.nombres() + " " + menor.apellidos(),
-                menor.numeroDocumento(),
+                menor.firstNames() + " " + menor.lastNames(),
+                menor.documentNumber(),
                 rep.publicId(),
-                rep.nombres() + " " + rep.apellidos(),
-                rep.numeroDocumento(),
-                request.parentesco(),
+                rep.firstNames() + " " + rep.lastNames(),
+                rep.documentNumber(),
+                request.relationship(),
                 true
         );
     }
 
-    public List<EntidadEps> listarEpsActivas() {
-        return epsRepository.listarActivas();
+    public List<EpsEntity> listActiveEps() {
+        return epsRepository.listActive();
     }
 
-    public List<AusenciaResponse> listarAusenciasProfesional(String profesionalPublicId) {
-        Profesional prof = profesionalRepository.buscarPorPublicId(profesionalPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Profesional no encontrado: " + profesionalPublicId));
-        return ausenciaRepository.listarPorProfesionalId(prof.id());
+    public List<AbsenceResponse> listProfessionalAbsences(String profesionalPublicId) {
+        Professional prof = professionalRepository.findByPublicId(profesionalPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Profesional no encontrado: " + profesionalPublicId));
+        return absenceRepository.listByProfessionalId(prof.id());
     }
 
-    public List<RepresentacionLegalResponse> listarRepresentacionesPorTutor(String tutorPublicId) {
-        Paciente tutor = pacienteRepository.buscarPorPublicId(tutorPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Tutor no encontrado: " + tutorPublicId));
-        return representacionRepository.listarPorRepresentanteId(tutor.id());
+    public List<LegalRepresentationResponse> listRepresentationsByGuardian(String tutorPublicId) {
+        Patient tutor = patientRepository.findByPublicId(tutorPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tutor no encontrado: " + tutorPublicId));
+        return representationRepository.listByRepresentativeId(tutor.id());
     }
 
     // --- Métodos de Utilidad y Seguridad ---
 
-    private String validarFila(String tipoDoc, String numDoc, String regimen) {
-        if (tipoDoc == null || !TIPOS_DOC_VALIDOS.contains(tipoDoc.toUpperCase())) {
+    private String validateRow(String tipoDoc, String numDoc, String regimen) {
+        if (tipoDoc == null || !VALID_DOCUMENT_TYPES.contains(tipoDoc.toUpperCase())) {
             return "Tipo de documento no válido. Esperado: CC, TI, RC, CE, PA, PPT.";
         }
         if (numDoc == null || numDoc.isBlank() || numDoc.length() < 3 || numDoc.length() > 20) {
             return "Número de documento inválido o de longitud incorrecta.";
         }
-        if (regimen != null && !REGIMENES_VALIDOS.contains(regimen.toUpperCase())) {
+        if (regimen != null && !VALID_REGIMES.contains(regimen.toUpperCase())) {
             return "Régimen no válido. Esperado: CONTRIBUTIVO, SUBSIDIADO, ESPECIAL.";
         }
         return null;
     }
 
-    private String obtenerValorCelda(Cell cell) {
+    private String getCellValue(Cell cell) {
         if (cell == null) return null;
         return switch (cell.getCellType()) {
             case STRING -> cell.getStringCellValue();
@@ -496,15 +496,15 @@ public class AffiliationService {
         };
     }
 
-    private boolean celdaVacia(Cell cell) {
-        String val = obtenerValorCelda(cell);
+    private boolean isEmptyCell(Cell cell) {
+        String val = getCellValue(cell);
         return val == null || val.trim().isEmpty();
     }
 
     /**
      * Sanitiza el valor de celda para neutralizar inyecciones de fórmulas (D1, SEC-001).
      */
-    private String sanitizarValorCelda(String val) {
+    private String sanitizeCellValue(String val) {
         if (val == null) return null;
         String s = val.trim();
         if (s.startsWith("=") || s.startsWith("+") || s.startsWith("-") || s.startsWith("@")) {
@@ -513,7 +513,7 @@ public class AffiliationService {
         return s;
     }
 
-    private String calcularSha256(byte[] data) {
+    private String computeSha256(byte[] data) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(data);
@@ -533,7 +533,7 @@ public class AffiliationService {
      * Genera la plantilla Excel oficial (.xlsx) para importación de afiliados EPS.
      * Diseñada para Valledupar, Cesar con encabezados estandarizados, estilos y hoja de instrucciones.
      */
-    public byte[] generarPlantillaExcel() {
+    public byte[] generateExcelTemplate() {
         try (Workbook workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook();
              java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
 
@@ -650,7 +650,7 @@ public class AffiliationService {
             workbook.write(out);
             return out.toByteArray();
         } catch (Exception e) {
-            throw new ConflictoOperacionException("Error al generar la plantilla Excel de afiliados: " + e.getMessage());
+            throw new OperationConflictException("Error al generar la plantilla Excel de afiliados: " + e.getMessage());
         }
     }
 }

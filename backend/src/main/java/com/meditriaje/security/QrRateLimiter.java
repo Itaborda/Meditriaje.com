@@ -1,6 +1,6 @@
 package com.meditriaje.security;
 
-import com.meditriaje.exception.LimitePeticionesExcedidoException;
+import com.meditriaje.exception.RateLimitExceededException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -19,10 +19,10 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class QrRateLimiter {
 
-    private final int maxPeticionesPorVentana;
-    private final long ventanaSegundos;
+    private final int maxRequestsPerWindow;
+    private final long windowSeconds;
     private final Clock clock;
-    private final Map<String, Deque<Long>> historialPorIp = new ConcurrentHashMap<>();
+    private final Map<String, Deque<Long>> historyByIp = new ConcurrentHashMap<>();
 
     public QrRateLimiter() {
         this(15, 60, Clock.systemUTC());
@@ -30,15 +30,15 @@ public class QrRateLimiter {
 
     @Autowired
     public QrRateLimiter(
-            @Value("${meditriaje.security.qr.rate-limit-per-window:15}") int maxPeticionesPorVentana,
-            @Value("${meditriaje.security.qr.rate-limit-window-seconds:60}") long ventanaSegundos
+            @Value("${meditriaje.security.qr.rate-limit-per-window:15}") int maxRequestsPerWindow,
+            @Value("${meditriaje.security.qr.rate-limit-window-seconds:60}") long windowSeconds
     ) {
-        this(maxPeticionesPorVentana, ventanaSegundos, Clock.systemUTC());
+        this(maxRequestsPerWindow, windowSeconds, Clock.systemUTC());
     }
 
-    public QrRateLimiter(int maxPeticionesPorVentana, long ventanaSegundos, Clock clock) {
-        this.maxPeticionesPorVentana = Math.max(1, maxPeticionesPorVentana);
-        this.ventanaSegundos = Math.max(1, ventanaSegundos);
+    public QrRateLimiter(int maxRequestsPerWindow, long windowSeconds, Clock clock) {
+        this.maxRequestsPerWindow = Math.max(1, maxRequestsPerWindow);
+        this.windowSeconds = Math.max(1, windowSeconds);
         this.clock = (clock != null) ? clock : Clock.systemUTC();
     }
 
@@ -49,12 +49,12 @@ public class QrRateLimiter {
      *
      * @param ip Dirección IP del cliente
      */
-    public void validarLimite(String ip) {
+    public void validateLimit(String ip) {
         String key = (ip != null && !ip.isBlank()) ? ip.trim() : "unknown";
         long ahora = clock.millis();
-        long limiteInferior = ahora - (ventanaSegundos * 1000L);
+        long limiteInferior = ahora - (windowSeconds * 1000L);
 
-        historialPorIp.compute(key, (k, cola) -> {
+        historyByIp.compute(key, (k, cola) -> {
             if (cola == null) {
                 cola = new ArrayDeque<>();
             }
@@ -63,8 +63,8 @@ public class QrRateLimiter {
                 cola.pollFirst();
             }
 
-            if (cola.size() >= maxPeticionesPorVentana) {
-                throw new LimitePeticionesExcedidoException(
+            if (cola.size() >= maxRequestsPerWindow) {
+                throw new RateLimitExceededException(
                         "Ha superado el límite de solicitudes permitidas para la verificación de emergencia. Intente de nuevo más tarde."
                 );
             }
@@ -78,6 +78,6 @@ public class QrRateLimiter {
      * Limpia el historial de accesos (útil para pruebas unitarias).
      */
     public void reset() {
-        historialPorIp.clear();
+        historyByIp.clear();
     }
 }

@@ -4,11 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.meditriaje.db.OracleTestDatabase;
-import com.meditriaje.dto.operational.AlertaOperativaResponse;
-import com.meditriaje.exception.ConflictoOperacionException;
-import com.meditriaje.model.AccesoTemporalQr;
-import com.meditriaje.model.AlertaOperativa;
-import com.meditriaje.model.SeguimientoIntrahospitalarioQr;
+import com.meditriaje.dto.operational.OperationalAlertResponse;
+import com.meditriaje.exception.OperationConflictException;
+import com.meditriaje.model.TemporaryQrAccess;
+import com.meditriaje.model.OperationalAlert;
+import com.meditriaje.model.InpatientQrTracking;
 import com.meditriaje.repository.plsql.OracleErrorTranslator;
 import com.meditriaje.repository.plsql.PackageGateway;
 import java.sql.Timestamp;
@@ -38,9 +38,9 @@ class PkgOperationsIT {
 
     private static OracleContainer oracle;
     private static JdbcTemplate owner;
-    private static AlertaOperativaRepository alertas;
-    private static AccesoTemporalQrRepository accesosQr;
-    private static SeguimientoQrRepository seguimientosQr;
+    private static OperationalAlertRepository alertas;
+    private static TemporaryQrAccessRepository accesosQr;
+    private static TrackingQrRepository seguimientosQr;
     private static DemoSeedRepository demoSeed;
 
     private static Long sedeId;
@@ -58,9 +58,9 @@ class PkgOperationsIT {
         DataSource appDs = OracleTestDatabase.dataSource(
                 oracle, OracleTestDatabase.APP_USER, OracleTestDatabase.APP_PASSWORD);
         PackageGateway gateway = new PackageGateway(appDs, OWNER, new OracleErrorTranslator());
-        alertas = new AlertaOperativaRepository(gateway);
-        accesosQr = new AccesoTemporalQrRepository(gateway);
-        seguimientosQr = new SeguimientoQrRepository(gateway);
+        alertas = new OperationalAlertRepository(gateway);
+        accesosQr = new TemporaryQrAccessRepository(gateway);
+        seguimientosQr = new TrackingQrRepository(gateway);
         demoSeed = new DemoSeedRepository(gateway);
         seed();
     }
@@ -92,47 +92,47 @@ class PkgOperationsIT {
     @Test
     void operationalAlertsLifecycleDeduplicationAndListing() {
         // Estado null -> por defecto 'ACTIVA', sede resuelta por PKG_COMMON.get_single_site_id.
-        AlertaOperativa creada = alertas.guardar(new AlertaOperativa(
+        OperationalAlert creada = alertas.save(new OperationalAlert(
                 null, "op-al-1", 9999L, "SATURACION_CAMAS", "CRITICA", "Ocupacion al 92%",
                 null, null, null, null, null));
         assertThat(creada.id()).isNotNull();
-        assertThat(creada.sedeId()).isEqualTo(sedeId);
-        assertThat(creada.estado()).isEqualTo("ACTIVA");
-        assertThat(creada.creadoAt()).isNotNull();
+        assertThat(creada.siteId()).isEqualTo(sedeId);
+        assertThat(creada.status()).isEqualTo("ACTIVA");
+        assertThat(creada.createdAt()).isNotNull();
 
-        assertThat(alertas.buscarPorId(creada.id())).contains(creada);
-        assertThat(alertas.buscarPorId(null)).isEmpty();
-        assertThat(alertas.buscarPorPublicId("op-al-1")).contains(creada);
-        assertThat(alertas.buscarPorPublicId(" ")).isEmpty();
-        assertThat(alertas.buscarPorPublicId("no-existe")).isEmpty();
+        assertThat(alertas.findById(creada.id())).contains(creada);
+        assertThat(alertas.findById(null)).isEmpty();
+        assertThat(alertas.findByPublicId("op-al-1")).contains(creada);
+        assertThat(alertas.findByPublicId(" ")).isEmpty();
+        assertThat(alertas.findByPublicId("no-existe")).isEmpty();
 
         // El índice UQ_ALERTA_OPERATIVA_ACTIVA dispara ORA-00001 -> ConflictoOperacionException.
-        assertThatThrownBy(() -> alertas.guardar(new AlertaOperativa(
+        assertThatThrownBy(() -> alertas.save(new OperationalAlert(
                 null, "op-al-dup", sedeId, "SATURACION_CAMAS", "CRITICA", "Duplicada",
                 "ACTIVA", null, null, null, null)))
-                .isInstanceOf(ConflictoOperacionException.class);
+                .isInstanceOf(OperationConflictException.class);
 
         Instant ackTime = Instant.now().truncatedTo(ChronoUnit.MILLIS);
-        alertas.reconocerAlerta(creada.id(), userAckId, ackTime, "Se habilitan camillas de expansion");
+        alertas.acknowledgeAlert(creada.id(), userAckId, ackTime, "Se habilitan camillas de expansion");
 
-        AlertaOperativa reconocida = alertas.buscarPorPublicId("op-al-1").orElseThrow();
-        assertThat(reconocida.estado()).isEqualTo("RECONOCIDA");
-        assertThat(reconocida.reconocidoPorUsuarioId()).isEqualTo(userAckId);
-        assertThat(reconocida.reconocidoAt()).isEqualTo(ackTime);
-        assertThat(reconocida.motivoReconocimiento()).isEqualTo("Se habilitan camillas de expansion");
+        OperationalAlert reconocida = alertas.findByPublicId("op-al-1").orElseThrow();
+        assertThat(reconocida.status()).isEqualTo("RECONOCIDA");
+        assertThat(reconocida.acknowledgedByUserId()).isEqualTo(userAckId);
+        assertThat(reconocida.acknowledgedAt()).isEqualTo(ackTime);
+        assertThat(reconocida.acknowledgmentReason()).isEqualTo("Se habilitan camillas de expansion");
 
         // Tras reconocer la primera, ya puede existir una nueva alerta ACTIVA del mismo tipo.
-        alertas.guardar(new AlertaOperativa(
+        alertas.save(new OperationalAlert(
                 null, "op-al-2", sedeId, "SATURACION_CAMAS", "ALTA", "Nueva alerta",
                 "ACTIVA", null, null, null, null));
 
-        List<AlertaOperativaResponse> activas = alertas.listarPorSede(sedeId, "ACTIVA");
-        assertThat(activas).extracting(AlertaOperativaResponse::publicId).containsExactly("op-al-2");
-        assertThat(activas.get(0).reconocidoPorEmail()).isNull();
+        List<OperationalAlertResponse> activas = alertas.listBySite(sedeId, "ACTIVA");
+        assertThat(activas).extracting(OperationalAlertResponse::publicId).containsExactly("op-al-2");
+        assertThat(activas.get(0).acknowledgedByEmail()).isNull();
 
-        List<AlertaOperativaResponse> todas = alertas.listarPorSede(null, " ");
-        assertThat(todas).extracting(AlertaOperativaResponse::publicId).containsExactly("op-al-2", "op-al-1");
-        assertThat(todas.get(1).reconocidoPorEmail()).isEqualTo("ack@demo.meditriaje.test");
+        List<OperationalAlertResponse> todas = alertas.listBySite(null, " ");
+        assertThat(todas).extracting(OperationalAlertResponse::publicId).containsExactly("op-al-2", "op-al-1");
+        assertThat(todas.get(1).acknowledgedByEmail()).isEqualTo("ack@demo.meditriaje.test");
     }
 
     @Test
@@ -141,96 +141,96 @@ class PkgOperationsIT {
         Instant future = now.plus(15, ChronoUnit.MINUTES);
         Instant past = now.minus(5, ChronoUnit.MINUTES);
 
-        Long id1 = accesosQr.crear(new AccesoTemporalQr(
+        Long id1 = accesosQr.create(new TemporaryQrAccess(
                 null, "qr-op-1", pacienteId, "hash-qr-1", "pin-hash-1",
                 true, false, true, false, 3, 0, false, 0, future, null, null));
-        Long id2 = accesosQr.crear(new AccesoTemporalQr(
+        Long id2 = accesosQr.create(new TemporaryQrAccess(
                 null, "qr-op-2", pacienteId, "hash-qr-2", null,
                 true, true, true, true, 2, 0, false, 0, future, null, null));
-        Long idExpired = accesosQr.crear(new AccesoTemporalQr(
+        Long idExpired = accesosQr.create(new TemporaryQrAccess(
                 null, "qr-op-exp", pacienteId, "hash-qr-exp", null,
                 true, true, true, true, 3, 0, false, 0, past, null, null));
 
-        AccesoTemporalQr byHash = accesosQr.buscarPorTokenHash("hash-qr-1").orElseThrow();
+        TemporaryQrAccess byHash = accesosQr.findByTokenHash("hash-qr-1").orElseThrow();
         assertThat(byHash.id()).isEqualTo(id1);
         assertThat(byHash.pinHash()).isEqualTo("pin-hash-1");
-        assertThat(byHash.incluirAlergias()).isTrue();
-        assertThat(byHash.incluirMedicamentos()).isFalse();
-        assertThat(byHash.expiraAt()).isEqualTo(future);
-        assertThat(accesosQr.buscarPorTokenHash("no-hash")).isEmpty();
+        assertThat(byHash.includeAllergies()).isTrue();
+        assertThat(byHash.includeMedications()).isFalse();
+        assertThat(byHash.expiresAt()).isEqualTo(future);
+        assertThat(accesosQr.findByTokenHash("no-hash")).isEmpty();
 
-        assertThat(accesosQr.buscarPorPublicId("qr-op-2")).map(AccesoTemporalQr::id).contains(id2);
-        assertThat(accesosQr.buscarPorPublicId("no-pub")).isEmpty();
+        assertThat(accesosQr.findByPublicId("qr-op-2")).map(TemporaryQrAccess::id).contains(id2);
+        assertThat(accesosQr.findByPublicId("no-pub")).isEmpty();
 
-        assertThat(accesosQr.listarPorPacienteId(pacienteId))
-                .extracting(AccesoTemporalQr::publicId)
+        assertThat(accesosQr.listByPatientId(pacienteId))
+                .extracting(TemporaryQrAccess::publicId)
                 .containsExactly("qr-op-exp", "qr-op-2", "qr-op-1");
 
         // Lecturas atómicas: token expirado falla; token activo consume hasta maxAccesos.
-        assertThat(accesosQr.registrarAcceso(idExpired, now)).isZero();
-        assertThat(accesosQr.registrarAcceso(id2, now)).isEqualTo(1);
-        assertThat(accesosQr.registrarAcceso(id2, now)).isEqualTo(1);
-        assertThat(accesosQr.registrarAcceso(id2, now)).isZero(); // agotado (2/2)
+        assertThat(accesosQr.recordAccess(idExpired, now)).isZero();
+        assertThat(accesosQr.recordAccess(id2, now)).isEqualTo(1);
+        assertThat(accesosQr.recordAccess(id2, now)).isEqualTo(1);
+        assertThat(accesosQr.recordAccess(id2, now)).isZero(); // agotado (2/2)
 
         // Intentos fallidos de PIN: al llegar a 3 revoca automáticamente sin superar MAX_ACCESOS.
-        assertThat(accesosQr.registrarPinFallido(id1)).isEqualTo(1);
-        assertThat(accesosQr.buscarPorPublicId("qr-op-1").orElseThrow().revocado()).isFalse();
-        assertThat(accesosQr.registrarPinFallido(id1)).isEqualTo(1);
-        assertThat(accesosQr.buscarPorPublicId("qr-op-1").orElseThrow().revocado()).isFalse();
-        assertThat(accesosQr.registrarPinFallido(id1)).isEqualTo(1);
+        assertThat(accesosQr.recordFailedPin(id1)).isEqualTo(1);
+        assertThat(accesosQr.findByPublicId("qr-op-1").orElseThrow().revoked()).isFalse();
+        assertThat(accesosQr.recordFailedPin(id1)).isEqualTo(1);
+        assertThat(accesosQr.findByPublicId("qr-op-1").orElseThrow().revoked()).isFalse();
+        assertThat(accesosQr.recordFailedPin(id1)).isEqualTo(1);
 
-        AccesoTemporalQr lockedByPin = accesosQr.buscarPorPublicId("qr-op-1").orElseThrow();
-        assertThat(lockedByPin.intentosPinFallidos()).isEqualTo(3);
-        assertThat(lockedByPin.accesosRealizados()).isEqualTo(3);
-        assertThat(lockedByPin.revocado()).isTrue();
-        assertThat(accesosQr.registrarAcceso(id1, now)).isZero();
+        TemporaryQrAccess lockedByPin = accesosQr.findByPublicId("qr-op-1").orElseThrow();
+        assertThat(lockedByPin.failedPinAttempts()).isEqualTo(3);
+        assertThat(lockedByPin.accessCount()).isEqualTo(3);
+        assertThat(lockedByPin.revoked()).isTrue();
+        assertThat(accesosQr.recordAccess(id1, now)).isZero();
 
         // Revocación manual valida dueño y evita doble revocación.
-        assertThat(accesosQr.revocar("qr-op-2", -999L)).isZero();
-        assertThat(accesosQr.revocar("qr-op-2", pacienteId)).isEqualTo(1);
-        assertThat(accesosQr.revocar("qr-op-2", pacienteId)).isZero();
-        assertThat(accesosQr.buscarPorPublicId("qr-op-2").orElseThrow().revocado()).isTrue();
+        assertThat(accesosQr.revoke("qr-op-2", -999L)).isZero();
+        assertThat(accesosQr.revoke("qr-op-2", pacienteId)).isEqualTo(1);
+        assertThat(accesosQr.revoke("qr-op-2", pacienteId)).isZero();
+        assertThat(accesosQr.findByPublicId("qr-op-2").orElseThrow().revoked()).isTrue();
     }
 
     @Test
     void inpatientTrackingQrLifecycleAndLocationUpdate() {
         Instant expira = Instant.now().plus(7, ChronoUnit.DAYS).truncatedTo(ChronoUnit.MILLIS);
 
-        SeguimientoIntrahospitalarioQr q1 = seguimientosQr.guardar(new SeguimientoIntrahospitalarioQr(
+        InpatientQrTracking q1 = seguimientosQr.save(new InpatientQrTracking(
                 null, "inq-1", episodioId, "QROP-ONE", "URGENCIAS / TRIAGE", null, null, expira));
         assertThat(q1.id()).isNotNull();
-        assertThat(q1.estado()).isEqualTo("ACTIVO");
-        assertThat(q1.creadoAt()).isNotNull();
+        assertThat(q1.status()).isEqualTo("ACTIVO");
+        assertThat(q1.createdAt()).isNotNull();
 
-        assertThat(seguimientosQr.buscarPorId(q1.id())).contains(q1);
-        assertThat(seguimientosQr.buscarPorId(null)).isEmpty();
-        assertThat(seguimientosQr.buscarPorToken("QROP-ONE")).contains(q1);
-        assertThat(seguimientosQr.buscarPorToken(" ")).isEmpty();
-        assertThat(seguimientosQr.buscarPorToken("QROP-MISSING")).isEmpty();
+        assertThat(seguimientosQr.findById(q1.id())).contains(q1);
+        assertThat(seguimientosQr.findById(null)).isEmpty();
+        assertThat(seguimientosQr.findByToken("QROP-ONE")).contains(q1);
+        assertThat(seguimientosQr.findByToken(" ")).isEmpty();
+        assertThat(seguimientosQr.findByToken("QROP-MISSING")).isEmpty();
 
         // Un segundo QR inactivo no debe ocultar al activo; un segundo QR activo sí prevalece.
-        seguimientosQr.guardar(new SeguimientoIntrahospitalarioQr(
+        seguimientosQr.save(new InpatientQrTracking(
                 null, "inq-inactivo", episodioId, "QROP-INACT", "OTRA", "INACTIVO", null, expira));
-        assertThat(seguimientosQr.buscarActivoPorEpisodioId(episodioId))
-                .map(SeguimientoIntrahospitalarioQr::publicId).contains("inq-1");
+        assertThat(seguimientosQr.findActiveByEpisodeId(episodioId))
+                .map(InpatientQrTracking::publicId).contains("inq-1");
 
-        SeguimientoIntrahospitalarioQr q2 = seguimientosQr.guardar(new SeguimientoIntrahospitalarioQr(
+        InpatientQrTracking q2 = seguimientosQr.save(new InpatientQrTracking(
                 null, "inq-2", episodioId, "QROP-TWO", "OBSERVACION / CAMA 4", "ACTIVO", null, expira));
-        assertThat(seguimientosQr.buscarActivoPorEpisodioId(episodioId))
-                .map(SeguimientoIntrahospitalarioQr::publicId).contains("inq-2");
-        assertThat(seguimientosQr.buscarActivoPorEpisodioId(-1L)).isEmpty();
+        assertThat(seguimientosQr.findActiveByEpisodeId(episodioId))
+                .map(InpatientQrTracking::publicId).contains("inq-2");
+        assertThat(seguimientosQr.findActiveByEpisodeId(-1L)).isEmpty();
 
-        seguimientosQr.actualizarUbicacion(q2.id(), "HOSPITALIZACION / PISO 3");
-        assertThat(seguimientosQr.buscarPorId(q2.id()))
-                .map(SeguimientoIntrahospitalarioQr::ubicacionActualTexto)
+        seguimientosQr.updateLocation(q2.id(), "HOSPITALIZACION / PISO 3");
+        assertThat(seguimientosQr.findById(q2.id()))
+                .map(InpatientQrTracking::currentLocationText)
                 .contains("HOSPITALIZACION / PISO 3");
     }
 
     @Test
     void demoSeedHelpersCountDomainsAndShiftSlotToPast() {
         // Sembrado en seed(): ack@demo.meditriaje.test (en dominio) y pat@real.org (fuera de dominio).
-        assertThat(demoSeed.contarUsuariosEnDominio("@demo.meditriaje.test")).isEqualTo(1);
-        assertThat(demoSeed.contarUsuariosFueraDeDominio("@demo.meditriaje.test")).isEqualTo(1);
+        assertThat(demoSeed.countUsersInDomain("@demo.meditriaje.test")).isEqualTo(1);
+        assertThat(demoSeed.countUsersOutsideDomain("@demo.meditriaje.test")).isEqualTo(1);
 
         owner.update("INSERT INTO USUARIO (PUBLIC_ID, EMAIL, PASSWORD_HASH) VALUES ('op-u-doc', 'doc@demo.meditriaje.test', 'x')");
         Long uDocId = owner.queryForObject("SELECT ID FROM USUARIO WHERE PUBLIC_ID = 'op-u-doc'", Long.class);
@@ -249,9 +249,9 @@ class PkgOperationsIT {
                 VALUES ('op-slot-demo', ?, ?, ?, ?, 'PRESENCIAL', 'LIBRE')""",
                 profId, espId, Timestamp.from(futureStart), Timestamp.from(futureStart.plus(20, ChronoUnit.MINUTES)));
 
-        demoSeed.moverSlotAlPasadoParaDemo("op-slot-demo");
+        demoSeed.moveSlotToPastForDemo("op-slot-demo");
 
-        assertThat(demoSeed.contarUsuariosEnDominio("@demo.meditriaje.test")).isEqualTo(2);
+        assertThat(demoSeed.countUsersInDomain("@demo.meditriaje.test")).isEqualTo(2);
 
         Instant shiftedStart = owner.queryForObject(
                 "SELECT FECHA_HORA_INICIO FROM DISPONIBILIDAD_SLOT WHERE PUBLIC_ID = 'op-slot-demo'", Timestamp.class)

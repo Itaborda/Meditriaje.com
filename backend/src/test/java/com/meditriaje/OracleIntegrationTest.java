@@ -70,7 +70,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void flyway_schema_history_tieneAlMenosV16() {
+    void flyway_schema_history_hasToLess16() {
         JdbcTemplate ownerTemplate = new JdbcTemplate(ownerDataSource());
         Integer count = ownerTemplate.queryForObject(
                 "SELECT COUNT(*) FROM \"flyway_schema_history\" WHERE \"success\" = 1",
@@ -80,7 +80,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_puedeConsultarTablasAccesoBreakGlass() {
+    void app_canQueryTablesAccessBreakGlass() {
         // MEDITRIAJE_APP puede consultar tablas de V014 (ACCESO_BREAK_GLASS)
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         for (String tabla : new String[] {"ACCESO_BREAK_GLASS"}) {
@@ -90,7 +90,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_puedeConsultarTablasDispensacion() {
+    void app_canQueryTablesDispensation() {
         // MEDITRIAJE_APP puede consultar tablas de V013 y rol farmacéutico existe
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         for (String tabla : new String[] {"DISPENSACION", "DISPENSACION_DETALLE"}) {
@@ -105,7 +105,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_puedeConsultarTablasAccesoTemporalQr() {
+    void app_canQueryTablesAccessTemporaryQr() {
         // MEDITRIAJE_APP puede consultar tablas de V012
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         for (String tabla : new String[] {"ACCESO_TEMPORAL_QR"}) {
@@ -115,7 +115,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_puedeConsultarTablasMfaYRecuperacion() {
+    void app_canQueryTablesMfaAndRecovery() {
         // MEDITRIAJE_APP puede consultar tablas de V010
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         for (String tabla : new String[] {"CODIGO_VERIFICACION", "MFA_BACKUP_CODE"}) {
@@ -125,7 +125,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_puedeConsultarTablasSeguimientoYRecordatorios() {
+    void app_canQueryTablesFollowUpAndReminders() {
         // MEDITRIAJE_APP puede consultar tablas de V011
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         for (String tabla : new String[] {"SEGUIMIENTO_POST_ATENCION", "RECORDATORIO_CITA"}) {
@@ -135,7 +135,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_puedeConsultarTablasTriaje() {
+    void app_canQueryTablesTriage() {
         // MEDITRIAJE_APP puede consultar las tablas de triaje (V007)
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         for (String tabla : new String[] {"SINTOMA", "REGLA_TRIAJE", "TRIAJE", "TRIAJE_SINTOMA"}) {
@@ -145,7 +145,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void semillas_triaje_tienenSintomasYAlarmas() {
+    void seeds_triage_haveSymptomsAndAlarms() {
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         Integer total = appTemplate.queryForObject("SELECT COUNT(*) FROM " + OWNER_USER + ".SINTOMA", Integer.class);
         Integer alarmas = appTemplate.queryForObject(
@@ -162,7 +162,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_noPuedeUpdateNiDeleteEnTriaje() {
+    void app_notCanUpdateNorDeleteInTriage() {
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         org.junit.jupiter.api.Assertions.assertThrows(
                 org.springframework.dao.DataAccessException.class,
@@ -175,7 +175,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void db_fkCompuestaRechazaCitaConTriajeDeOtroPaciente() {
+    void db_fkCompositeRechazaAppointmentWithTriageOfOtherPatient() {
         JdbcTemplate ownerTemplate = new JdbcTemplate(ownerDataSource());
         String uid = java.util.UUID.randomUUID().toString().substring(0, 8);
 
@@ -233,7 +233,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_puedeConsultarControlSistema() {
+    void app_canQueryControlSistema() {
         // MEDITRIAJE_APP recibe GRANT SELECT en CONTROL_SISTEMA desde V001__baseline.sql
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         Integer count = appTemplate.queryForObject(
@@ -244,7 +244,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_puedeConsultarRolesSembrados() {
+    void app_canQueryRolesSeeded() {
         // MEDITRIAJE_APP puede consultar el catálogo de roles (semillas de V002)
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         Integer count = appTemplate.queryForObject(
@@ -256,7 +256,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_puedeConsultarPacientes() {
+    void app_canQueryPatients() {
         // MEDITRIAJE_APP puede consultar la tabla PACIENTE (V003)
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         Integer count = appTemplate.queryForObject(
@@ -267,7 +267,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_puedeConsultarTablasOferta() {
+    void app_canQueryTablesOferta() {
         // MEDITRIAJE_APP puede consultar CONFIGURACION_HOSPITAL y las tablas de oferta asistencial
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         assertThat(appTemplate.queryForObject("SELECT COUNT(*) FROM " + OWNER_USER + ".CONFIGURACION_HOSPITAL", Integer.class)).isEqualTo(1);
@@ -277,14 +277,14 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_puedeConsultarCitas() {
+    void app_canQueryAppointments() {
         // MEDITRIAJE_APP puede consultar la tabla CITA (V006)
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         assertThat(appTemplate.queryForObject("SELECT COUNT(*) FROM " + OWNER_USER + ".CITA", Integer.class)).isNotNull();
     }
 
     @Test
-    void db_rechazaDobleCitaActivaEnMismoSlot() {
+    void db_rejectsDobleAppointmentActiveInSameSlot() {
         // Demuestra a nivel de motor Oracle el índice funcional único UQ_CITA_SLOT_ACTIVA (ADR-006)
         JdbcTemplate ownerTemplate = new JdbcTemplate(ownerDataSource());
         String uid = java.util.UUID.randomUUID().toString().substring(0, 8);
@@ -472,7 +472,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_noPuedeHacerDropTable() {
+    void app_notCanPerformDropTable() {
         // MEDITRIAJE_APP NO debe tener privilegio de DDL
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         boolean tuvoError = false;
@@ -485,7 +485,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_noPuedeHacerUpdateNiDeleteAuditoria() {
+    void app_notCanPerformUpdateNorDeleteAudit() {
         // AUDITORIA es insert-only para MEDITRIAJE_APP (sin GRANT UPDATE ni DELETE)
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         org.junit.jupiter.api.Assertions.assertThrows(
@@ -501,7 +501,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_puedeConsultarTablasClinicas() {
+    void app_canQueryTablesClinical() {
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         for (String tabla : new String[] {"DIAGNOSTICO_CIE10", "ATENCION", "SIGNO_VITAL", "ATENCION_ENMIENDA", "ALERGIA"}) {
             assertThat(appTemplate.queryForObject("SELECT COUNT(*) FROM " + OWNER_USER + "." + tabla, Integer.class))
@@ -510,7 +510,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void semillas_cie10_tienenCodigosYDescripciones() {
+    void seeds_cie10_haveCodesAndDescriptions() {
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         Integer total = appTemplate.queryForObject(
                 "SELECT COUNT(*) FROM " + OWNER_USER + ".DIAGNOSTICO_CIE10 WHERE ESTADO = 'ACTIVO'",
@@ -526,7 +526,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_noTieneDeleteSobreTablasClinicas() {
+    void app_notHasDeleteOverTablesClinical() {
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         for (String tabla : new String[] {"ATENCION", "SIGNO_VITAL", "ATENCION_ENMIENDA", "ALERGIA", "RECETA", "RECETA_DETALLE", "CONSENTIMIENTO"}) {
             org.junit.jupiter.api.Assertions.assertThrows(
@@ -538,7 +538,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_noTieneUpdateSobreAtencionEnmienda() {
+    void app_notHasUpdateOverAttentionAmendment() {
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         org.junit.jupiter.api.Assertions.assertThrows(
                 org.springframework.dao.DataAccessException.class,
@@ -548,7 +548,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void db_triggerBloqueaUpdateYDeleteSobreAtencionesCerradas() {
+    void db_triggerLocksUpdateAndDeleteOverAttentionsCerradas() {
         JdbcTemplate ownerTemplate = new JdbcTemplate(ownerDataSource());
         String uid = java.util.UUID.randomUUID().toString().substring(0, 8);
 
@@ -647,7 +647,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_puedeConsultarTablasRecetas() {
+    void app_canQueryTablesPrescriptions() {
         // MEDITRIAJE_APP puede consultar tablas de recetas y medicamentos (V009)
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         for (String tabla : new String[] {"MEDICAMENTO", "RECETA", "RECETA_DETALLE"}) {
@@ -657,7 +657,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void semillas_medicamentos_tienenAlMenos15() {
+    void seeds_medications_haveToLess15() {
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         Integer total = appTemplate.queryForObject(
                 "SELECT COUNT(*) FROM " + OWNER_USER + ".MEDICAMENTO WHERE ESTADO = 'ACTIVO'", Integer.class);
@@ -665,7 +665,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void app_noPuedeUpdateNiDeleteEnRecetas() {
+    void app_notCanUpdateNorDeleteInPrescriptions() {
         JdbcTemplate appTemplate = new JdbcTemplate(appDataSource());
         org.junit.jupiter.api.Assertions.assertThrows(
                 org.springframework.dao.DataAccessException.class,
@@ -690,7 +690,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void db_triggersInmutabilidadRecetaYDetalle() {
+    void db_triggersImmutabilityPrescriptionAndDetail() {
         JdbcTemplate ownerTemplate = new JdbcTemplate(ownerDataSource());
         String uid = java.util.UUID.randomUUID().toString().substring(0, 8);
 
@@ -769,7 +769,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void db_recetaRollback_siFallaDetalleNoQuedaCabecera() {
+    void db_prescriptionRollback_whenFallaDetailNotRemainsHeader() {
         DataSource ds = ownerDataSource();
         org.springframework.jdbc.datasource.DataSourceTransactionManager txManager =
                 new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds);
@@ -875,7 +875,7 @@ class OracleIntegrationTest {
     }
 
     @Test
-    void db_triggerInmutabilidadAlergias() {
+    void db_triggerImmutabilityAllergies() {
         JdbcTemplate ownerTemplate = new JdbcTemplate(ownerDataSource());
         String uid = java.util.UUID.randomUUID().toString().substring(0, 8);
 

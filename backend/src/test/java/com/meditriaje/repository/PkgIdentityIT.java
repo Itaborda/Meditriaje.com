@@ -3,10 +3,10 @@ package com.meditriaje.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.meditriaje.db.OracleTestDatabase;
-import com.meditriaje.model.CodigoVerificacion;
+import com.meditriaje.model.VerificationCode;
 import com.meditriaje.model.MfaBackupCode;
 import com.meditriaje.model.RefreshToken;
-import com.meditriaje.model.Usuario;
+import com.meditriaje.model.User;
 import com.meditriaje.repository.plsql.OracleErrorTranslator;
 import com.meditriaje.repository.plsql.PackageGateway;
 import java.time.Instant;
@@ -34,10 +34,10 @@ class PkgIdentityIT {
 
     private static OracleContainer oracle;
     private static JdbcTemplate owner;
-    private static UsuarioRepository usuarios;
+    private static UserRepository usuarios;
     private static RefreshTokenRepository tokens;
     private static MfaBackupCodeRepository backupCodes;
-    private static CodigoVerificacionRepository codigos;
+    private static VerificationCodeRepository codigos;
 
     @BeforeAll
     static void migrate() {
@@ -49,10 +49,10 @@ class PkgIdentityIT {
         DataSource appDs = OracleTestDatabase.dataSource(
                 oracle, OracleTestDatabase.APP_USER, OracleTestDatabase.APP_PASSWORD);
         PackageGateway gateway = new PackageGateway(appDs, OWNER, new OracleErrorTranslator());
-        usuarios = new UsuarioRepository(gateway);
+        usuarios = new UserRepository(gateway);
         tokens = new RefreshTokenRepository(gateway);
         backupCodes = new MfaBackupCodeRepository(gateway);
-        codigos = new CodigoVerificacionRepository(gateway);
+        codigos = new VerificationCodeRepository(gateway);
     }
 
     @AfterAll
@@ -63,39 +63,39 @@ class PkgIdentityIT {
     }
 
     private static Long newUser(String email) {
-        return usuarios.crear(UUID.randomUUID().toString(), email, "hash-" + email, false);
+        return usuarios.create(UUID.randomUUID().toString(), email, "hash-" + email, false);
     }
 
     @Test
     void createsAndFindsUsersByEmailIdAndPublicId() {
         String publicId = UUID.randomUUID().toString();
-        Long id = usuarios.crear(publicId, "ana@identity.test", "h1", true);
+        Long id = usuarios.create(publicId, "ana@identity.test", "h1", true);
 
-        assertThat(usuarios.existePorEmail("ana@identity.test")).isTrue();
-        assertThat(usuarios.existePorEmail("nadie@identity.test")).isFalse();
-        Usuario byEmail = usuarios.buscarPorEmail("ana@identity.test").orElseThrow();
+        assertThat(usuarios.existsByEmail("ana@identity.test")).isTrue();
+        assertThat(usuarios.existsByEmail("nadie@identity.test")).isFalse();
+        User byEmail = usuarios.findByEmail("ana@identity.test").orElseThrow();
         assertThat(byEmail.id()).isEqualTo(id);
-        assertThat(byEmail.estado()).isEqualTo("ACTIVO");
-        assertThat(byEmail.intentosFallidos()).isZero();
-        assertThat(byEmail.debeCambiarPassword()).isTrue();
-        assertThat(byEmail.mfaHabilitado()).isFalse();
+        assertThat(byEmail.status()).isEqualTo("ACTIVO");
+        assertThat(byEmail.failedAttempts()).isZero();
+        assertThat(byEmail.mustChangePassword()).isTrue();
+        assertThat(byEmail.mfaEnabled()).isFalse();
         assertThat(byEmail.createdAt()).isNotNull();
-        assertThat(usuarios.buscarPorId(id)).map(Usuario::publicId).contains(publicId);
-        assertThat(usuarios.buscarPorPublicId(publicId)).map(Usuario::email).contains("ana@identity.test");
-        assertThat(usuarios.buscarPorId(-1L)).isEmpty();
-        assertThat(usuarios.buscarPorPublicId("no-existe")).isEmpty();
+        assertThat(usuarios.findById(id)).map(User::publicId).contains(publicId);
+        assertThat(usuarios.findByPublicId(publicId)).map(User::email).contains("ana@identity.test");
+        assertThat(usuarios.findById(-1L)).isEmpty();
+        assertThat(usuarios.findByPublicId("no-existe")).isEmpty();
     }
 
     @Test
     void assignsAndListsRolesInAlphabeticalOrder() {
         Long id = newUser("roles@identity.test");
-        Long admin = usuarios.buscarRolIdPorNombre("ROLE_ADMINISTRADOR").orElseThrow();
-        Long patient = usuarios.buscarRolIdPorNombre("ROLE_PACIENTE").orElseThrow();
-        usuarios.asignarRol(id, patient);
-        usuarios.asignarRol(id, admin);
+        Long admin = usuarios.findRoleIdByName("ROLE_ADMINISTRADOR").orElseThrow();
+        Long patient = usuarios.findRoleIdByName("ROLE_PACIENTE").orElseThrow();
+        usuarios.assignRole(id, patient);
+        usuarios.assignRole(id, admin);
 
-        assertThat(usuarios.obtenerRoles(id)).containsExactly("ROLE_ADMINISTRADOR", "ROLE_PACIENTE");
-        assertThat(usuarios.buscarRolIdPorNombre("ROLE_INEXISTENTE")).isEmpty();
+        assertThat(usuarios.getRoles(id)).containsExactly("ROLE_ADMINISTRADOR", "ROLE_PACIENTE");
+        assertThat(usuarios.findRoleIdByName("ROLE_INEXISTENTE")).isEmpty();
     }
 
     @Test
@@ -103,104 +103,104 @@ class PkgIdentityIT {
         Long id = newUser("cambios@identity.test");
         Instant lockedUntil = Instant.now().plus(15, ChronoUnit.MINUTES).truncatedTo(ChronoUnit.MILLIS);
 
-        usuarios.actualizarIntentosFallidos(id, 5, lockedUntil, "BLOQUEADO");
-        Usuario locked = usuarios.buscarPorId(id).orElseThrow();
-        assertThat(locked.intentosFallidos()).isEqualTo(5);
-        assertThat(locked.estado()).isEqualTo("BLOQUEADO");
-        assertThat(locked.bloqueadoHasta()).isEqualTo(lockedUntil);
+        usuarios.updateFailedAttempts(id, 5, lockedUntil, "BLOQUEADO");
+        User locked = usuarios.findById(id).orElseThrow();
+        assertThat(locked.failedAttempts()).isEqualTo(5);
+        assertThat(locked.status()).isEqualTo("BLOQUEADO");
+        assertThat(locked.lockedUntil()).isEqualTo(lockedUntil);
 
-        usuarios.restablecerIntentos(id);
-        Usuario reset = usuarios.buscarPorId(id).orElseThrow();
-        assertThat(reset.intentosFallidos()).isZero();
-        assertThat(reset.bloqueadoHasta()).isNull();
-        assertThat(reset.estado()).isEqualTo("ACTIVO");
+        usuarios.resetAttempts(id);
+        User reset = usuarios.findById(id).orElseThrow();
+        assertThat(reset.failedAttempts()).isZero();
+        assertThat(reset.lockedUntil()).isNull();
+        assertThat(reset.status()).isEqualTo("ACTIVO");
 
-        usuarios.actualizarPassword(id, "nuevo", true);
-        assertThat(usuarios.buscarPorId(id).orElseThrow().passwordHash()).isEqualTo("nuevo");
-        usuarios.actualizarEstado(id, "INACTIVO");
-        assertThat(usuarios.buscarPorId(id).orElseThrow().estado()).isEqualTo("INACTIVO");
+        usuarios.updatePassword(id, "nuevo", true);
+        assertThat(usuarios.findById(id).orElseThrow().passwordHash()).isEqualTo("nuevo");
+        usuarios.updateStatus(id, "INACTIVO");
+        assertThat(usuarios.findById(id).orElseThrow().status()).isEqualTo("INACTIVO");
 
-        usuarios.guardarMfaSecret(id, "SECRETO1");
-        assertThat(usuarios.buscarPorId(id).orElseThrow().mfaSecret()).isEqualTo("SECRETO1");
-        usuarios.activarMfa(id, "SECRETO2");
-        Usuario mfa = usuarios.buscarPorId(id).orElseThrow();
-        assertThat(mfa.mfaHabilitado()).isTrue();
+        usuarios.saveMfaSecret(id, "SECRETO1");
+        assertThat(usuarios.findById(id).orElseThrow().mfaSecret()).isEqualTo("SECRETO1");
+        usuarios.enableMfa(id, "SECRETO2");
+        User mfa = usuarios.findById(id).orElseThrow();
+        assertThat(mfa.mfaEnabled()).isTrue();
         assertThat(mfa.mfaSecret()).isEqualTo("SECRETO2");
-        assertThat(mfa.mfaConfiguradoAt()).isNotNull();
-        usuarios.desactivarMfa(id);
-        Usuario noMfa = usuarios.buscarPorId(id).orElseThrow();
-        assertThat(noMfa.mfaHabilitado()).isFalse();
+        assertThat(mfa.mfaConfiguredAt()).isNotNull();
+        usuarios.disableMfa(id);
+        User noMfa = usuarios.findById(id).orElseThrow();
+        assertThat(noMfa.mfaEnabled()).isFalse();
         assertThat(noMfa.mfaSecret()).isNull();
-        assertThat(noMfa.mfaConfiguradoAt()).isNull();
+        assertThat(noMfa.mfaConfiguredAt()).isNull();
     }
 
     @Test
     void refreshTokensAreCreatedFoundAndRevoked() {
         Long userId = newUser("tokens@identity.test");
         Instant expires = Instant.now().plus(1, ChronoUnit.DAYS).truncatedTo(ChronoUnit.MILLIS);
-        Long t1 = tokens.crear(userId, "tok-1", expires);
-        tokens.crear(userId, "tok-2", expires);
-        tokens.crear(userId, "tok-3", expires);
+        Long t1 = tokens.create(userId, "tok-1", expires);
+        tokens.create(userId, "tok-2", expires);
+        tokens.create(userId, "tok-3", expires);
 
-        RefreshToken found = tokens.buscarPorTokenHash("tok-1").orElseThrow();
+        RefreshToken found = tokens.findByTokenHash("tok-1").orElseThrow();
         assertThat(found.id()).isEqualTo(t1);
-        assertThat(found.usuarioId()).isEqualTo(userId);
-        assertThat(found.expiracion()).isEqualTo(expires);
-        assertThat(found.revocado()).isFalse();
-        assertThat(tokens.buscarPorTokenHash("tok-x")).isEmpty();
+        assertThat(found.userId()).isEqualTo(userId);
+        assertThat(found.expiresAt()).isEqualTo(expires);
+        assertThat(found.revoked()).isFalse();
+        assertThat(tokens.findByTokenHash("tok-x")).isEmpty();
 
-        tokens.revocar(t1);
-        assertThat(tokens.buscarPorTokenHash("tok-1").orElseThrow().revocado()).isTrue();
-        tokens.revocarPorTokenHash("tok-2");
-        assertThat(tokens.buscarPorTokenHash("tok-2").orElseThrow().revocado()).isTrue();
-        tokens.revocarTodosPorUsuario(userId);
-        assertThat(tokens.buscarPorTokenHash("tok-3").orElseThrow().revocado()).isTrue();
+        tokens.revoke(t1);
+        assertThat(tokens.findByTokenHash("tok-1").orElseThrow().revoked()).isTrue();
+        tokens.revokeByTokenHash("tok-2");
+        assertThat(tokens.findByTokenHash("tok-2").orElseThrow().revoked()).isTrue();
+        tokens.revokeAllByUser(userId);
+        assertThat(tokens.findByTokenHash("tok-3").orElseThrow().revoked()).isTrue();
     }
 
     @Test
     void backupCodesAreSavedConsumedCountedAndDeleted() {
         Long userId = newUser("mfa@identity.test");
-        backupCodes.guardarLote(userId, List.of("c1", "c2", "c3"));
+        backupCodes.saveBatch(userId, List.of("c1", "c2", "c3"));
 
-        assertThat(backupCodes.contarDisponibles(userId)).isEqualTo(3);
-        assertThat(backupCodes.consumirCodigo(userId, "c2")).isTrue();
-        assertThat(backupCodes.consumirCodigo(userId, "c2")).isFalse();
-        assertThat(backupCodes.contarDisponibles(userId)).isEqualTo(2);
-        List<MfaBackupCode> all = backupCodes.listarPorUsuario(userId);
+        assertThat(backupCodes.countAvailable(userId)).isEqualTo(3);
+        assertThat(backupCodes.consumeCode(userId, "c2")).isTrue();
+        assertThat(backupCodes.consumeCode(userId, "c2")).isFalse();
+        assertThat(backupCodes.countAvailable(userId)).isEqualTo(2);
+        List<MfaBackupCode> all = backupCodes.listByUser(userId);
         assertThat(all).extracting(MfaBackupCode::codeHash).containsExactly("c1", "c2", "c3");
-        assertThat(all.get(1).usado()).isTrue();
-        assertThat(all.get(1).usadoAt()).isNotNull();
+        assertThat(all.get(1).used()).isTrue();
+        assertThat(all.get(1).usedAt()).isNotNull();
 
-        backupCodes.eliminarPorUsuario(userId);
-        assertThat(backupCodes.listarPorUsuario(userId)).isEmpty();
-        assertThat(backupCodes.contarDisponibles(userId)).isZero();
+        backupCodes.deleteByUser(userId);
+        assertThat(backupCodes.listByUser(userId)).isEmpty();
+        assertThat(backupCodes.countAvailable(userId)).isZero();
     }
 
     @Test
     void verificationCodesFollowTheirLifecycle() {
         Long userId = newUser("codigos@identity.test");
         Instant expires = Instant.now().plus(10, ChronoUnit.MINUTES).truncatedTo(ChronoUnit.MILLIS);
-        Long first = codigos.crear(new CodigoVerificacion(
+        Long first = codigos.create(new VerificationCode(
                 null, UUID.randomUUID().toString(), userId, "RECUPERACION_PASSWORD", "hash-1", expires, 0, 3, false,
                 null));
-        Long second = codigos.crear(new CodigoVerificacion(
+        Long second = codigos.create(new VerificationCode(
                 null, UUID.randomUUID().toString(), userId, "RECUPERACION_PASSWORD", "hash-2", expires, 0, 3, false,
                 null));
 
-        CodigoVerificacion byId = codigos.buscarPorId(first).orElseThrow();
-        assertThat(byId.codigoHash()).isEqualTo("hash-1");
-        assertThat(byId.fechaExpiracion()).isEqualTo(expires);
-        assertThat(codigos.buscarPorId(-1L)).isEmpty();
-        assertThat(codigos.buscarUltimoPendientePorUsuarioYTipo(userId, "RECUPERACION_PASSWORD"))
-                .map(CodigoVerificacion::id).contains(second);
+        VerificationCode byId = codigos.findById(first).orElseThrow();
+        assertThat(byId.codeHash()).isEqualTo("hash-1");
+        assertThat(byId.expirationDate()).isEqualTo(expires);
+        assertThat(codigos.findById(-1L)).isEmpty();
+        assertThat(codigos.findLatestPendingByUserAndType(userId, "RECUPERACION_PASSWORD"))
+                .map(VerificationCode::id).contains(second);
 
-        codigos.incrementarIntentos(second);
-        assertThat(codigos.buscarPorId(second).orElseThrow().intentosFallidos()).isEqualTo(1);
-        codigos.marcarComoUsado(second);
-        assertThat(codigos.buscarUltimoPendientePorUsuarioYTipo(userId, "RECUPERACION_PASSWORD"))
-                .map(CodigoVerificacion::id).contains(first);
-        codigos.invalidarCodigosPrevios(userId, "RECUPERACION_PASSWORD");
-        assertThat(codigos.buscarUltimoPendientePorUsuarioYTipo(userId, "RECUPERACION_PASSWORD")).isEmpty();
+        codigos.incrementAttempts(second);
+        assertThat(codigos.findById(second).orElseThrow().failedAttempts()).isEqualTo(1);
+        codigos.markAsUsed(second);
+        assertThat(codigos.findLatestPendingByUserAndType(userId, "RECUPERACION_PASSWORD"))
+                .map(VerificationCode::id).contains(first);
+        codigos.invalidatePreviousCodes(userId, "RECUPERACION_PASSWORD");
+        assertThat(codigos.findLatestPendingByUserAndType(userId, "RECUPERACION_PASSWORD")).isEmpty();
         assertThat(owner.queryForObject(
                 "SELECT COUNT(*) FROM CODIGO_VERIFICACION WHERE USUARIO_ID = ? AND USADO = 1", Integer.class, userId))
                 .isEqualTo(2);

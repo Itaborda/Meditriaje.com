@@ -4,12 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.meditriaje.db.OracleTestDatabase;
-import com.meditriaje.dto.affiliation.AfiliacionResponse;
-import com.meditriaje.exception.ConflictoOperacionException;
-import com.meditriaje.model.AfiliacionPaciente;
-import com.meditriaje.model.DetalleImportacionEps;
-import com.meditriaje.model.EntidadEps;
-import com.meditriaje.model.LoteImportacionEps;
+import com.meditriaje.dto.affiliation.AffiliationResponse;
+import com.meditriaje.exception.OperationConflictException;
+import com.meditriaje.model.PatientAffiliation;
+import com.meditriaje.model.EpsImportDetail;
+import com.meditriaje.model.EpsEntity;
+import com.meditriaje.model.EpsImportBatch;
 import com.meditriaje.repository.plsql.OracleErrorTranslator;
 import com.meditriaje.repository.plsql.PackageGateway;
 import java.time.Duration;
@@ -35,9 +35,9 @@ class PkgAffiliationsIT {
 
     private static OracleContainer oracle;
     private static JdbcTemplate owner;
-    private static EntidadEpsRepository epsRepo;
-    private static AfiliacionPacienteRepository afiliaciones;
-    private static LoteImportacionEpsRepository lotes;
+    private static EpsEntityRepository epsRepo;
+    private static PatientAffiliationRepository afiliaciones;
+    private static EpsImportBatchRepository lotes;
 
     @BeforeAll
     static void migrate() {
@@ -49,9 +49,9 @@ class PkgAffiliationsIT {
         DataSource appDs = OracleTestDatabase.dataSource(
                 oracle, OracleTestDatabase.APP_USER, OracleTestDatabase.APP_PASSWORD);
         PackageGateway gateway = new PackageGateway(appDs, OWNER, new OracleErrorTranslator());
-        epsRepo = new EntidadEpsRepository(gateway);
-        afiliaciones = new AfiliacionPacienteRepository(gateway);
-        lotes = new LoteImportacionEpsRepository(gateway);
+        epsRepo = new EpsEntityRepository(gateway);
+        afiliaciones = new PatientAffiliationRepository(gateway);
+        lotes = new EpsImportBatchRepository(gateway);
     }
 
     @AfterAll
@@ -81,49 +81,49 @@ class PkgAffiliationsIT {
 
     @Test
     void epsCatalogRoutinesRoundTrip() {
-        List<EntidadEps> active = epsRepo.listarActivas();
+        List<EpsEntity> active = epsRepo.listActive();
         assertThat(active).isNotEmpty();
-        assertThat(active).extracting(EntidadEps::nombre).isSorted();
-        assertThat(active).allMatch(e -> "ACTIVA".equals(e.estado()));
+        assertThat(active).extracting(EpsEntity::name).isSorted();
+        assertThat(active).allMatch(e -> "ACTIVA".equals(e.status()));
 
-        EntidadEps nuevaEps = epsRepo.buscarPorCodigo("EPS037").orElseThrow();
-        assertThat(epsRepo.buscarPorId(nuevaEps.id())).contains(nuevaEps);
-        assertThat(epsRepo.buscarPorPublicId(nuevaEps.publicId())).contains(nuevaEps);
-        assertThat(epsRepo.buscarPorCodigo("NO-EXISTE")).isEmpty();
-        assertThat(epsRepo.buscarPorPublicId(" ")).isEmpty();
-        assertThat(epsRepo.buscarPorId(null)).isEmpty();
+        EpsEntity nuevaEps = epsRepo.findByCode("EPS037").orElseThrow();
+        assertThat(epsRepo.findById(nuevaEps.id())).contains(nuevaEps);
+        assertThat(epsRepo.findByPublicId(nuevaEps.publicId())).contains(nuevaEps);
+        assertThat(epsRepo.findByCode("NO-EXISTE")).isEmpty();
+        assertThat(epsRepo.findByPublicId(" ")).isEmpty();
+        assertThat(epsRepo.findById(null)).isEmpty();
     }
 
     @Test
     void affiliationRoutinesWithDefaultsLinkingAndUpdate() {
-        EntidadEps eps1 = epsRepo.buscarPorCodigo("EPS037").orElseThrow();
-        EntidadEps eps2 = epsRepo.buscarPorCodigo("EPS005").orElseThrow();
+        EpsEntity eps1 = epsRepo.findByCode("EPS037").orElseThrow();
+        EpsEntity eps2 = epsRepo.findByCode("EPS005").orElseThrow();
         String doc = "910001";
 
         // Creación con defaults en PL/SQL (tipoAfiliado, estado, fuenteVerificacion, ultimaVerificacionAt)
-        AfiliacionPaciente saved = afiliaciones.guardar(new AfiliacionPaciente(
+        PatientAffiliation saved = afiliaciones.save(new PatientAffiliation(
                 null, UUID.randomUUID().toString(), null, "CC", doc, eps1.id(),
                 "CONTRIBUTIVO", null, null, null, null, null, null, null));
 
         assertThat(saved.id()).isPositive();
-        assertThat(saved.pacienteId()).isNull();
-        assertThat(saved.tipoAfiliado()).isEqualTo("COTIZANTE");
-        assertThat(saved.estado()).isEqualTo("ACTIVO");
-        assertThat(saved.fuenteVerificacion()).isEqualTo("CARGA_MASIVA");
-        assertThat(saved.ultimaVerificacionAt()).isNotNull();
-        assertThat(afiliaciones.buscarPorDocumento("CC", doc)).contains(saved);
+        assertThat(saved.patientId()).isNull();
+        assertThat(saved.affiliateType()).isEqualTo("COTIZANTE");
+        assertThat(saved.status()).isEqualTo("ACTIVO");
+        assertThat(saved.verificationSource()).isEqualTo("CARGA_MASIVA");
+        assertThat(saved.lastVerifiedAt()).isNotNull();
+        assertThat(afiliaciones.findByDocument("CC", doc)).contains(saved);
 
         // Documento duplicado -> ConflictoOperacionException
-        assertThatThrownBy(() -> afiliaciones.guardar(new AfiliacionPaciente(
+        assertThatThrownBy(() -> afiliaciones.save(new PatientAffiliation(
                         null, UUID.randomUUID().toString(), null, "CC", doc, eps1.id(),
                         "CONTRIBUTIVO", "COTIZANTE", "ACTIVO", LocalDate.now(), "MANUAL", Instant.now(), null, null)))
-                .isInstanceOf(ConflictoOperacionException.class);
+                .isInstanceOf(OperationConflictException.class);
 
         // Vista antes de vincular paciente
-        AfiliacionResponse unlinkedDetail = afiliaciones.buscarDetallePorDocumento("CC", doc).orElseThrow();
-        assertThat(unlinkedDetail.pacientePublicId()).isNull();
-        assertThat(unlinkedDetail.pacienteNombre()).isNull();
-        assertThat(unlinkedDetail.epsCodigo()).isEqualTo("EPS037");
+        AffiliationResponse unlinkedDetail = afiliaciones.findDetailByDocument("CC", doc).orElseThrow();
+        assertThat(unlinkedDetail.patientPublicId()).isNull();
+        assertThat(unlinkedDetail.patientName()).isNull();
+        assertThat(unlinkedDetail.epsCode()).isEqualTo("EPS037");
 
         // Vincular paciente (segunda vinculación no sobrescribe porque PACIENTE_ID ya no es NULL)
         Object[] pat1 = newPatient(doc);
@@ -132,67 +132,67 @@ class PkgAffiliationsIT {
         String patientPub1 = (String) pat1[1];
         Long patientId2 = (Long) pat2[0];
 
-        afiliaciones.vincularPaciente("CC", doc, patientId1);
-        afiliaciones.vincularPaciente("CC", doc, patientId2);
+        afiliaciones.linkPatient("CC", doc, patientId1);
+        afiliaciones.linkPatient("CC", doc, patientId2);
 
-        AfiliacionResponse linkedByDoc = afiliaciones.buscarDetallePorDocumento("CC", doc).orElseThrow();
-        assertThat(linkedByDoc.pacientePublicId()).isEqualTo(patientPub1);
-        assertThat(linkedByDoc.pacienteNombre()).isEqualTo("Maria Lopez");
-        assertThat(afiliaciones.buscarDetallePorPacienteId(patientId1)).contains(linkedByDoc);
-        assertThat(afiliaciones.buscarDetallePorPacienteId(patientId2)).isEmpty();
+        AffiliationResponse linkedByDoc = afiliaciones.findDetailByDocument("CC", doc).orElseThrow();
+        assertThat(linkedByDoc.patientPublicId()).isEqualTo(patientPub1);
+        assertThat(linkedByDoc.patientName()).isEqualTo("Maria Lopez");
+        assertThat(afiliaciones.findDetailByPatientId(patientId1)).contains(linkedByDoc);
+        assertThat(afiliaciones.findDetailByPatientId(patientId2)).isEmpty();
 
         // Actualizar afiliación
         Instant verifAt = Instant.now();
-        afiliaciones.actualizarAfiliacion(saved.id(), eps2.id(), "SUBSIDIADO", "BENEFICIARIO", "SUSPENDIDO", verifAt);
-        AfiliacionPaciente updated = afiliaciones.buscarPorId(saved.id()).orElseThrow();
+        afiliaciones.updateAffiliation(saved.id(), eps2.id(), "SUBSIDIADO", "BENEFICIARIO", "SUSPENDIDO", verifAt);
+        PatientAffiliation updated = afiliaciones.findById(saved.id()).orElseThrow();
         assertThat(updated.epsId()).isEqualTo(eps2.id());
-        assertThat(updated.regimen()).isEqualTo("SUBSIDIADO");
-        assertThat(updated.tipoAfiliado()).isEqualTo("BENEFICIARIO");
-        assertThat(updated.estado()).isEqualTo("SUSPENDIDO");
+        assertThat(updated.regime()).isEqualTo("SUBSIDIADO");
+        assertThat(updated.affiliateType()).isEqualTo("BENEFICIARIO");
+        assertThat(updated.status()).isEqualTo("SUSPENDIDO");
     }
 
     @Test
     void importBatchAndItemsRoutinesRoundTrip() {
-        EntidadEps eps = epsRepo.buscarPorCodigo("CCFC55").orElseThrow();
+        EpsEntity eps = epsRepo.findByCode("CCFC55").orElseThrow();
         Long uploaderId = newUser("admin-eps");
         String batchPub = UUID.randomUUID().toString();
 
-        LoteImportacionEps batch = lotes.guardarLote(new LoteImportacionEps(
+        EpsImportBatch batch = lotes.saveBatch(new EpsImportBatch(
                 null, batchPub, "afiliados.xlsx", "abc123sha256", eps.id(), 3, 2, 1, null, uploaderId, null, null));
 
         assertThat(batch.id()).isPositive();
-        assertThat(batch.estado()).isEqualTo("PREVIEW");
-        assertThat(lotes.buscarPorPublicId(batchPub)).contains(batch);
-        assertThat(lotes.buscarPorPublicId("no-existe")).isEmpty();
+        assertThat(batch.status()).isEqualTo("PREVIEW");
+        assertThat(lotes.findByPublicId(batchPub)).contains(batch);
+        assertThat(lotes.findByPublicId("no-existe")).isEmpty();
 
-        lotes.guardarDetallesBatch(batch.id(), List.of(
-                new DetalleImportacionEps(null, null, 2, "CC", "1001", "Ana", "Perez",
+        lotes.saveBatchDetails(batch.id(), List.of(
+                new EpsImportDetail(null, null, 2, "CC", "1001", "Ana", "Perez",
                         "SUBSIDIADO", "COTIZANTE", "VALIDO", null),
-                new DetalleImportacionEps(null, null, 4, "CC", "1002", "Luis", "Diaz",
+                new EpsImportDetail(null, null, 4, "CC", "1002", "Luis", "Diaz",
                         "SUBSIDIADO", "BENEFICIARIO", "VALIDO", null),
-                new DetalleImportacionEps(null, null, 3, "XX", "1", null, null,
+                new EpsImportDetail(null, null, 3, "XX", "1", null, null,
                         null, null, "ERROR", "Documento invalido")));
 
         // Límite 2 ordenado por NUMERO_FILA ASC
-        List<DetalleImportacionEps> sample = lotes.listarDetalles(batch.id(), 2);
-        assertThat(sample).extracting(DetalleImportacionEps::numeroFila).containsExactly(2, 3);
-        assertThat(sample.get(1).nombres()).isNull();
-        assertThat(sample.get(1).errorMotivo()).isEqualTo("Documento invalido");
+        List<EpsImportDetail> sample = lotes.listDetails(batch.id(), 2);
+        assertThat(sample).extracting(EpsImportDetail::rowNumber).containsExactly(2, 3);
+        assertThat(sample.get(1).firstNames()).isNull();
+        assertThat(sample.get(1).errorReason()).isEqualTo("Documento invalido");
 
         // Filas válidas ordenadas por NUMERO_FILA ASC
-        List<DetalleImportacionEps> validOnly = lotes.listarFilasValidas(batch.id());
-        assertThat(validOnly).extracting(DetalleImportacionEps::numeroFila).containsExactly(2, 4);
+        List<EpsImportDetail> validOnly = lotes.listValidRows(batch.id());
+        assertThat(validOnly).extracting(EpsImportDetail::rowNumber).containsExactly(2, 4);
 
         // Actualizar totales y estado
-        lotes.actualizarTotales(batch.id(), 10, 8, 2);
+        lotes.updateTotals(batch.id(), 10, 8, 2);
         Instant processedAt = Instant.now();
-        lotes.cambiarEstadoLote(batch.id(), "PROCESADO", processedAt);
+        lotes.changeBatchStatus(batch.id(), "PROCESADO", processedAt);
 
-        LoteImportacionEps updated = lotes.buscarPorId(batch.id()).orElseThrow();
-        assertThat(updated.totalFilas()).isEqualTo(10);
-        assertThat(updated.filasValidas()).isEqualTo(8);
-        assertThat(updated.filasFallidas()).isEqualTo(2);
-        assertThat(updated.estado()).isEqualTo("PROCESADO");
-        assertThat(updated.procesadoAt()).isNotNull();
+        EpsImportBatch updated = lotes.findById(batch.id()).orElseThrow();
+        assertThat(updated.totalRows()).isEqualTo(10);
+        assertThat(updated.validRows()).isEqualTo(8);
+        assertThat(updated.failedRows()).isEqualTo(2);
+        assertThat(updated.status()).isEqualTo("PROCESADO");
+        assertThat(updated.processedAt()).isNotNull();
     }
 }

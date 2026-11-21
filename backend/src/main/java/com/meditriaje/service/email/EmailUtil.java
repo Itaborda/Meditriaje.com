@@ -13,7 +13,7 @@ public final class EmailUtil {
      * Enmascara una dirección de correo electrónico para logging seguro sin exponer datos personales (PII/PHI).
      * Ejemplo: "paciente.perez@ejemplo.com" -> "p***@ejemplo.com".
      */
-    public static String enmascararEmail(String email) {
+    public static String maskEmail(String email) {
         if (email == null || email.isBlank()) {
             return "***";
         }
@@ -33,7 +33,7 @@ public final class EmailUtil {
      * - No contenga fragmentos HTML.
      * - Esté truncado a máximo 500 caracteres.
      */
-    public static String sanitizarMensajeError(String mensaje, String apiKey) {
+    public static String sanitizeErrorMessage(String mensaje, String apiKey) {
         if (mensaje == null || mensaje.isBlank()) {
             return null;
         }

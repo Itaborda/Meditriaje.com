@@ -67,7 +67,7 @@ public class MfaBackupCodeRepository {
     }
 
     /** Registra los códigos del lote; todos comparten la transacción del servicio que llama. */
-    public void guardarLote(Long usuarioId, List<String> hashes) {
+    public void saveBatch(Long usuarioId, List<String> hashes) {
         if (hashes == null || hashes.isEmpty()) {
             return;
         }
@@ -78,11 +78,11 @@ public class MfaBackupCodeRepository {
         }
     }
 
-    public void eliminarPorUsuario(Long usuarioId) {
+    public void deleteByUser(Long usuarioId) {
         gateway.execute(DELETE_MFA_BACKUP_CODES, new MapSqlParameterSource("p_user_id", usuarioId));
     }
 
-    public boolean consumirCodigo(Long usuarioId, String codeHash) {
+    public boolean consumeCode(Long usuarioId, String codeHash) {
         Map<String, Object> out = gateway.execute(CONSUME_MFA_BACKUP_CODE, new MapSqlParameterSource()
                 .addValue("p_user_id", usuarioId)
                 .addValue("p_code_hash", codeHash));
@@ -90,13 +90,13 @@ public class MfaBackupCodeRepository {
         return filasAfectadas != null && filasAfectadas.intValue() > 0;
     }
 
-    public int contarDisponibles(Long usuarioId) {
+    public int countAvailable(Long usuarioId) {
         Number count = gateway.callFunction(
                 COUNT_AVAILABLE_BACKUP_CODES, new MapSqlParameterSource("p_user_id", usuarioId));
         return count != null ? count.intValue() : 0;
     }
 
-    public List<MfaBackupCode> listarPorUsuario(Long usuarioId) {
+    public List<MfaBackupCode> listByUser(Long usuarioId) {
         return gateway.list(LIST_MFA_BACKUP_CODES, new MapSqlParameterSource("p_user_id", usuarioId), "o_rows");
     }
 }

@@ -1,24 +1,24 @@
 package com.meditriaje.service;
 
 import com.meditriaje.dto.AuthTokens;
-import com.meditriaje.dto.CambiarPasswordRequest;
+import com.meditriaje.dto.ChangePasswordRequest;
 import com.meditriaje.dto.LoginRequest;
-import com.meditriaje.dto.RegistroPacienteRequest;
-import com.meditriaje.dto.RegistroPacienteResponse;
-import com.meditriaje.exception.CredencialesInvalidasException;
-import com.meditriaje.exception.DatosInvalidosException;
-import com.meditriaje.exception.TokenInvalidoException;
-import com.meditriaje.model.AccionAuditable;
+import com.meditriaje.dto.RegisterPatientRequest;
+import com.meditriaje.dto.RegisterPatientResponse;
+import com.meditriaje.exception.InvalidCredentialsException;
+import com.meditriaje.exception.InvalidDataException;
+import com.meditriaje.exception.InvalidTokenException;
+import com.meditriaje.model.AuditableAction;
 import com.meditriaje.model.RefreshToken;
-import com.meditriaje.model.ResultadoAuditoria;
-import com.meditriaje.model.Usuario;
-import com.meditriaje.repository.ConsentimientoRepository;
-import com.meditriaje.repository.PacienteRepository;
+import com.meditriaje.model.AuditResult;
+import com.meditriaje.model.User;
+import com.meditriaje.repository.ConsentRepository;
+import com.meditriaje.repository.PatientRepository;
 import com.meditriaje.repository.RefreshTokenRepository;
-import com.meditriaje.repository.UsuarioRepository;
+import com.meditriaje.repository.UserRepository;
 import com.meditriaje.security.JwtService;
 import com.meditriaje.security.TokenHashUtil;
-import com.meditriaje.service.email.ResultadoEnvio;
+import com.meditriaje.service.email.EmailSendResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -47,16 +47,16 @@ import com.meditriaje.dto.auth.MfaAuthenticateRequest;
 import com.meditriaje.dto.auth.MfaSetupResponse;
 import com.meditriaje.dto.auth.MfaVerifyRequest;
 import com.meditriaje.dto.auth.MfaVerifyResponse;
-import com.meditriaje.dto.auth.RestablecerPasswordRequest;
-import com.meditriaje.dto.auth.RestablecerPasswordResponse;
-import com.meditriaje.dto.auth.SolicitarRecuperacionRequest;
-import com.meditriaje.dto.auth.SolicitarRecuperacionResponse;
-import com.meditriaje.exception.AccesoNoAutorizadoException;
-import com.meditriaje.model.CodigoVerificacion;
-import com.meditriaje.model.Paciente;
-import com.meditriaje.repository.CodigoVerificacionRepository;
+import com.meditriaje.dto.auth.ResetPasswordRequest;
+import com.meditriaje.dto.auth.ResetPasswordResponse;
+import com.meditriaje.dto.auth.RequestPasswordResetRequest;
+import com.meditriaje.dto.auth.RequestPasswordResetResponse;
+import com.meditriaje.exception.UnauthorizedAccessException;
+import com.meditriaje.model.VerificationCode;
+import com.meditriaje.model.Patient;
+import com.meditriaje.repository.VerificationCodeRepository;
 import com.meditriaje.repository.MfaBackupCodeRepository;
-import com.meditriaje.repository.ProfesionalRepository;
+import com.meditriaje.repository.ProfessionalRepository;
 import com.meditriaje.security.TotpService;
 import com.meditriaje.service.email.EmailService;
 import org.junit.jupiter.api.BeforeEach;
@@ -89,28 +89,28 @@ import static org.mockito.Mockito.when;
 class AuthServiceTest {
 
     @Mock
-    private UsuarioRepository usuarioRepository;
+    private UserRepository userRepository;
 
     @Mock
-    private PacienteRepository pacienteRepository;
+    private PatientRepository patientRepository;
 
     @Mock
-    private ProfesionalRepository profesionalRepository;
+    private ProfessionalRepository professionalRepository;
 
     @Mock
-    private ConsentimientoRepository consentimientoRepository;
+    private ConsentRepository consentRepository;
 
     @Mock
     private RefreshTokenRepository refreshTokenRepository;
 
     @Mock
-    private CodigoVerificacionRepository codigoVerificacionRepository;
+    private VerificationCodeRepository verificationCodeRepository;
 
     @Mock
     private MfaBackupCodeRepository mfaBackupCodeRepository;
 
     @Mock
-    private AuditoriaService auditoriaService;
+    private AuditService auditService;
 
     @Mock
     private PasswordEncoder passwordEncoder;
@@ -129,14 +129,14 @@ class AuthServiceTest {
     @BeforeEach
     void setUp() {
         authService = new AuthService(
-                usuarioRepository,
-                pacienteRepository,
-                profesionalRepository,
-                consentimientoRepository,
+                userRepository,
+                patientRepository,
+                professionalRepository,
+                consentRepository,
                 refreshTokenRepository,
-                codigoVerificacionRepository,
+                verificationCodeRepository,
                 mfaBackupCodeRepository,
-                auditoriaService,
+                auditService,
                 passwordEncoder,
                 jwtService,
                 totpService,
@@ -145,8 +145,8 @@ class AuthServiceTest {
         );
     }
 
-    private RegistroPacienteRequest requestValido() {
-        return new RegistroPacienteRequest(
+    private RegisterPatientRequest requestValido() {
+        return new RegisterPatientRequest(
                 "CC",
                 "1020304050",
                 "Carlos",
@@ -165,180 +165,180 @@ class AuthServiceTest {
     // -------------------------------------------------------------------------
 
     @Test
-    void registrarPaciente_exito_creaUsuarioPacienteConsentimientoYAudita() {
-        RegistroPacienteRequest req = requestValido();
+    void registerPatient_success_createsUserPatientConsentAndAudits() {
+        RegisterPatientRequest req = requestValido();
 
-        when(usuarioRepository.existePorEmail("carlos.perez@example.com")).thenReturn(false);
-        when(pacienteRepository.existePorDocumento("CC", "1020304050")).thenReturn(false);
+        when(userRepository.existsByEmail("carlos.perez@example.com")).thenReturn(false);
+        when(patientRepository.existsByDocument("CC", "1020304050")).thenReturn(false);
         when(passwordEncoder.encode("Segura12345*")).thenReturn("$argon2id$encoded");
-        when(usuarioRepository.crear(anyString(), eq("carlos.perez@example.com"), eq("$argon2id$encoded"))).thenReturn(100L);
-        when(usuarioRepository.buscarRolIdPorNombre("ROLE_PACIENTE")).thenReturn(Optional.of(1L));
-        when(pacienteRepository.crear(eq(100L), anyString(), eq("CC"), eq("1020304050"), eq("Carlos"), eq("Perez"), eq(LocalDate.of(1995, 5, 20)), eq("3001234567"))).thenReturn(200L);
-        when(consentimientoRepository.registrar(eq(100L), eq("v1.0"), eq(true), eq("192.168.1.5"))).thenReturn(300L);
+        when(userRepository.create(anyString(), eq("carlos.perez@example.com"), eq("$argon2id$encoded"))).thenReturn(100L);
+        when(userRepository.findRoleIdByName("ROLE_PACIENTE")).thenReturn(Optional.of(1L));
+        when(patientRepository.create(eq(100L), anyString(), eq("CC"), eq("1020304050"), eq("Carlos"), eq("Perez"), eq(LocalDate.of(1995, 5, 20)), eq("3001234567"))).thenReturn(200L);
+        when(consentRepository.record(eq(100L), eq("v1.0"), eq(true), eq("192.168.1.5"))).thenReturn(300L);
 
-        RegistroPacienteResponse res = authService.registrarPaciente(req, "192.168.1.5");
+        RegisterPatientResponse res = authService.registerPatient(req, "192.168.1.5");
 
         assertThat(res).isNotNull();
         assertThat(res.email()).isEqualTo("carlos.perez@example.com");
-        assertThat(res.pacientePublicId()).isNotBlank();
-        assertThat(res.nombres()).isEqualTo("Carlos");
-        assertThat(res.apellidos()).isEqualTo("Perez");
+        assertThat(res.patientPublicId()).isNotBlank();
+        assertThat(res.firstNames()).isEqualTo("Carlos");
+        assertThat(res.lastNames()).isEqualTo("Perez");
 
-        verify(usuarioRepository).asignarRol(100L, 1L);
-        verify(auditoriaService).registrarEvento(
+        verify(userRepository).assignRole(100L, 1L);
+        verify(auditService).recordEvent(
                 eq(100L),
-                eq(AccionAuditable.REGISTRO_PACIENTE),
+                eq(AuditableAction.REGISTRO_PACIENTE),
                 eq("PACIENTE"),
                 anyString(),
-                eq(ResultadoAuditoria.EXITO),
+                eq(AuditResult.EXITO),
                 eq("192.168.1.5")
         );
     }
 
     @Test
-    void registrarPaciente_correoDuplicado_lanzaExcepcionYAuditaFallo() {
-        RegistroPacienteRequest req = requestValido();
-        when(usuarioRepository.existePorEmail("carlos.perez@example.com")).thenReturn(true);
+    void registerPatient_emailDuplicate_throwsExceptionAndAuditsFailure() {
+        RegisterPatientRequest req = requestValido();
+        when(userRepository.existsByEmail("carlos.perez@example.com")).thenReturn(true);
 
-        assertThatThrownBy(() -> authService.registrarPaciente(req, "192.168.1.5"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> authService.registerPatient(req, "192.168.1.5"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("correo electronico ya se encuentra registrado");
 
-        verify(auditoriaService).registrarEvento(
-                eq(AccionAuditable.REGISTRO_PACIENTE),
+        verify(auditService).recordEvent(
+                eq(AuditableAction.REGISTRO_PACIENTE),
                 eq("USUARIO"),
                 isNull(),
-                eq(ResultadoAuditoria.FALLO),
+                eq(AuditResult.FALLO),
                 eq("192.168.1.5")
         );
-        verify(usuarioRepository, never()).crear(anyString(), anyString(), anyString());
+        verify(userRepository, never()).create(anyString(), anyString(), anyString());
     }
 
     @Test
-    void registrarPaciente_documentoDuplicado_lanzaExcepcionYAuditaFallo() {
-        RegistroPacienteRequest req = requestValido();
-        when(usuarioRepository.existePorEmail("carlos.perez@example.com")).thenReturn(false);
-        when(pacienteRepository.existePorDocumento("CC", "1020304050")).thenReturn(true);
+    void registerPatient_documentDuplicate_throwsExceptionAndAuditsFailure() {
+        RegisterPatientRequest req = requestValido();
+        when(userRepository.existsByEmail("carlos.perez@example.com")).thenReturn(false);
+        when(patientRepository.existsByDocument("CC", "1020304050")).thenReturn(true);
 
-        assertThatThrownBy(() -> authService.registrarPaciente(req, "192.168.1.5"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> authService.registerPatient(req, "192.168.1.5"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("documento de identidad ya se encuentra registrado");
 
-        verify(auditoriaService).registrarEvento(
-                eq(AccionAuditable.REGISTRO_PACIENTE),
+        verify(auditService).recordEvent(
+                eq(AuditableAction.REGISTRO_PACIENTE),
                 eq("PACIENTE"),
                 isNull(),
-                eq(ResultadoAuditoria.FALLO),
+                eq(AuditResult.FALLO),
                 eq("192.168.1.5")
         );
-        verify(usuarioRepository, never()).crear(anyString(), anyString(), anyString());
+        verify(userRepository, never()).create(anyString(), anyString(), anyString());
     }
 
     @Test
-    void registrarPaciente_sinConsentimiento_lanzaExcepcionYAuditaFallo() {
-        RegistroPacienteRequest req = new RegistroPacienteRequest(
+    void registerPatient_withoutConsent_throwsExceptionAndAuditsFailure() {
+        RegisterPatientRequest req = new RegisterPatientRequest(
                 "CC", "1020304050", "Carlos", "Perez",
                 LocalDate.of(1995, 5, 20), null, "carlos.perez@example.com",
                 "Segura12345*", "v1.0", false
         );
 
-        assertThatThrownBy(() -> authService.registrarPaciente(req, "192.168.1.5"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> authService.registerPatient(req, "192.168.1.5"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("consentimiento informado");
 
-        verify(auditoriaService).registrarEvento(
-                eq(AccionAuditable.REGISTRO_PACIENTE),
+        verify(auditService).recordEvent(
+                eq(AuditableAction.REGISTRO_PACIENTE),
                 eq("USUARIO"),
                 isNull(),
-                eq(ResultadoAuditoria.FALLO),
+                eq(AuditResult.FALLO),
                 eq("192.168.1.5")
         );
     }
 
     @Test
-    void registrarPaciente_cedulaConMenorDeEdad_lanzaExcepcionYAuditaFallo() {
+    void registerPatient_citizenshipIdWithUnderOfAge_throwsExceptionAndAuditsFailure() {
         // Paciente con 16 años intentando registrarse con Cédula de Ciudadanía
-        RegistroPacienteRequest req = new RegistroPacienteRequest(
+        RegisterPatientRequest req = new RegisterPatientRequest(
                 "CC", "1020304050", "Carlos", "Perez",
                 LocalDate.now().minusYears(16), "3001234567", "carlos.perez@example.com",
                 "Segura12345*", "v1.0", true
         );
 
-        assertThatThrownBy(() -> authService.registrarPaciente(req, "192.168.1.5"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> authService.registerPatient(req, "192.168.1.5"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("Cedula de Ciudadania (CC) solo es valida para personas mayores de 18 anos");
 
-        verify(auditoriaService).registrarEvento(
-                eq(AccionAuditable.REGISTRO_PACIENTE),
+        verify(auditService).recordEvent(
+                eq(AuditableAction.REGISTRO_PACIENTE),
                 eq("USUARIO"),
                 isNull(),
-                eq(ResultadoAuditoria.FALLO),
+                eq(AuditResult.FALLO),
                 eq("192.168.1.5")
         );
-        verify(usuarioRepository, never()).crear(anyString(), anyString(), anyString());
+        verify(userRepository, never()).create(anyString(), anyString(), anyString());
     }
 
     @Test
-    void registrarPaciente_numeroDocumentoInvalido_lanzaExcepcionYAuditaFallo() {
+    void registerPatient_numberDocumentInvalid_throwsExceptionAndAuditsFailure() {
         // Cédula con letras
-        RegistroPacienteRequest req = new RegistroPacienteRequest(
+        RegisterPatientRequest req = new RegisterPatientRequest(
                 "CC", "10203A4050", "Carlos", "Perez",
                 LocalDate.of(1995, 5, 20), "3001234567", "carlos.perez@example.com",
                 "Segura12345*", "v1.0", true
         );
 
-        assertThatThrownBy(() -> authService.registrarPaciente(req, "192.168.1.5"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> authService.registerPatient(req, "192.168.1.5"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("Cedula de Ciudadania (CC) debe contener entre 6 y 10 digitos");
 
-        verify(auditoriaService).registrarEvento(
-                eq(AccionAuditable.REGISTRO_PACIENTE),
+        verify(auditService).recordEvent(
+                eq(AuditableAction.REGISTRO_PACIENTE),
                 eq("USUARIO"),
                 isNull(),
-                eq(ResultadoAuditoria.FALLO),
+                eq(AuditResult.FALLO),
                 eq("192.168.1.5")
         );
     }
 
     @Test
-    void registrarPaciente_celularInvalido_lanzaExcepcionYAuditaFallo() {
+    void registerPatient_mobileInvalid_throwsExceptionAndAuditsFailure() {
         // Teléfono que no es celular colombiano (fijo o formato inválido)
-        RegistroPacienteRequest req = new RegistroPacienteRequest(
+        RegisterPatientRequest req = new RegisterPatientRequest(
                 "CC", "1020304050", "Carlos", "Perez",
                 LocalDate.of(1995, 5, 20), "6011234567", "carlos.perez@example.com",
                 "Segura12345*", "v1.0", true
         );
 
-        assertThatThrownBy(() -> authService.registrarPaciente(req, "192.168.1.5"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> authService.registerPatient(req, "192.168.1.5"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("celular colombiano valido de 10 digitos (iniciando por 3)");
 
-        verify(auditoriaService).registrarEvento(
-                eq(AccionAuditable.REGISTRO_PACIENTE),
+        verify(auditService).recordEvent(
+                eq(AuditableAction.REGISTRO_PACIENTE),
                 eq("USUARIO"),
                 isNull(),
-                eq(ResultadoAuditoria.FALLO),
+                eq(AuditResult.FALLO),
                 eq("192.168.1.5")
         );
     }
 
     @Test
-    void registrarPaciente_nombresConCaracteresEspeciales_lanzaExcepcionYAuditaFallo() {
-        RegistroPacienteRequest req = new RegistroPacienteRequest(
+    void registerPatient_namesWithCharsEspeciales_throwsExceptionAndAuditsFailure() {
+        RegisterPatientRequest req = new RegisterPatientRequest(
                 "CC", "1020304050", "Carlos123", "Perez",
                 LocalDate.of(1995, 5, 20), "3001234567", "carlos.perez@example.com",
                 "Segura12345*", "v1.0", true
         );
 
-        assertThatThrownBy(() -> authService.registrarPaciente(req, "192.168.1.5"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> authService.registerPatient(req, "192.168.1.5"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("solo puede contener letras, espacios, tildes y guiones");
 
-        verify(auditoriaService).registrarEvento(
-                eq(AccionAuditable.REGISTRO_PACIENTE),
+        verify(auditService).recordEvent(
+                eq(AuditableAction.REGISTRO_PACIENTE),
                 eq("USUARIO"),
                 isNull(),
-                eq(ResultadoAuditoria.FALLO),
+                eq(AuditResult.FALLO),
                 eq("192.168.1.5")
         );
     }
@@ -350,7 +350,7 @@ class AuthServiceTest {
     @Test
     void login_exito_emiteTokensYAudita() {
         LoginRequest req = new LoginRequest("carlos.perez@example.com", "Segura12345*");
-        Usuario usuario = new Usuario(
+        User usuario = new User(
                 10L,
                 "user-pub-id-1",
                 "carlos.perez@example.com",
@@ -361,10 +361,10 @@ class AuthServiceTest {
                 Instant.now()
         );
 
-        when(usuarioRepository.buscarPorEmail("carlos.perez@example.com")).thenReturn(Optional.of(usuario));
+        when(userRepository.findByEmail("carlos.perez@example.com")).thenReturn(Optional.of(usuario));
         when(passwordEncoder.matches("Segura12345*", "$argon2id$hashed")).thenReturn(true);
-        when(usuarioRepository.obtenerRoles(10L)).thenReturn(List.of("ROLE_PACIENTE"));
-        when(jwtService.generarAccessToken(eq("user-pub-id-1"), eq("carlos.perez@example.com"), eq(List.of("ROLE_PACIENTE"))))
+        when(userRepository.getRoles(10L)).thenReturn(List.of("ROLE_PACIENTE"));
+        when(jwtService.generateAccessToken(eq("user-pub-id-1"), eq("carlos.perez@example.com"), eq(List.of("ROLE_PACIENTE"))))
                 .thenReturn("mock.access.jwt");
 
         AuthTokens resultado = authService.login(req, "192.168.1.10");
@@ -375,40 +375,40 @@ class AuthServiceTest {
         assertThat(resultado.sessionResponse().email()).isEqualTo("carlos.perez@example.com");
         assertThat(resultado.sessionResponse().roles()).containsExactly("ROLE_PACIENTE");
 
-        verify(refreshTokenRepository).crear(eq(10L), anyString(), any(Instant.class));
-        verify(auditoriaService).registrarEvento(
+        verify(refreshTokenRepository).create(eq(10L), anyString(), any(Instant.class));
+        verify(auditService).recordEvent(
                 eq(10L),
-                eq(AccionAuditable.LOGIN_EXITOSO),
+                eq(AuditableAction.LOGIN_EXITOSO),
                 eq("USUARIO"),
                 eq("user-pub-id-1"),
-                eq(ResultadoAuditoria.EXITO),
+                eq(AuditResult.EXITO),
                 eq("192.168.1.10")
         );
     }
 
     @Test
-    void login_correoInexistente_lanzaCredencialesInvalidasYAuditaFallo() {
+    void login_emailInexistente_throwsInvalidCredentialsAndAuditsFailure() {
         LoginRequest req = new LoginRequest("desconocido@example.com", "CualquierClave1*");
-        when(usuarioRepository.buscarPorEmail("desconocido@example.com")).thenReturn(Optional.empty());
+        when(userRepository.findByEmail("desconocido@example.com")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> authService.login(req, "192.168.1.10"))
-                .isInstanceOf(CredencialesInvalidasException.class)
+                .isInstanceOf(InvalidCredentialsException.class)
                 .hasMessage("Credenciales invalidas.");
 
-        verify(auditoriaService).registrarEvento(
-                eq(AccionAuditable.LOGIN_FALLIDO),
+        verify(auditService).recordEvent(
+                eq(AuditableAction.LOGIN_FALLIDO),
                 eq("USUARIO"),
                 isNull(),
-                eq(ResultadoAuditoria.FALLO),
+                eq(AuditResult.FALLO),
                 eq("192.168.1.10")
         );
-        verify(refreshTokenRepository, never()).crear(anyLong(), anyString(), any());
+        verify(refreshTokenRepository, never()).create(anyLong(), anyString(), any());
     }
 
     @Test
-    void login_passwordErroneo_incrementaIntentosYAuditaFallo() {
+    void login_passwordWrong_incrementsAttemptsAndAuditsFailure() {
         LoginRequest req = new LoginRequest("carlos.perez@example.com", "ClaveErronea1*");
-        Usuario usuario = new Usuario(
+        User usuario = new User(
                 10L,
                 "user-pub-id-1",
                 "carlos.perez@example.com",
@@ -419,28 +419,28 @@ class AuthServiceTest {
                 Instant.now()
         );
 
-        when(usuarioRepository.buscarPorEmail("carlos.perez@example.com")).thenReturn(Optional.of(usuario));
+        when(userRepository.findByEmail("carlos.perez@example.com")).thenReturn(Optional.of(usuario));
         when(passwordEncoder.matches("ClaveErronea1*", "$argon2id$hashed")).thenReturn(false);
 
         assertThatThrownBy(() -> authService.login(req, "192.168.1.10"))
-                .isInstanceOf(CredencialesInvalidasException.class)
+                .isInstanceOf(InvalidCredentialsException.class)
                 .hasMessage("Credenciales invalidas.");
 
-        verify(usuarioRepository).actualizarIntentosFallidos(10L, 3, null, "ACTIVO");
-        verify(auditoriaService).registrarEvento(
+        verify(userRepository).updateFailedAttempts(10L, 3, null, "ACTIVO");
+        verify(auditService).recordEvent(
                 eq(10L),
-                eq(AccionAuditable.LOGIN_FALLIDO),
+                eq(AuditableAction.LOGIN_FALLIDO),
                 eq("USUARIO"),
                 eq("user-pub-id-1"),
-                eq(ResultadoAuditoria.FALLO),
+                eq(AuditResult.FALLO),
                 eq("192.168.1.10")
         );
     }
 
     @Test
-    void login_quintoFalloConsecutivo_bloqueaCuentaTemporalmente() {
+    void login_fifthFailureConsecutivo_locksCuentaTemporarily() {
         LoginRequest req = new LoginRequest("carlos.perez@example.com", "ClaveErronea1*");
-        Usuario usuario = new Usuario(
+        User usuario = new User(
                 10L,
                 "user-pub-id-1",
                 "carlos.perez@example.com",
@@ -451,28 +451,28 @@ class AuthServiceTest {
                 Instant.now()
         );
 
-        when(usuarioRepository.buscarPorEmail("carlos.perez@example.com")).thenReturn(Optional.of(usuario));
+        when(userRepository.findByEmail("carlos.perez@example.com")).thenReturn(Optional.of(usuario));
         when(passwordEncoder.matches("ClaveErronea1*", "$argon2id$hashed")).thenReturn(false);
 
         assertThatThrownBy(() -> authService.login(req, "192.168.1.10"))
-                .isInstanceOf(CredencialesInvalidasException.class)
+                .isInstanceOf(InvalidCredentialsException.class)
                 .hasMessage("Credenciales invalidas.");
 
-        verify(usuarioRepository).actualizarIntentosFallidos(eq(10L), eq(5), any(Instant.class), eq("BLOQUEADO"));
-        verify(auditoriaService).registrarEvento(
+        verify(userRepository).updateFailedAttempts(eq(10L), eq(5), any(Instant.class), eq("BLOQUEADO"));
+        verify(auditService).recordEvent(
                 eq(10L),
-                eq(AccionAuditable.LOGIN_FALLIDO),
+                eq(AuditableAction.LOGIN_FALLIDO),
                 eq("USUARIO"),
                 eq("user-pub-id-1"),
-                eq(ResultadoAuditoria.BLOQUEADO),
+                eq(AuditResult.BLOQUEADO),
                 eq("192.168.1.10")
         );
     }
 
     @Test
-    void login_cuentaBloqueada_rechazaInmediatamenteSinVerificarPassword() {
+    void login_cuentaLocked_rejectsImmediatelyWithoutCheckingPassword() {
         LoginRequest req = new LoginRequest("carlos.perez@example.com", "Segura12345*");
-        Usuario usuario = new Usuario(
+        User usuario = new User(
                 10L,
                 "user-pub-id-1",
                 "carlos.perez@example.com",
@@ -483,19 +483,19 @@ class AuthServiceTest {
                 Instant.now()
         );
 
-        when(usuarioRepository.buscarPorEmail("carlos.perez@example.com")).thenReturn(Optional.of(usuario));
+        when(userRepository.findByEmail("carlos.perez@example.com")).thenReturn(Optional.of(usuario));
 
         assertThatThrownBy(() -> authService.login(req, "192.168.1.10"))
-                .isInstanceOf(CredencialesInvalidasException.class)
+                .isInstanceOf(InvalidCredentialsException.class)
                 .hasMessage("Credenciales invalidas.");
 
         verify(passwordEncoder, never()).matches(anyString(), anyString());
-        verify(auditoriaService).registrarEvento(
+        verify(auditService).recordEvent(
                 eq(10L),
-                eq(AccionAuditable.LOGIN_FALLIDO),
+                eq(AuditableAction.LOGIN_FALLIDO),
                 eq("USUARIO"),
                 eq("user-pub-id-1"),
-                eq(ResultadoAuditoria.BLOQUEADO),
+                eq(AuditResult.BLOQUEADO),
                 eq("192.168.1.10")
         );
     }
@@ -505,7 +505,7 @@ class AuthServiceTest {
     // -------------------------------------------------------------------------
 
     @Test
-    void refresh_exito_rotaTokenYRetornaNuevaSesion() {
+    void refresh_success_rotaTokenAndRetornaNewSession() {
         String rawToken = "raw-refresh-token-xyz";
         String tokenHash = TokenHashUtil.hash(rawToken);
 
@@ -518,7 +518,7 @@ class AuthServiceTest {
                 Instant.now()
         );
 
-        Usuario usuario = new Usuario(
+        User usuario = new User(
                 10L,
                 "user-pub-id-1",
                 "carlos.perez@example.com",
@@ -529,10 +529,10 @@ class AuthServiceTest {
                 Instant.now()
         );
 
-        when(refreshTokenRepository.buscarPorTokenHash(tokenHash)).thenReturn(Optional.of(refreshToken));
-        when(usuarioRepository.buscarPorId(10L)).thenReturn(Optional.of(usuario));
-        when(usuarioRepository.obtenerRoles(10L)).thenReturn(List.of("ROLE_PACIENTE"));
-        when(jwtService.generarAccessToken(eq("user-pub-id-1"), eq("carlos.perez@example.com"), eq(List.of("ROLE_PACIENTE"))))
+        when(refreshTokenRepository.findByTokenHash(tokenHash)).thenReturn(Optional.of(refreshToken));
+        when(userRepository.findById(10L)).thenReturn(Optional.of(usuario));
+        when(userRepository.getRoles(10L)).thenReturn(List.of("ROLE_PACIENTE"));
+        when(jwtService.generateAccessToken(eq("user-pub-id-1"), eq("carlos.perez@example.com"), eq(List.of("ROLE_PACIENTE"))))
                 .thenReturn("new.access.jwt");
 
         AuthTokens resultado = authService.refresh(rawToken, "192.168.1.10");
@@ -543,12 +543,12 @@ class AuthServiceTest {
         assertThat(resultado.rawRefreshToken()).isNotEqualTo(rawToken);
 
         // Se revoca el token anterior y se persiste el nuevo rotativo
-        verify(refreshTokenRepository).revocar(55L);
-        verify(refreshTokenRepository).crear(eq(10L), anyString(), any(Instant.class));
+        verify(refreshTokenRepository).revoke(55L);
+        verify(refreshTokenRepository).create(eq(10L), anyString(), any(Instant.class));
     }
 
     @Test
-    void refresh_tokenYaRevocado_activaMitigacionRoboYRevocaTodosLosTokens() {
+    void refresh_tokenAlreadyRevoked_activeMitigationTheftAndRevocaTodosTheTokens() {
         String rawToken = "stolen-refresh-token";
         String tokenHash = TokenHashUtil.hash(rawToken);
 
@@ -561,26 +561,26 @@ class AuthServiceTest {
                 Instant.now()
         );
 
-        when(refreshTokenRepository.buscarPorTokenHash(tokenHash)).thenReturn(Optional.of(refreshToken));
+        when(refreshTokenRepository.findByTokenHash(tokenHash)).thenReturn(Optional.of(refreshToken));
 
         assertThatThrownBy(() -> authService.refresh(rawToken, "192.168.1.10"))
-                .isInstanceOf(TokenInvalidoException.class)
+                .isInstanceOf(InvalidTokenException.class)
                 .hasMessageContaining("deteccion de reuso");
 
         // Revocación masiva de todas las sesiones activas del usuario comprometido
-        verify(refreshTokenRepository).revocarTodosPorUsuario(10L);
-        verify(auditoriaService).registrarEvento(
+        verify(refreshTokenRepository).revokeAllByUser(10L);
+        verify(auditService).recordEvent(
                 eq(10L),
-                eq(AccionAuditable.LOGIN_FALLIDO),
+                eq(AuditableAction.LOGIN_FALLIDO),
                 eq("REFRESH_TOKEN"),
                 eq("55"),
-                eq(ResultadoAuditoria.BLOQUEADO),
+                eq(AuditResult.BLOQUEADO),
                 eq("192.168.1.10")
         );
     }
 
     @Test
-    void refresh_tokenExpirado_revocaYRechaza() {
+    void refresh_tokenExpired_revocaAndRechaza() {
         String rawToken = "expired-refresh-token";
         String tokenHash = TokenHashUtil.hash(rawToken);
 
@@ -593,13 +593,13 @@ class AuthServiceTest {
                 Instant.now()
         );
 
-        when(refreshTokenRepository.buscarPorTokenHash(tokenHash)).thenReturn(Optional.of(refreshToken));
+        when(refreshTokenRepository.findByTokenHash(tokenHash)).thenReturn(Optional.of(refreshToken));
 
         assertThatThrownBy(() -> authService.refresh(rawToken, "192.168.1.10"))
-                .isInstanceOf(TokenInvalidoException.class)
+                .isInstanceOf(InvalidTokenException.class)
                 .hasMessageContaining("expirado");
 
-        verify(refreshTokenRepository).revocar(55L);
+        verify(refreshTokenRepository).revoke(55L);
     }
 
     // -------------------------------------------------------------------------
@@ -607,7 +607,7 @@ class AuthServiceTest {
     // -------------------------------------------------------------------------
 
     @Test
-    void logout_conTokenValido_revocaYAudita() {
+    void logout_withTokenValid_revocaAndAudits() {
         String rawToken = "active-refresh-token";
         String tokenHash = TokenHashUtil.hash(rawToken);
 
@@ -619,7 +619,7 @@ class AuthServiceTest {
                 false,
                 Instant.now()
         );
-        Usuario usuario = new Usuario(
+        User usuario = new User(
                 10L,
                 "user-pub-id-1",
                 "carlos.perez@example.com",
@@ -630,18 +630,18 @@ class AuthServiceTest {
                 Instant.now()
         );
 
-        when(refreshTokenRepository.buscarPorTokenHash(tokenHash)).thenReturn(Optional.of(refreshToken));
-        when(usuarioRepository.buscarPorId(10L)).thenReturn(Optional.of(usuario));
+        when(refreshTokenRepository.findByTokenHash(tokenHash)).thenReturn(Optional.of(refreshToken));
+        when(userRepository.findById(10L)).thenReturn(Optional.of(usuario));
 
         authService.logout(rawToken, "192.168.1.10");
 
-        verify(refreshTokenRepository).revocar(55L);
-        verify(auditoriaService).registrarEvento(
+        verify(refreshTokenRepository).revoke(55L);
+        verify(auditService).recordEvent(
                 eq(10L),
-                eq(AccionAuditable.LOGOUT),
+                eq(AuditableAction.LOGOUT),
                 eq("USUARIO"),
                 eq("user-pub-id-1"),
-                eq(ResultadoAuditoria.EXITO),
+                eq(AuditResult.EXITO),
                 eq("192.168.1.10")
         );
     }
@@ -651,337 +651,337 @@ class AuthServiceTest {
     // -------------------------------------------------------------------------
 
     @Test
-    void cambiarPassword_conDatosValidos_actualizaPasswordYAudita() {
+    void changePassword_withDataValid_updatesPasswordAndAudits() {
         String userPubId = "user-pub-id-1";
-        Usuario usuario = new Usuario(
+        User usuario = new User(
                 10L, userPubId, "carlos@hospital.com", "$argon2id$oldhash", "ACTIVO", 0, null, Instant.now(), true
         );
-        CambiarPasswordRequest req = new CambiarPasswordRequest("PasswordActual123*", "PasswordNuevo123*");
+        ChangePasswordRequest req = new ChangePasswordRequest("PasswordActual123*", "PasswordNuevo123*");
 
-        when(usuarioRepository.buscarPorPublicId(userPubId)).thenReturn(Optional.of(usuario));
+        when(userRepository.findByPublicId(userPubId)).thenReturn(Optional.of(usuario));
         when(passwordEncoder.matches("PasswordActual123*", "$argon2id$oldhash")).thenReturn(true);
         when(passwordEncoder.matches("PasswordNuevo123*", "$argon2id$oldhash")).thenReturn(false);
         when(passwordEncoder.encode("PasswordNuevo123*")).thenReturn("$argon2id$newhash");
 
-        authService.cambiarPassword(userPubId, req, "192.168.1.10");
+        authService.changePassword(userPubId, req, "192.168.1.10");
 
-        verify(usuarioRepository).actualizarPassword(10L, "$argon2id$newhash", false);
-        verify(auditoriaService).registrarEvento(
+        verify(userRepository).updatePassword(10L, "$argon2id$newhash", false);
+        verify(auditService).recordEvent(
                 eq(10L),
-                eq(AccionAuditable.CAMBIO_PASSWORD),
+                eq(AuditableAction.CAMBIO_PASSWORD),
                 eq("USUARIO"),
                 eq(userPubId),
-                eq(ResultadoAuditoria.EXITO),
+                eq(AuditResult.EXITO),
                 eq("192.168.1.10")
         );
     }
 
     @Test
-    void cambiarPassword_passwordActualIncorrecto_lanzaCredencialesInvalidasYAuditaFallo() {
+    void changePassword_passwordCurrentIncorrect_throwsInvalidCredentialsAndAuditsFailure() {
         String userPubId = "user-pub-id-1";
-        Usuario usuario = new Usuario(
+        User usuario = new User(
                 10L, userPubId, "carlos@hospital.com", "$argon2id$oldhash", "ACTIVO", 0, null, Instant.now(), true
         );
-        CambiarPasswordRequest req = new CambiarPasswordRequest("PasswordErroneo123*", "PasswordNuevo123*");
+        ChangePasswordRequest req = new ChangePasswordRequest("PasswordErroneo123*", "PasswordNuevo123*");
 
-        when(usuarioRepository.buscarPorPublicId(userPubId)).thenReturn(Optional.of(usuario));
+        when(userRepository.findByPublicId(userPubId)).thenReturn(Optional.of(usuario));
         when(passwordEncoder.matches("PasswordErroneo123*", "$argon2id$oldhash")).thenReturn(false);
 
-        assertThatThrownBy(() -> authService.cambiarPassword(userPubId, req, "192.168.1.10"))
-                .isInstanceOf(CredencialesInvalidasException.class)
+        assertThatThrownBy(() -> authService.changePassword(userPubId, req, "192.168.1.10"))
+                .isInstanceOf(InvalidCredentialsException.class)
                 .hasMessageContaining("Credenciales invalidas");
 
-        verify(usuarioRepository, never()).actualizarPassword(anyLong(), anyString(), anyBoolean());
-        verify(auditoriaService).registrarEvento(
+        verify(userRepository, never()).updatePassword(anyLong(), anyString(), anyBoolean());
+        verify(auditService).recordEvent(
                 eq(10L),
-                eq(AccionAuditable.CAMBIO_PASSWORD),
+                eq(AuditableAction.CAMBIO_PASSWORD),
                 eq("USUARIO"),
                 eq(userPubId),
-                eq(ResultadoAuditoria.FALLO),
+                eq(AuditResult.FALLO),
                 eq("192.168.1.10")
         );
     }
 
     @Test
-    void cambiarPassword_passwordNuevoIgualAlActual_lanzaDatosInvalidosExceptionYAuditaFallo() {
+    void changePassword_passwordNewEqualToCurrent_throwsInvalidDataExceptionAndAuditsFailure() {
         String userPubId = "user-pub-id-1";
-        Usuario usuario = new Usuario(
+        User usuario = new User(
                 10L, userPubId, "carlos@hospital.com", "$argon2id$oldhash", "ACTIVO", 0, null, Instant.now(), true
         );
-        CambiarPasswordRequest req = new CambiarPasswordRequest("PasswordActual123*", "PasswordActual123*");
+        ChangePasswordRequest req = new ChangePasswordRequest("PasswordActual123*", "PasswordActual123*");
 
-        when(usuarioRepository.buscarPorPublicId(userPubId)).thenReturn(Optional.of(usuario));
+        when(userRepository.findByPublicId(userPubId)).thenReturn(Optional.of(usuario));
         when(passwordEncoder.matches("PasswordActual123*", "$argon2id$oldhash")).thenReturn(true);
 
-        assertThatThrownBy(() -> authService.cambiarPassword(userPubId, req, "192.168.1.10"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> authService.changePassword(userPubId, req, "192.168.1.10"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("no puede ser igual a la anterior");
 
-        verify(usuarioRepository, never()).actualizarPassword(anyLong(), anyString(), anyBoolean());
-        verify(auditoriaService).registrarEvento(
+        verify(userRepository, never()).updatePassword(anyLong(), anyString(), anyBoolean());
+        verify(auditService).recordEvent(
                 eq(10L),
-                eq(AccionAuditable.CAMBIO_PASSWORD),
+                eq(AuditableAction.CAMBIO_PASSWORD),
                 eq("USUARIO"),
                 eq(userPubId),
-                eq(ResultadoAuditoria.FALLO),
+                eq(AuditResult.FALLO),
                 eq("192.168.1.10")
         );
     }
 
     @Test
-    void cambiarPassword_usuarioNoEncontrado_lanzaCredencialesInvalidasException() {
+    void changePassword_userNotFound_throwsInvalidCredentialsException() {
         String userPubId = "user-no-existe";
-        CambiarPasswordRequest req = new CambiarPasswordRequest("PasswordActual123*", "PasswordNuevo123*");
+        ChangePasswordRequest req = new ChangePasswordRequest("PasswordActual123*", "PasswordNuevo123*");
 
-        when(usuarioRepository.buscarPorPublicId(userPubId)).thenReturn(Optional.empty());
+        when(userRepository.findByPublicId(userPubId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> authService.cambiarPassword(userPubId, req, "192.168.1.10"))
-                .isInstanceOf(CredencialesInvalidasException.class);
+        assertThatThrownBy(() -> authService.changePassword(userPubId, req, "192.168.1.10"))
+                .isInstanceOf(InvalidCredentialsException.class);
 
-        verify(usuarioRepository, never()).actualizarPassword(anyLong(), anyString(), anyBoolean());
+        verify(userRepository, never()).updatePassword(anyLong(), anyString(), anyBoolean());
     }
 
     @Test
-    void solicitarRecuperacionPassword_usuarioExiste_generaCodigoEnviaEmailYAuditaExito() {
+    void requestPasswordReset_userExists_generatesCodeSendsEmailAndAuditsExito() {
         String email = "carlos@hospital.com";
-        Usuario usuario = new Usuario(
+        User usuario = new User(
                 10L, "usr-pub-1", email, "$argon2id$hash", "ACTIVO", 0, null, Instant.now(), false
         );
-        Paciente paciente = new Paciente(
+        Patient paciente = new Patient(
                 5L, 10L, "pac-pub-1", "CC", "12345678", "Carlos", "Perez",
                 LocalDate.of(1990, 1, 1), "3001234567", Instant.now(), null
         );
 
-        when(usuarioRepository.buscarPorEmail(email)).thenReturn(Optional.of(usuario));
-        when(pacienteRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.of(paciente));
+        when(userRepository.findByEmail(email)).thenReturn(Optional.of(usuario));
+        when(patientRepository.findByUserId(10L)).thenReturn(Optional.of(paciente));
 
-        SolicitarRecuperacionRequest req = new SolicitarRecuperacionRequest(email);
-        SolicitarRecuperacionResponse resp = authService.solicitarRecuperacionPassword(req, "192.168.1.50");
+        RequestPasswordResetRequest req = new RequestPasswordResetRequest(email);
+        RequestPasswordResetResponse resp = authService.requestPasswordReset(req, "192.168.1.50");
 
-        assertThat(resp.mensaje()).isEqualTo(SolicitarRecuperacionResponse.MENSAJE_DEFAULT);
+        assertThat(resp.message()).isEqualTo(RequestPasswordResetResponse.DEFAULT_MESSAGE);
 
-        verify(codigoVerificacionRepository).invalidarCodigosPrevios(10L, CodigoVerificacion.TIPO_RECUPERACION_PASSWORD);
-        verify(codigoVerificacionRepository).crear(any(CodigoVerificacion.class));
-        verify(emailService).enviarCodigoRecuperacion(eq(email), eq("Carlos"), anyString(), eq(15));
-        verify(auditoriaService).registrarEvento(
+        verify(verificationCodeRepository).invalidatePreviousCodes(10L, VerificationCode.PASSWORD_RECOVERY_TYPE);
+        verify(verificationCodeRepository).create(any(VerificationCode.class));
+        verify(emailService).sendRecoveryCode(eq(email), eq("Carlos"), anyString(), eq(15));
+        verify(auditService).recordEvent(
                 eq(10L),
-                eq(AccionAuditable.SOLICITUD_RECUPERACION_PASSWORD),
+                eq(AuditableAction.SOLICITUD_RECUPERACION_PASSWORD),
                 eq("USUARIO"),
                 eq("usr-pub-1"),
-                eq(ResultadoAuditoria.EXITO),
+                eq(AuditResult.EXITO),
                 eq("192.168.1.50")
         );
     }
 
     @Test
-    void solicitarRecuperacionPassword_falloEnvioEmail_responde200GenericoYAuditaEmailFallido() {
+    void requestPasswordReset_failureSendEmail_responde200GenericAndAuditsEmailFailed() {
         String email = "carlos@hospital.com";
-        Usuario usuario = new Usuario(
+        User usuario = new User(
                 10L, "usr-pub-1", email, "$argon2id$hash", "ACTIVO", 0, null, Instant.now(), false
         );
-        Paciente paciente = new Paciente(
+        Patient paciente = new Patient(
                 5L, 10L, "pac-pub-1", "CC", "12345678", "Carlos", "Perez",
                 LocalDate.of(1990, 1, 1), "3001234567", Instant.now(), null
         );
 
-        when(usuarioRepository.buscarPorEmail(email)).thenReturn(Optional.of(usuario));
-        when(pacienteRepository.buscarPorUsuarioId(10L)).thenReturn(Optional.of(paciente));
-        when(emailService.enviarCodigoRecuperacion(eq(email), eq("Carlos"), anyString(), eq(15)))
-                .thenReturn(ResultadoEnvio.fallido("BREVO_401", "Clave de API inválida"));
+        when(userRepository.findByEmail(email)).thenReturn(Optional.of(usuario));
+        when(patientRepository.findByUserId(10L)).thenReturn(Optional.of(paciente));
+        when(emailService.sendRecoveryCode(eq(email), eq("Carlos"), anyString(), eq(15)))
+                .thenReturn(EmailSendResult.failed("BREVO_401", "Clave de API inválida"));
 
-        SolicitarRecuperacionRequest req = new SolicitarRecuperacionRequest(email);
-        SolicitarRecuperacionResponse resp = authService.solicitarRecuperacionPassword(req, "192.168.1.50");
+        RequestPasswordResetRequest req = new RequestPasswordResetRequest(email);
+        RequestPasswordResetResponse resp = authService.requestPasswordReset(req, "192.168.1.50");
 
-        assertThat(resp.mensaje()).isEqualTo(SolicitarRecuperacionResponse.MENSAJE_DEFAULT);
+        assertThat(resp.message()).isEqualTo(RequestPasswordResetResponse.DEFAULT_MESSAGE);
 
-        verify(auditoriaService).registrarEvento(
+        verify(auditService).recordEvent(
                 eq(10L),
-                eq(AccionAuditable.EMAIL_FALLIDO),
+                eq(AuditableAction.EMAIL_FALLIDO),
                 eq("USUARIO"),
                 eq("usr-pub-1"),
-                eq(ResultadoAuditoria.FALLO),
+                eq(AuditResult.FALLO),
                 eq("192.168.1.50")
         );
 
-        verify(auditoriaService).registrarEvento(
+        verify(auditService).recordEvent(
                 eq(10L),
-                eq(AccionAuditable.SOLICITUD_RECUPERACION_PASSWORD),
+                eq(AuditableAction.SOLICITUD_RECUPERACION_PASSWORD),
                 eq("USUARIO"),
                 eq("usr-pub-1"),
-                eq(ResultadoAuditoria.EXITO),
+                eq(AuditResult.EXITO),
                 eq("192.168.1.50")
         );
     }
 
     @Test
-    void solicitarRecuperacionPassword_usuarioNoExiste_retornaMensajeGenericoSinEnviarEmail() {
+    void requestPasswordReset_userNotExists_returnsMessageGenericWithoutSendEmail() {
         String email = "fantasma@hospital.com";
-        when(usuarioRepository.buscarPorEmail(email)).thenReturn(Optional.empty());
+        when(userRepository.findByEmail(email)).thenReturn(Optional.empty());
 
-        SolicitarRecuperacionRequest req = new SolicitarRecuperacionRequest(email);
-        SolicitarRecuperacionResponse resp = authService.solicitarRecuperacionPassword(req, "192.168.1.50");
+        RequestPasswordResetRequest req = new RequestPasswordResetRequest(email);
+        RequestPasswordResetResponse resp = authService.requestPasswordReset(req, "192.168.1.50");
 
-        assertThat(resp.mensaje()).isEqualTo(SolicitarRecuperacionResponse.MENSAJE_DEFAULT);
+        assertThat(resp.message()).isEqualTo(RequestPasswordResetResponse.DEFAULT_MESSAGE);
 
-        verify(codigoVerificacionRepository, never()).crear(any());
-        verify(emailService, never()).enviarCodigoRecuperacion(anyString(), anyString(), anyString(), anyInt());
-        verify(auditoriaService).registrarEvento(
-                eq(AccionAuditable.SOLICITUD_RECUPERACION_PASSWORD),
+        verify(verificationCodeRepository, never()).create(any());
+        verify(emailService, never()).sendRecoveryCode(anyString(), anyString(), anyString(), anyInt());
+        verify(auditService).recordEvent(
+                eq(AuditableAction.SOLICITUD_RECUPERACION_PASSWORD),
                 eq("USUARIO"),
                 isNull(),
-                eq(ResultadoAuditoria.EXITO),
+                eq(AuditResult.EXITO),
                 eq("192.168.1.50")
         );
     }
 
     @Test
-    void restablecerPassword_exito_actualizaHashRevocaSesionesYAuditaExito() {
+    void resetPassword_success_updatesHashRevocaSesionesAndAuditsExito() {
         String email = "carlos@hospital.com";
         String rawCode = "654321";
         String codeHash = TokenHashUtil.hash(rawCode);
-        Usuario usuario = new Usuario(
+        User usuario = new User(
                 10L, "usr-pub-1", email, "$argon2id$oldhash", "ACTIVO", 0, null, Instant.now(), false
         );
-        CodigoVerificacion codigo = new CodigoVerificacion(
-                1L, "cod-pub-1", 10L, CodigoVerificacion.TIPO_RECUPERACION_PASSWORD,
+        VerificationCode codigo = new VerificationCode(
+                1L, "cod-pub-1", 10L, VerificationCode.PASSWORD_RECOVERY_TYPE,
                 codeHash, Instant.now().plus(10, ChronoUnit.MINUTES), 0, 3, false, Instant.now()
         );
 
-        when(usuarioRepository.buscarPorEmail(email)).thenReturn(Optional.of(usuario));
-        when(codigoVerificacionRepository.buscarUltimoPendientePorUsuarioYTipo(10L, CodigoVerificacion.TIPO_RECUPERACION_PASSWORD))
+        when(userRepository.findByEmail(email)).thenReturn(Optional.of(usuario));
+        when(verificationCodeRepository.findLatestPendingByUserAndType(10L, VerificationCode.PASSWORD_RECOVERY_TYPE))
                 .thenReturn(Optional.of(codigo));
         when(passwordEncoder.matches("NuevoPasswordSeguro123*", "$argon2id$oldhash")).thenReturn(false);
         when(passwordEncoder.encode("NuevoPasswordSeguro123*")).thenReturn("$argon2id$newhash");
 
-        RestablecerPasswordRequest req = new RestablecerPasswordRequest(email, rawCode, "NuevoPasswordSeguro123*");
-        RestablecerPasswordResponse resp = authService.restablecerPassword(req, "192.168.1.50");
+        ResetPasswordRequest req = new ResetPasswordRequest(email, rawCode, "NuevoPasswordSeguro123*");
+        ResetPasswordResponse resp = authService.resetPassword(req, "192.168.1.50");
 
-        assertThat(resp.mensaje()).isEqualTo(RestablecerPasswordResponse.MENSAJE_DEFAULT);
+        assertThat(resp.message()).isEqualTo(ResetPasswordResponse.DEFAULT_MESSAGE);
 
-        verify(usuarioRepository).actualizarPassword(10L, "$argon2id$newhash", false);
-        verify(usuarioRepository).restablecerIntentos(10L);
-        verify(codigoVerificacionRepository).marcarComoUsado(1L);
-        verify(refreshTokenRepository).revocarTodosPorUsuario(10L);
-        verify(auditoriaService).registrarEvento(
+        verify(userRepository).updatePassword(10L, "$argon2id$newhash", false);
+        verify(userRepository).resetAttempts(10L);
+        verify(verificationCodeRepository).markAsUsed(1L);
+        verify(refreshTokenRepository).revokeAllByUser(10L);
+        verify(auditService).recordEvent(
                 eq(10L),
-                eq(AccionAuditable.RECUPERACION_PASSWORD_EXITO),
+                eq(AuditableAction.RECUPERACION_PASSWORD_EXITO),
                 eq("USUARIO"),
                 eq("usr-pub-1"),
-                eq(ResultadoAuditoria.EXITO),
+                eq(AuditResult.EXITO),
                 eq("192.168.1.50")
         );
     }
 
     @Test
-    void restablecerPassword_codigoIncorrecto_incrementaIntentosYAuditaFallo() {
+    void resetPassword_codeIncorrect_incrementsAttemptsAndAuditsFailure() {
         String email = "carlos@hospital.com";
         String rawCodeCorrecto = "654321";
         String rawCodeEnviado = "111111";
         String codeHash = TokenHashUtil.hash(rawCodeCorrecto);
-        Usuario usuario = new Usuario(
+        User usuario = new User(
                 10L, "usr-pub-1", email, "$argon2id$oldhash", "ACTIVO", 0, null, Instant.now(), false
         );
-        CodigoVerificacion codigo = new CodigoVerificacion(
-                1L, "cod-pub-1", 10L, CodigoVerificacion.TIPO_RECUPERACION_PASSWORD,
+        VerificationCode codigo = new VerificationCode(
+                1L, "cod-pub-1", 10L, VerificationCode.PASSWORD_RECOVERY_TYPE,
                 codeHash, Instant.now().plus(10, ChronoUnit.MINUTES), 0, 3, false, Instant.now()
         );
 
-        when(usuarioRepository.buscarPorEmail(email)).thenReturn(Optional.of(usuario));
-        when(codigoVerificacionRepository.buscarUltimoPendientePorUsuarioYTipo(10L, CodigoVerificacion.TIPO_RECUPERACION_PASSWORD))
+        when(userRepository.findByEmail(email)).thenReturn(Optional.of(usuario));
+        when(verificationCodeRepository.findLatestPendingByUserAndType(10L, VerificationCode.PASSWORD_RECOVERY_TYPE))
                 .thenReturn(Optional.of(codigo));
 
-        RestablecerPasswordRequest req = new RestablecerPasswordRequest(email, rawCodeEnviado, "NuevoPasswordSeguro123*");
+        ResetPasswordRequest req = new ResetPasswordRequest(email, rawCodeEnviado, "NuevoPasswordSeguro123*");
 
-        assertThatThrownBy(() -> authService.restablecerPassword(req, "192.168.1.50"))
-                .isInstanceOf(CredencialesInvalidasException.class)
+        assertThatThrownBy(() -> authService.resetPassword(req, "192.168.1.50"))
+                .isInstanceOf(InvalidCredentialsException.class)
                 .hasMessageContaining("Codigo de verificacion incorrecto");
 
-        verify(codigoVerificacionRepository).incrementarIntentos(1L);
-        verify(usuarioRepository, never()).actualizarPassword(anyLong(), anyString(), anyBoolean());
-        verify(auditoriaService).registrarEvento(
+        verify(verificationCodeRepository).incrementAttempts(1L);
+        verify(userRepository, never()).updatePassword(anyLong(), anyString(), anyBoolean());
+        verify(auditService).recordEvent(
                 eq(10L),
-                eq(AccionAuditable.RECUPERACION_PASSWORD_FALLO),
+                eq(AuditableAction.RECUPERACION_PASSWORD_FALLO),
                 eq("USUARIO"),
                 eq("usr-pub-1"),
-                eq(ResultadoAuditoria.FALLO),
+                eq(AuditResult.FALLO),
                 eq("192.168.1.50")
         );
     }
 
     @Test
-    void restablecerPassword_codigoExpirado_marcaComoUsadoYAuditaFallo() {
+    void resetPassword_codeExpired_marksAsUsedAndAuditsFailure() {
         String email = "carlos@hospital.com";
-        Usuario usuario = new Usuario(
+        User usuario = new User(
                 10L, "usr-pub-1", email, "$argon2id$oldhash", "ACTIVO", 0, null, Instant.now(), false
         );
-        CodigoVerificacion codigo = new CodigoVerificacion(
-                1L, "cod-pub-1", 10L, CodigoVerificacion.TIPO_RECUPERACION_PASSWORD,
+        VerificationCode codigo = new VerificationCode(
+                1L, "cod-pub-1", 10L, VerificationCode.PASSWORD_RECOVERY_TYPE,
                 "somehash", Instant.now().minus(5, ChronoUnit.MINUTES), 0, 3, false, Instant.now().minus(20, ChronoUnit.MINUTES)
         );
 
-        when(usuarioRepository.buscarPorEmail(email)).thenReturn(Optional.of(usuario));
-        when(codigoVerificacionRepository.buscarUltimoPendientePorUsuarioYTipo(10L, CodigoVerificacion.TIPO_RECUPERACION_PASSWORD))
+        when(userRepository.findByEmail(email)).thenReturn(Optional.of(usuario));
+        when(verificationCodeRepository.findLatestPendingByUserAndType(10L, VerificationCode.PASSWORD_RECOVERY_TYPE))
                 .thenReturn(Optional.of(codigo));
 
-        RestablecerPasswordRequest req = new RestablecerPasswordRequest(email, "123456", "NuevoPasswordSeguro123*");
+        ResetPasswordRequest req = new ResetPasswordRequest(email, "123456", "NuevoPasswordSeguro123*");
 
-        assertThatThrownBy(() -> authService.restablecerPassword(req, "192.168.1.50"))
-                .isInstanceOf(CredencialesInvalidasException.class)
+        assertThatThrownBy(() -> authService.resetPassword(req, "192.168.1.50"))
+                .isInstanceOf(InvalidCredentialsException.class)
                 .hasMessageContaining("expirado");
 
-        verify(codigoVerificacionRepository).marcarComoUsado(1L);
-        verify(usuarioRepository, never()).actualizarPassword(anyLong(), anyString(), anyBoolean());
+        verify(verificationCodeRepository).markAsUsed(1L);
+        verify(userRepository, never()).updatePassword(anyLong(), anyString(), anyBoolean());
     }
 
     @Test
-    void restablecerPassword_codigoSuperoMaxIntentos_marcaComoUsadoYAuditaBloqueado() {
+    void resetPassword_codeExceededMaxAttempts_marksAsUsedAndAuditsBlocked() {
         String email = "carlos@hospital.com";
-        Usuario usuario = new Usuario(
+        User usuario = new User(
                 10L, "usr-pub-1", email, "$argon2id$oldhash", "ACTIVO", 0, null, Instant.now(), false
         );
-        CodigoVerificacion codigo = new CodigoVerificacion(
-                1L, "cod-pub-1", 10L, CodigoVerificacion.TIPO_RECUPERACION_PASSWORD,
+        VerificationCode codigo = new VerificationCode(
+                1L, "cod-pub-1", 10L, VerificationCode.PASSWORD_RECOVERY_TYPE,
                 "somehash", Instant.now().plus(10, ChronoUnit.MINUTES), 3, 3, false, Instant.now()
         );
 
-        when(usuarioRepository.buscarPorEmail(email)).thenReturn(Optional.of(usuario));
-        when(codigoVerificacionRepository.buscarUltimoPendientePorUsuarioYTipo(10L, CodigoVerificacion.TIPO_RECUPERACION_PASSWORD))
+        when(userRepository.findByEmail(email)).thenReturn(Optional.of(usuario));
+        when(verificationCodeRepository.findLatestPendingByUserAndType(10L, VerificationCode.PASSWORD_RECOVERY_TYPE))
                 .thenReturn(Optional.of(codigo));
 
-        RestablecerPasswordRequest req = new RestablecerPasswordRequest(email, "123456", "NuevoPasswordSeguro123*");
+        ResetPasswordRequest req = new ResetPasswordRequest(email, "123456", "NuevoPasswordSeguro123*");
 
-        assertThatThrownBy(() -> authService.restablecerPassword(req, "192.168.1.50"))
-                .isInstanceOf(CredencialesInvalidasException.class)
+        assertThatThrownBy(() -> authService.resetPassword(req, "192.168.1.50"))
+                .isInstanceOf(InvalidCredentialsException.class)
                 .hasMessageContaining("superado el numero maximo de intentos");
 
-        verify(codigoVerificacionRepository).marcarComoUsado(1L);
+        verify(verificationCodeRepository).markAsUsed(1L);
     }
 
     @Test
-    void restablecerPassword_passwordNuevoIgualAlActual_lanzaDatosInvalidosException() {
+    void resetPassword_passwordNewEqualToCurrent_throwsInvalidDataException() {
         String email = "carlos@hospital.com";
         String rawCode = "654321";
         String codeHash = TokenHashUtil.hash(rawCode);
-        Usuario usuario = new Usuario(
+        User usuario = new User(
                 10L, "usr-pub-1", email, "$argon2id$oldhash", "ACTIVO", 0, null, Instant.now(), false
         );
-        CodigoVerificacion codigo = new CodigoVerificacion(
-                1L, "cod-pub-1", 10L, CodigoVerificacion.TIPO_RECUPERACION_PASSWORD,
+        VerificationCode codigo = new VerificationCode(
+                1L, "cod-pub-1", 10L, VerificationCode.PASSWORD_RECOVERY_TYPE,
                 codeHash, Instant.now().plus(10, ChronoUnit.MINUTES), 0, 3, false, Instant.now()
         );
 
-        when(usuarioRepository.buscarPorEmail(email)).thenReturn(Optional.of(usuario));
-        when(codigoVerificacionRepository.buscarUltimoPendientePorUsuarioYTipo(10L, CodigoVerificacion.TIPO_RECUPERACION_PASSWORD))
+        when(userRepository.findByEmail(email)).thenReturn(Optional.of(usuario));
+        when(verificationCodeRepository.findLatestPendingByUserAndType(10L, VerificationCode.PASSWORD_RECOVERY_TYPE))
                 .thenReturn(Optional.of(codigo));
         when(passwordEncoder.matches("MismaPassword123*", "$argon2id$oldhash")).thenReturn(true);
 
-        RestablecerPasswordRequest req = new RestablecerPasswordRequest(email, rawCode, "MismaPassword123*");
+        ResetPasswordRequest req = new ResetPasswordRequest(email, rawCode, "MismaPassword123*");
 
-        assertThatThrownBy(() -> authService.restablecerPassword(req, "192.168.1.50"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> authService.resetPassword(req, "192.168.1.50"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("no puede ser igual a la anterior");
 
-        verify(usuarioRepository, never()).actualizarPassword(anyLong(), anyString(), anyBoolean());
+        verify(userRepository, never()).updatePassword(anyLong(), anyString(), anyBoolean());
     }
 
     // -------------------------------------------------------------------------
@@ -989,9 +989,9 @@ class AuthServiceTest {
     // -------------------------------------------------------------------------
 
     @Test
-    void login_conMfaHabilitado_retornaDesafioSinTokensDefinitivos() {
+    void login_withMfaEnabled_returnsChallengeWithoutTokensFinal() {
         LoginRequest req = new LoginRequest("dr.garcia@hospital.com", "PasswordSeguro123*");
-        Usuario usuario = new Usuario(
+        User usuario = new User(
                 20L,
                 "usr-medico-1",
                 "dr.garcia@hospital.com",
@@ -1006,10 +1006,10 @@ class AuthServiceTest {
                 Instant.now()
         );
 
-        when(usuarioRepository.buscarPorEmail("dr.garcia@hospital.com")).thenReturn(Optional.of(usuario));
+        when(userRepository.findByEmail("dr.garcia@hospital.com")).thenReturn(Optional.of(usuario));
         when(passwordEncoder.matches("PasswordSeguro123*", "$argon2id$hashed")).thenReturn(true);
-        when(usuarioRepository.obtenerRoles(20L)).thenReturn(List.of("ROLE_PROFESIONAL"));
-        when(jwtService.generarMfaChallengeToken("usr-medico-1", "dr.garcia@hospital.com", List.of("ROLE_PROFESIONAL")))
+        when(userRepository.getRoles(20L)).thenReturn(List.of("ROLE_PROFESIONAL"));
+        when(jwtService.generateMfaChallengeToken("usr-medico-1", "dr.garcia@hospital.com", List.of("ROLE_PROFESIONAL")))
                 .thenReturn("mock.challenge.jwt");
 
         AuthTokens resultado = authService.login(req, "192.168.1.100");
@@ -1017,21 +1017,21 @@ class AuthServiceTest {
         assertThat(resultado).isNotNull();
         assertThat(resultado.accessToken()).isNull();
         assertThat(resultado.rawRefreshToken()).isNull();
-        assertThat(resultado.sessionResponse().mfaRequerido()).isTrue();
+        assertThat(resultado.sessionResponse().mfaRequired()).isTrue();
         assertThat(resultado.sessionResponse().mfaChallengeToken()).isEqualTo("mock.challenge.jwt");
 
-        verify(refreshTokenRepository, never()).crear(anyLong(), anyString(), any(Instant.class));
+        verify(refreshTokenRepository, never()).create(anyLong(), anyString(), any(Instant.class));
     }
 
     @Test
     void setupMfa_exito_guardaSecretYRetornaQrUri() {
-        Usuario usuario = new Usuario(
+        User usuario = new User(
                 25L, "usr-medico-2", "medico@hospital.com", "$hash", "ACTIVO", 0, null, Instant.now(), false
         );
 
-        when(usuarioRepository.buscarPorPublicId("usr-medico-2")).thenReturn(Optional.of(usuario));
-        when(totpService.generarNuevoSecreto()).thenReturn("JBSWY3DPEHPK3PXP");
-        when(totpService.generarOtpAuthUri("MediTriaje", "medico@hospital.com", "JBSWY3DPEHPK3PXP"))
+        when(userRepository.findByPublicId("usr-medico-2")).thenReturn(Optional.of(usuario));
+        when(totpService.generateNewSecret()).thenReturn("JBSWY3DPEHPK3PXP");
+        when(totpService.generateOtpAuthUri("MediTriaje", "medico@hospital.com", "JBSWY3DPEHPK3PXP"))
                 .thenReturn("otpauth://totp/MediTriaje:medico@hospital.com?secret=JBSWY3DPEHPK3PXP&issuer=MediTriaje");
 
         MfaSetupResponse response = authService.setupMfa("usr-medico-2", "192.168.1.100");
@@ -1040,186 +1040,186 @@ class AuthServiceTest {
         assertThat(response.secret()).isEqualTo("JBSWY3DPEHPK3PXP");
         assertThat(response.qrUri()).startsWith("otpauth://totp/");
 
-        verify(usuarioRepository).guardarMfaSecret(25L, "JBSWY3DPEHPK3PXP");
-        verify(auditoriaService).registrarEvento(
+        verify(userRepository).saveMfaSecret(25L, "JBSWY3DPEHPK3PXP");
+        verify(auditService).recordEvent(
                 eq(25L),
-                eq(AccionAuditable.MFA_SETUP),
+                eq(AuditableAction.MFA_SETUP),
                 eq("USUARIO"),
                 eq("usr-medico-2"),
-                eq(ResultadoAuditoria.EXITO),
+                eq(AuditResult.EXITO),
                 eq("192.168.1.100")
         );
     }
 
     @Test
-    void setupMfa_usuarioInactivo_lanzaAccesoNoAutorizado() {
-        Usuario usuario = new Usuario(
+    void setupMfa_userInactive_throwsUnauthorizedAccess() {
+        User usuario = new User(
                 25L, "usr-inactivo", "inactivo@hospital.com", "$hash", "INACTIVO", 0, null, Instant.now(), false
         );
 
-        when(usuarioRepository.buscarPorPublicId("usr-inactivo")).thenReturn(Optional.of(usuario));
+        when(userRepository.findByPublicId("usr-inactivo")).thenReturn(Optional.of(usuario));
 
         assertThatThrownBy(() -> authService.setupMfa("usr-inactivo", "192.168.1.100"))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessageContaining("no se encuentra activa");
     }
 
     @Test
-    void verifyMfa_codigoValido_activaMfaYGeneraCodigosRespaldo() {
-        Usuario usuario = new Usuario(
+    void verifyMfa_codeValid_activeMfaAndGeneratesCodesBackup() {
+        User usuario = new User(
                 25L, "usr-medico-2", "medico@hospital.com", "$hash", "ACTIVO", 0, null, Instant.now(),
                 false, false, "JBSWY3DPEHPK3PXP", null
         );
 
-        when(usuarioRepository.buscarPorPublicId("usr-medico-2")).thenReturn(Optional.of(usuario));
-        when(totpService.validarCodigo(eq("JBSWY3DPEHPK3PXP"), eq("123456"), any(Instant.class))).thenReturn(true);
+        when(userRepository.findByPublicId("usr-medico-2")).thenReturn(Optional.of(usuario));
+        when(totpService.validateCode(eq("JBSWY3DPEHPK3PXP"), eq("123456"), any(Instant.class))).thenReturn(true);
 
         MfaVerifyRequest request = new MfaVerifyRequest("123456");
         MfaVerifyResponse response = authService.verifyMfa("usr-medico-2", request, "192.168.1.100");
 
         assertThat(response).isNotNull();
-        assertThat(response.mfaHabilitado()).isTrue();
+        assertThat(response.mfaEnabled()).isTrue();
         assertThat(response.backupCodes()).hasSize(8);
 
-        verify(usuarioRepository).activarMfa(25L, "JBSWY3DPEHPK3PXP");
-        verify(mfaBackupCodeRepository).eliminarPorUsuario(25L);
-        verify(mfaBackupCodeRepository).guardarLote(eq(25L), any());
-        verify(auditoriaService).registrarEvento(
+        verify(userRepository).enableMfa(25L, "JBSWY3DPEHPK3PXP");
+        verify(mfaBackupCodeRepository).deleteByUser(25L);
+        verify(mfaBackupCodeRepository).saveBatch(eq(25L), any());
+        verify(auditService).recordEvent(
                 eq(25L),
-                eq(AccionAuditable.MFA_VERIFY),
+                eq(AuditableAction.MFA_VERIFY),
                 eq("USUARIO"),
                 eq("usr-medico-2"),
-                eq(ResultadoAuditoria.EXITO),
+                eq(AuditResult.EXITO),
                 eq("192.168.1.100")
         );
     }
 
     @Test
-    void verifyMfa_codigoInvalido_lanzaCredencialesInvalidasException() {
-        Usuario usuario = new Usuario(
+    void verifyMfa_codeInvalid_throwsInvalidCredentialsException() {
+        User usuario = new User(
                 25L, "usr-medico-2", "medico@hospital.com", "$hash", "ACTIVO", 0, null, Instant.now(),
                 false, false, "JBSWY3DPEHPK3PXP", null
         );
 
-        when(usuarioRepository.buscarPorPublicId("usr-medico-2")).thenReturn(Optional.of(usuario));
-        when(totpService.validarCodigo(eq("JBSWY3DPEHPK3PXP"), eq("000000"), any(Instant.class))).thenReturn(false);
+        when(userRepository.findByPublicId("usr-medico-2")).thenReturn(Optional.of(usuario));
+        when(totpService.validateCode(eq("JBSWY3DPEHPK3PXP"), eq("000000"), any(Instant.class))).thenReturn(false);
 
         MfaVerifyRequest request = new MfaVerifyRequest("000000");
 
         assertThatThrownBy(() -> authService.verifyMfa("usr-medico-2", request, "192.168.1.100"))
-                .isInstanceOf(CredencialesInvalidasException.class)
+                .isInstanceOf(InvalidCredentialsException.class)
                 .hasMessageContaining("incorrecto o expirado");
 
-        verify(usuarioRepository, never()).activarMfa(anyLong(), anyString());
-        verify(auditoriaService).registrarEvento(
+        verify(userRepository, never()).enableMfa(anyLong(), anyString());
+        verify(auditService).recordEvent(
                 eq(25L),
-                eq(AccionAuditable.MFA_VERIFY),
+                eq(AuditableAction.MFA_VERIFY),
                 eq("USUARIO"),
                 eq("usr-medico-2"),
-                eq(ResultadoAuditoria.FALLO),
+                eq(AuditResult.FALLO),
                 eq("192.168.1.100")
         );
     }
 
     @Test
-    void autenticarMfa_desafioInvalido_lanzaTokenInvalidoException() {
+    void authenticateMfa_challengeInvalid_throwsInvalidTokenException() {
         MfaAuthenticateRequest request = new MfaAuthenticateRequest("token-falso", "123456");
-        when(jwtService.esMfaChallengeValido("token-falso")).thenReturn(false);
+        when(jwtService.isValidMfaChallenge("token-falso")).thenReturn(false);
 
-        assertThatThrownBy(() -> authService.autenticarMfa(request, "192.168.1.100"))
-                .isInstanceOf(TokenInvalidoException.class)
+        assertThatThrownBy(() -> authService.authenticateMfa(request, "192.168.1.100"))
+                .isInstanceOf(InvalidTokenException.class)
                 .hasMessageContaining("desafio de autenticacion MFA ha expirado o es invalido");
     }
 
     @Test
-    void autenticarMfa_conTotpValido_emiteTokensYAudita() {
+    void authenticateMfa_withTotpValid_issuesTokensAndAudits() {
         MfaAuthenticateRequest request = new MfaAuthenticateRequest("token-valido", "123456");
-        Usuario usuario = new Usuario(
+        User usuario = new User(
                 30L, "usr-pub-30", "admin@hospital.com", "$hash", "ACTIVO", 0, null, Instant.now(),
                 false, true, "JBSWY3DPEHPK3PXP", Instant.now()
         );
 
-        when(jwtService.esMfaChallengeValido("token-valido")).thenReturn(true);
-        when(jwtService.extraerPublicId("token-valido")).thenReturn("usr-pub-30");
-        when(usuarioRepository.buscarPorPublicId("usr-pub-30")).thenReturn(Optional.of(usuario));
-        when(totpService.validarCodigo(eq("JBSWY3DPEHPK3PXP"), eq("123456"), any(Instant.class))).thenReturn(true);
-        when(usuarioRepository.obtenerRoles(30L)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
-        when(jwtService.generarAccessToken(eq("usr-pub-30"), eq("admin@hospital.com"), eq(List.of("ROLE_ADMINISTRADOR"))))
+        when(jwtService.isValidMfaChallenge("token-valido")).thenReturn(true);
+        when(jwtService.extractPublicId("token-valido")).thenReturn("usr-pub-30");
+        when(userRepository.findByPublicId("usr-pub-30")).thenReturn(Optional.of(usuario));
+        when(totpService.validateCode(eq("JBSWY3DPEHPK3PXP"), eq("123456"), any(Instant.class))).thenReturn(true);
+        when(userRepository.getRoles(30L)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
+        when(jwtService.generateAccessToken(eq("usr-pub-30"), eq("admin@hospital.com"), eq(List.of("ROLE_ADMINISTRADOR"))))
                 .thenReturn("mock.access.jwt");
 
-        AuthTokens tokens = authService.autenticarMfa(request, "192.168.1.100");
+        AuthTokens tokens = authService.authenticateMfa(request, "192.168.1.100");
 
         assertThat(tokens).isNotNull();
         assertThat(tokens.accessToken()).isEqualTo("mock.access.jwt");
         assertThat(tokens.rawRefreshToken()).isNotBlank();
         assertThat(tokens.sessionResponse().email()).isEqualTo("admin@hospital.com");
 
-        verify(refreshTokenRepository).crear(eq(30L), anyString(), any(Instant.class));
-        verify(auditoriaService).registrarEvento(
+        verify(refreshTokenRepository).create(eq(30L), anyString(), any(Instant.class));
+        verify(auditService).recordEvent(
                 eq(30L),
-                eq(AccionAuditable.MFA_LOGIN_EXITOSO),
+                eq(AuditableAction.MFA_LOGIN_EXITOSO),
                 eq("USUARIO"),
                 eq("usr-pub-30"),
-                eq(ResultadoAuditoria.EXITO),
+                eq(AuditResult.EXITO),
                 eq("192.168.1.100")
         );
-        verify(auditoriaService).registrarEvento(
+        verify(auditService).recordEvent(
                 eq(30L),
-                eq(AccionAuditable.LOGIN_EXITOSO),
+                eq(AuditableAction.LOGIN_EXITOSO),
                 eq("USUARIO"),
                 eq("usr-pub-30"),
-                eq(ResultadoAuditoria.EXITO),
+                eq(AuditResult.EXITO),
                 eq("192.168.1.100")
         );
     }
 
     @Test
-    void autenticarMfa_conCodigoRespaldoValido_consumeCodigoYEmiteTokens() {
+    void authenticateMfa_withCodeBackupValid_consumeCodeAndIssuesTokens() {
         MfaAuthenticateRequest request = new MfaAuthenticateRequest("token-valido", "1234-5678");
-        Usuario usuario = new Usuario(
+        User usuario = new User(
                 30L, "usr-pub-30", "admin@hospital.com", "$hash", "ACTIVO", 0, null, Instant.now(),
                 false, true, "JBSWY3DPEHPK3PXP", Instant.now()
         );
 
-        when(jwtService.esMfaChallengeValido("token-valido")).thenReturn(true);
-        when(jwtService.extraerPublicId("token-valido")).thenReturn("usr-pub-30");
-        when(usuarioRepository.buscarPorPublicId("usr-pub-30")).thenReturn(Optional.of(usuario));
-        when(mfaBackupCodeRepository.consumirCodigo(eq(30L), anyString())).thenReturn(true);
-        when(usuarioRepository.obtenerRoles(30L)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
-        when(jwtService.generarAccessToken(eq("usr-pub-30"), eq("admin@hospital.com"), eq(List.of("ROLE_ADMINISTRADOR"))))
+        when(jwtService.isValidMfaChallenge("token-valido")).thenReturn(true);
+        when(jwtService.extractPublicId("token-valido")).thenReturn("usr-pub-30");
+        when(userRepository.findByPublicId("usr-pub-30")).thenReturn(Optional.of(usuario));
+        when(mfaBackupCodeRepository.consumeCode(eq(30L), anyString())).thenReturn(true);
+        when(userRepository.getRoles(30L)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
+        when(jwtService.generateAccessToken(eq("usr-pub-30"), eq("admin@hospital.com"), eq(List.of("ROLE_ADMINISTRADOR"))))
                 .thenReturn("mock.access.jwt");
 
-        AuthTokens tokens = authService.autenticarMfa(request, "192.168.1.100");
+        AuthTokens tokens = authService.authenticateMfa(request, "192.168.1.100");
 
         assertThat(tokens).isNotNull();
         assertThat(tokens.accessToken()).isEqualTo("mock.access.jwt");
-        verify(mfaBackupCodeRepository).consumirCodigo(eq(30L), anyString());
+        verify(mfaBackupCodeRepository).consumeCode(eq(30L), anyString());
     }
 
     @Test
-    void autenticarMfa_conCodigoInvalido_lanzaCredencialesInvalidasException() {
+    void authenticateMfa_withCodeInvalid_throwsInvalidCredentialsException() {
         MfaAuthenticateRequest request = new MfaAuthenticateRequest("token-valido", "999999");
-        Usuario usuario = new Usuario(
+        User usuario = new User(
                 30L, "usr-pub-30", "admin@hospital.com", "$hash", "ACTIVO", 0, null, Instant.now(),
                 false, true, "JBSWY3DPEHPK3PXP", Instant.now()
         );
 
-        when(jwtService.esMfaChallengeValido("token-valido")).thenReturn(true);
-        when(jwtService.extraerPublicId("token-valido")).thenReturn("usr-pub-30");
-        when(usuarioRepository.buscarPorPublicId("usr-pub-30")).thenReturn(Optional.of(usuario));
-        when(totpService.validarCodigo(eq("JBSWY3DPEHPK3PXP"), eq("999999"), any(Instant.class))).thenReturn(false);
-        when(mfaBackupCodeRepository.consumirCodigo(eq(30L), anyString())).thenReturn(false);
+        when(jwtService.isValidMfaChallenge("token-valido")).thenReturn(true);
+        when(jwtService.extractPublicId("token-valido")).thenReturn("usr-pub-30");
+        when(userRepository.findByPublicId("usr-pub-30")).thenReturn(Optional.of(usuario));
+        when(totpService.validateCode(eq("JBSWY3DPEHPK3PXP"), eq("999999"), any(Instant.class))).thenReturn(false);
+        when(mfaBackupCodeRepository.consumeCode(eq(30L), anyString())).thenReturn(false);
 
-        assertThatThrownBy(() -> authService.autenticarMfa(request, "192.168.1.100"))
-                .isInstanceOf(CredencialesInvalidasException.class)
+        assertThatThrownBy(() -> authService.authenticateMfa(request, "192.168.1.100"))
+                .isInstanceOf(InvalidCredentialsException.class)
                 .hasMessageContaining("invalido");
 
-        verify(auditoriaService).registrarEvento(
+        verify(auditService).recordEvent(
                 eq(30L),
-                eq(AccionAuditable.MFA_LOGIN_FALLIDO),
+                eq(AuditableAction.MFA_LOGIN_FALLIDO),
                 eq("USUARIO"),
                 eq("usr-pub-30"),
-                eq(ResultadoAuditoria.FALLO),
+                eq(AuditResult.FALLO),
                 eq("192.168.1.100")
         );
     }

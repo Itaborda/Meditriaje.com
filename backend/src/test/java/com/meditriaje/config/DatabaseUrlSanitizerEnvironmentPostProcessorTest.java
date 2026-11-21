@@ -13,7 +13,7 @@ class DatabaseUrlSanitizerEnvironmentPostProcessorTest {
 
     @Test
     @DisplayName("Debe sanitizar URL con saltos de linea y espacios en DB_URL")
-    void debeSanitizarUrlConSaltosDeLinea() {
+    void shouldSanitizeUrlWithNewlines() {
         MockEnvironment environment = new MockEnvironment();
         String dirtyUrl = "jdbc:oracle:thin:@(description=(address=(protocol=tcps)(port=1522)(host=adb\n  .sa-bogota-1.oraclecloud.com)))";
         environment.setProperty("DB_URL", dirtyUrl);
@@ -28,7 +28,7 @@ class DatabaseUrlSanitizerEnvironmentPostProcessorTest {
 
     @Test
     @DisplayName("No debe alterar una URL que ya esta limpia")
-    void noDebeAlterarUrlLimpia() {
+    void shouldNotAlterCleanUrl() {
         MockEnvironment environment = new MockEnvironment();
         String cleanUrl = "jdbc:oracle:thin:@adb.sa-bogota-1.oraclecloud.com:1522/service";
         environment.setProperty("DB_URL", cleanUrl);
@@ -40,7 +40,7 @@ class DatabaseUrlSanitizerEnvironmentPostProcessorTest {
 
     @Test
     @DisplayName("Debe sanitizar URL con comillas envolventes y saltos de linea")
-    void debeSanitizarUrlConComillasYSaltos() {
+    void shouldSanitizeUrlWithQuotesAndNewlines() {
         MockEnvironment environment = new MockEnvironment();
         String dirtyUrl = "\"jdbc:oracle:thin:@(description=(host=adb\n.sa-bogota-1.oraclecloud.com))\"";
         environment.setProperty("DB_URL", dirtyUrl);

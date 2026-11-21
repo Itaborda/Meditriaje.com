@@ -1,7 +1,7 @@
 package com.meditriaje.repository;
 
-import com.meditriaje.dto.clinical.AccesoBreakGlassResponse;
-import com.meditriaje.model.AccesoBreakGlass;
+import com.meditriaje.dto.clinical.BreakGlassAccessResponse;
+import com.meditriaje.model.BreakGlassAccess;
 import com.meditriaje.repository.plsql.PackageGateway;
 import com.meditriaje.repository.plsql.ProcedureSpec;
 import org.springframework.jdbc.core.RowMapper;
@@ -25,10 +25,10 @@ public class BreakGlassRepository {
 
     static final String PACKAGE = "PKG_AUDIT";
 
-    static final RowMapper<AccesoBreakGlass> ENTITY_MAPPER = (rs, rowNum) -> {
+    static final RowMapper<BreakGlassAccess> ENTITY_MAPPER = (rs, rowNum) -> {
         Timestamp expTs = rs.getTimestamp("FECHA_EXPIRACION");
         Timestamp crTs = rs.getTimestamp("CREATED_AT");
-        return new AccesoBreakGlass(
+        return new BreakGlassAccess(
                 rs.getLong("ID"),
                 rs.getString("PUBLIC_ID"),
                 rs.getLong("PROFESIONAL_ID"),
@@ -40,10 +40,10 @@ public class BreakGlassRepository {
     };
 
     /** La columna ACTIVO la calcula el paquete comparando la expiración con el instante recibido. */
-    static final RowMapper<AccesoBreakGlassResponse> RESPONSE_MAPPER = (rs, rowNum) -> {
+    static final RowMapper<BreakGlassAccessResponse> RESPONSE_MAPPER = (rs, rowNum) -> {
         Timestamp expTs = rs.getTimestamp("FECHA_EXPIRACION");
         Timestamp crTs = rs.getTimestamp("CREATED_AT");
-        return new AccesoBreakGlassResponse(
+        return new BreakGlassAccessResponse(
                 rs.getString("PUBLIC_ID"),
                 rs.getString("PROF_PUB_ID"),
                 rs.getString("PROF_NOMBRE") != null ? rs.getString("PROF_NOMBRE").trim() : "",
@@ -104,14 +104,14 @@ public class BreakGlassRepository {
      * @param acceso Entidad inmutable con los datos del acceso
      * @return Identificador numérico generado en base de datos
      */
-    public Long registrarAcceso(AccesoBreakGlass acceso) {
+    public Long recordAccess(BreakGlassAccess acceso) {
         Objects.requireNonNull(acceso, "acceso no puede ser nulo");
         Map<String, Object> out = gateway.execute(CREATE_BREAK_GLASS_ACCESS, new MapSqlParameterSource()
                 .addValue("p_public_id", acceso.publicId())
-                .addValue("p_professional_id", acceso.profesionalId())
-                .addValue("p_patient_id", acceso.pacienteId())
-                .addValue("p_reason", acceso.motivo())
-                .addValue("p_expires_at", Timestamp.from(acceso.fechaExpiracion()))
+                .addValue("p_professional_id", acceso.professionalId())
+                .addValue("p_patient_id", acceso.patientId())
+                .addValue("p_reason", acceso.reason())
+                .addValue("p_expires_at", Timestamp.from(acceso.expirationDate()))
                 .addValue("p_created_at",
                         Timestamp.from(acceso.createdAt() != null ? acceso.createdAt() : Instant.now())));
         Number key = (Number) out.get("o_access_id");
@@ -124,7 +124,7 @@ public class BreakGlassRepository {
     /**
      * Verifica si existe una autorización Break-Glass activa y no expirada entre el profesional y el paciente.
      */
-    public boolean existeAccesoActivo(Long profesionalId, Long pacienteId, Instant ahora) {
+    public boolean existsActiveAccess(Long profesionalId, Long pacienteId, Instant ahora) {
         if (profesionalId == null || pacienteId == null || ahora == null) {
             return false;
         }
@@ -138,7 +138,7 @@ public class BreakGlassRepository {
     /**
      * Recupera la entidad por su identificador público UUID.
      */
-    public Optional<AccesoBreakGlass> buscarEntidadPorPublicId(String publicId) {
+    public Optional<BreakGlassAccess> findEntityByPublicId(String publicId) {
         if (publicId == null || publicId.isBlank()) {
             return Optional.empty();
         }
@@ -149,7 +149,7 @@ public class BreakGlassRepository {
     /**
      * Recupera el DTO de respuesta con nombres de profesional y paciente.
      */
-    public Optional<AccesoBreakGlassResponse> buscarPorPublicId(String publicId, Instant ahora) {
+    public Optional<BreakGlassAccessResponse> findByPublicId(String publicId, Instant ahora) {
         if (publicId == null || publicId.isBlank()) {
             return Optional.empty();
         }
@@ -161,7 +161,7 @@ public class BreakGlassRepository {
     /**
      * Lista las autorizaciones Break-Glass actualmente activas (no expiradas) para un profesional.
      */
-    public List<AccesoBreakGlassResponse> listarActivosPorProfesional(Long profesionalId, Instant ahora) {
+    public List<BreakGlassAccessResponse> listActiveByProfessional(Long profesionalId, Instant ahora) {
         if (profesionalId == null || ahora == null) {
             return List.of();
         }

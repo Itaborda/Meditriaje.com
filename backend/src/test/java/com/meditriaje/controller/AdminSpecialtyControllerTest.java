@@ -4,13 +4,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.meditriaje.config.CorsConfig;
 import com.meditriaje.config.SecurityConfig;
 import com.meditriaje.controller.admin.AdminSpecialtyController;
-import com.meditriaje.dto.admin.ActualizarEspecialidadRequest;
-import com.meditriaje.dto.admin.CrearEspecialidadRequest;
-import com.meditriaje.dto.admin.EspecialidadResponse;
+import com.meditriaje.dto.admin.UpdateSpecialtyRequest;
+import com.meditriaje.dto.admin.CreateSpecialtyRequest;
+import com.meditriaje.dto.admin.SpecialtyResponse;
 import com.meditriaje.dto.common.PaginatedResponse;
-import com.meditriaje.exception.DatosInvalidosException;
+import com.meditriaje.exception.InvalidDataException;
 import com.meditriaje.exception.GlobalExceptionHandler;
-import com.meditriaje.exception.RecursoNoEncontradoException;
+import com.meditriaje.exception.ResourceNotFoundException;
 import com.meditriaje.security.JwtService;
 import com.meditriaje.service.AdminCatalogService;
 import jakarta.servlet.http.Cookie;
@@ -62,16 +62,16 @@ class AdminSpecialtyControllerTest {
 
     @BeforeEach
     void setUpTokens() {
-        when(jwtService.esValido(TOKEN_ADMIN)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_ADMIN)).thenReturn(ADMIN_UUID);
-        when(jwtService.extraerRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
+        when(jwtService.isValid(TOKEN_ADMIN)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_ADMIN)).thenReturn(ADMIN_UUID);
+        when(jwtService.extractRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
 
-        when(jwtService.esValido(TOKEN_PACIENTE)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_PACIENTE)).thenReturn("paciente-uuid-1");
-        when(jwtService.extraerRoles(TOKEN_PACIENTE)).thenReturn(List.of("ROLE_PACIENTE"));
+        when(jwtService.isValid(TOKEN_PACIENTE)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_PACIENTE)).thenReturn("paciente-uuid-1");
+        when(jwtService.extractRoles(TOKEN_PACIENTE)).thenReturn(List.of("ROLE_PACIENTE"));
 
-        when(jwtService.esValido(TOKEN_PROFESIONAL)).thenReturn(true);
-        when(jwtService.extraerRoles(TOKEN_PROFESIONAL)).thenReturn(List.of("ROLE_PROFESIONAL"));
+        when(jwtService.isValid(TOKEN_PROFESIONAL)).thenReturn(true);
+        when(jwtService.extractRoles(TOKEN_PROFESIONAL)).thenReturn(List.of("ROLE_PROFESIONAL"));
     }
 
     // =========================================================================
@@ -86,7 +86,7 @@ class AdminSpecialtyControllerTest {
     }
 
     @Test
-    void getSpecialties_conRolPaciente_retorna403Forbidden() throws Exception {
+    void getSpecialties_withPatientRole_returns403Forbidden() throws Exception {
         mockMvc.perform(get("/api/v1/admin/specialties")
                         .cookie(new Cookie("access_token", TOKEN_PACIENTE)))
                 .andExpect(status().isForbidden())
@@ -94,8 +94,8 @@ class AdminSpecialtyControllerTest {
     }
 
     @Test
-    void postSpecialties_conRolProfesional_retorna403Forbidden() throws Exception {
-        CrearEspecialidadRequest req = new CrearEspecialidadRequest("Cardiología", 30);
+    void postSpecialties_withProfessionalRole_returns403Forbidden() throws Exception {
+        CreateSpecialtyRequest req = new CreateSpecialtyRequest("Cardiología", 30);
         mockMvc.perform(post("/api/v1/admin/specialties")
                         .cookie(new Cookie("access_token", TOKEN_PROFESIONAL))
                         .header("X-Requested-With", "XMLHttpRequest")
@@ -110,11 +110,11 @@ class AdminSpecialtyControllerTest {
     // =========================================================================
 
     @Test
-    void postSpecialties_conRolAdmin_retorna201Created() throws Exception {
-        CrearEspecialidadRequest req = new CrearEspecialidadRequest("Medicina Interna", 20);
-        EspecialidadResponse resp = new EspecialidadResponse("esp-uuid-1", "Medicina Interna", 20, "ACTIVO");
+    void postSpecialties_withAdminRole_returns201Created() throws Exception {
+        CreateSpecialtyRequest req = new CreateSpecialtyRequest("Medicina Interna", 20);
+        SpecialtyResponse resp = new SpecialtyResponse("esp-uuid-1", "Medicina Interna", 20, "ACTIVO");
 
-        when(catalogService.crearEspecialidad(any(), eq(ADMIN_UUID), anyString())).thenReturn(resp);
+        when(catalogService.createSpecialty(any(), eq(ADMIN_UUID), anyString())).thenReturn(resp);
 
         mockMvc.perform(post("/api/v1/admin/specialties")
                         .cookie(new Cookie("access_token", TOKEN_ADMIN))
@@ -129,9 +129,9 @@ class AdminSpecialtyControllerTest {
     }
 
     @Test
-    void postSpecialties_datosInvalidos_retorna400BadRequest() throws Exception {
+    void postSpecialties_invalidData_returns400BadRequest() throws Exception {
         // Nombre vacío y duración fuera de rango
-        CrearEspecialidadRequest reqInvalido = new CrearEspecialidadRequest("", 2);
+        CreateSpecialtyRequest reqInvalido = new CreateSpecialtyRequest("", 2);
 
         mockMvc.perform(post("/api/v1/admin/specialties")
                         .cookie(new Cookie("access_token", TOKEN_ADMIN))
@@ -143,10 +143,10 @@ class AdminSpecialtyControllerTest {
     }
 
     @Test
-    void postSpecialties_nombreDuplicado_retorna400BadRequest() throws Exception {
-        CrearEspecialidadRequest req = new CrearEspecialidadRequest("Cardiología", 20);
-        when(catalogService.crearEspecialidad(any(), eq(ADMIN_UUID), anyString()))
-                .thenThrow(new DatosInvalidosException("Ya existe una especialidad con el nombre: Cardiología"));
+    void postSpecialties_duplicateName_returns400BadRequest() throws Exception {
+        CreateSpecialtyRequest req = new CreateSpecialtyRequest("Cardiología", 20);
+        when(catalogService.createSpecialty(any(), eq(ADMIN_UUID), anyString()))
+                .thenThrow(new InvalidDataException("Ya existe una especialidad con el nombre: Cardiología"));
 
         mockMvc.perform(post("/api/v1/admin/specialties")
                         .cookie(new Cookie("access_token", TOKEN_ADMIN))
@@ -159,11 +159,11 @@ class AdminSpecialtyControllerTest {
     }
 
     @Test
-    void getSpecialties_conRolAdmin_retorna200YPaginado() throws Exception {
-        EspecialidadResponse esp = new EspecialidadResponse("esp-uuid-1", "Pediatría", 30, "ACTIVO");
-        PaginatedResponse<EspecialidadResponse> pag = PaginatedResponse.of(List.of(esp), 0, 10, 1L);
+    void getSpecialties_withAdminRole_returns200AndPaginated() throws Exception {
+        SpecialtyResponse esp = new SpecialtyResponse("esp-uuid-1", "Pediatría", 30, "ACTIVO");
+        PaginatedResponse<SpecialtyResponse> pag = PaginatedResponse.of(List.of(esp), 0, 10, 1L);
 
-        when(catalogService.listarEspecialidades(0, 10, null)).thenReturn(pag);
+        when(catalogService.listSpecialties(0, 10, null)).thenReturn(pag);
 
         mockMvc.perform(get("/api/v1/admin/specialties")
                         .cookie(new Cookie("access_token", TOKEN_ADMIN)))
@@ -176,8 +176,8 @@ class AdminSpecialtyControllerTest {
 
     @Test
     void getSpecialtyByPublicId_inexistente_retorna404NotFound() throws Exception {
-        when(catalogService.obtenerEspecialidad("esp-no-existe"))
-                .thenThrow(new RecursoNoEncontradoException("Especialidad: esp-no-existe"));
+        when(catalogService.getSpecialty("esp-no-existe"))
+                .thenThrow(new ResourceNotFoundException("Especialidad: esp-no-existe"));
 
         mockMvc.perform(get("/api/v1/admin/specialties/esp-no-existe")
                         .cookie(new Cookie("access_token", TOKEN_ADMIN)))
@@ -186,11 +186,11 @@ class AdminSpecialtyControllerTest {
     }
 
     @Test
-    void putSpecialty_conRolAdmin_retorna200OK() throws Exception {
-        ActualizarEspecialidadRequest req = new ActualizarEspecialidadRequest("Pediatría Avanzada", 25);
-        EspecialidadResponse resp = new EspecialidadResponse("esp-uuid-1", "Pediatría Avanzada", 25, "ACTIVO");
+    void putSpecialty_withAdminRole_returns200OK() throws Exception {
+        UpdateSpecialtyRequest req = new UpdateSpecialtyRequest("Pediatría Avanzada", 25);
+        SpecialtyResponse resp = new SpecialtyResponse("esp-uuid-1", "Pediatría Avanzada", 25, "ACTIVO");
 
-        when(catalogService.actualizarEspecialidad(eq("esp-uuid-1"), any(), eq(ADMIN_UUID), anyString()))
+        when(catalogService.updateSpecialty(eq("esp-uuid-1"), any(), eq(ADMIN_UUID), anyString()))
                 .thenReturn(resp);
 
         mockMvc.perform(put("/api/v1/admin/specialties/esp-uuid-1")
@@ -204,9 +204,9 @@ class AdminSpecialtyControllerTest {
     }
 
     @Test
-    void patchDeactivateSpecialty_conRolAdmin_retorna200OK() throws Exception {
-        EspecialidadResponse resp = new EspecialidadResponse("esp-uuid-1", "Pediatría", 30, "INACTIVO");
-        when(catalogService.desactivarEspecialidad(eq("esp-uuid-1"), eq(ADMIN_UUID), anyString()))
+    void patchDeactivateSpecialty_withAdminRole_returns200OK() throws Exception {
+        SpecialtyResponse resp = new SpecialtyResponse("esp-uuid-1", "Pediatría", 30, "INACTIVO");
+        when(catalogService.deactivateSpecialty(eq("esp-uuid-1"), eq(ADMIN_UUID), anyString()))
                 .thenReturn(resp);
 
         mockMvc.perform(patch("/api/v1/admin/specialties/esp-uuid-1/deactivate")
@@ -217,9 +217,9 @@ class AdminSpecialtyControllerTest {
     }
 
     @Test
-    void patchActivateSpecialty_conRolAdmin_retorna200OK() throws Exception {
-        EspecialidadResponse resp = new EspecialidadResponse("esp-uuid-1", "Pediatría", 30, "ACTIVO");
-        when(catalogService.activarEspecialidad(eq("esp-uuid-1"), eq(ADMIN_UUID), anyString()))
+    void patchActivateSpecialty_withAdminRole_returns200OK() throws Exception {
+        SpecialtyResponse resp = new SpecialtyResponse("esp-uuid-1", "Pediatría", 30, "ACTIVO");
+        when(catalogService.activateSpecialty(eq("esp-uuid-1"), eq(ADMIN_UUID), anyString()))
                 .thenReturn(resp);
 
         mockMvc.perform(patch("/api/v1/admin/specialties/esp-uuid-1/activate")

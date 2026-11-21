@@ -2,9 +2,9 @@ package com.meditriaje.controller;
 
 import com.meditriaje.config.CorsConfig;
 import com.meditriaje.config.SecurityConfig;
-import com.meditriaje.dto.clinical.AtencionResponse;
+import com.meditriaje.dto.clinical.ClinicalAttentionResponse;
 import com.meditriaje.dto.common.PaginatedResponse;
-import com.meditriaje.exception.AccesoNoAutorizadoException;
+import com.meditriaje.exception.UnauthorizedAccessException;
 import com.meditriaje.exception.GlobalExceptionHandler;
 import com.meditriaje.security.JwtService;
 import com.meditriaje.service.ClinicalAttentionService;
@@ -49,18 +49,18 @@ class ClinicalPatientHistoryControllerTest {
     private final String tokenAdmin = "token.admin.valido";
 
     private void mockAuth(String token, String publicId, String role) {
-        when(jwtService.esValido(token)).thenReturn(true);
-        when(jwtService.extraerPublicId(token)).thenReturn(publicId);
-        when(jwtService.extraerRoles(token)).thenReturn(List.of(role));
+        when(jwtService.isValid(token)).thenReturn(true);
+        when(jwtService.extractPublicId(token)).thenReturn(publicId);
+        when(jwtService.extractRoles(token)).thenReturn(List.of(role));
     }
 
     @Test
     @DisplayName("GET /clinical/patients/{id}/history: 200 OK para ROLE_PROFESIONAL con relación o break-glass")
-    void obtenerHistoriaPaciente_profesional_200Ok() throws Exception {
+    void getHistoryPatient_professional_200Ok() throws Exception {
         mockAuth(tokenProfesional, "u-prof-1", "ROLE_PROFESIONAL");
 
         Instant ahora = Instant.now();
-        AtencionResponse atencion = new AtencionResponse(
+        ClinicalAttentionResponse atencion = new ClinicalAttentionResponse(
                 "atn-1",
                 "cita-1",
                 "pac-1234",
@@ -79,9 +79,9 @@ class ClinicalPatientHistoryControllerTest {
                 null,
                 List.of()
         );
-        PaginatedResponse<AtencionResponse> paginado = PaginatedResponse.of(List.of(atencion), 0, 10, 1);
+        PaginatedResponse<ClinicalAttentionResponse> paginado = PaginatedResponse.of(List.of(atencion), 0, 10, 1);
 
-        when(clinicalAttentionService.obtenerHistoriaClinicaPaciente(
+        when(clinicalAttentionService.getPatientClinicalHistory(
                 eq("pac-1234"),
                 eq("u-prof-1"),
                 any(),
@@ -99,17 +99,17 @@ class ClinicalPatientHistoryControllerTest {
 
     @Test
     @DisplayName("GET /clinical/patients/{id}/history: 403 Forbidden cuando el profesional no tiene relación ni break-glass")
-    void obtenerHistoriaPaciente_sinRelacionNiBreakGlass_403Forbidden() throws Exception {
+    void getHistoryPatient_withoutRelationshipOrBreakGlass_403Forbidden() throws Exception {
         mockAuth(tokenProfesional, "u-prof-1", "ROLE_PROFESIONAL");
 
-        when(clinicalAttentionService.obtenerHistoriaClinicaPaciente(
+        when(clinicalAttentionService.getPatientClinicalHistory(
                 eq("pac-1234"),
                 eq("u-prof-1"),
                 any(),
                 anyInt(),
                 anyInt(),
                 anyString()
-        )).thenThrow(new AccesoNoAutorizadoException("No existe una relacion asistencial activa con el paciente."));
+        )).thenThrow(new UnauthorizedAccessException("No existe una relacion asistencial activa con el paciente."));
 
         mockMvc.perform(get("/api/v1/clinical/patients/pac-1234/history")
                         .cookie(new Cookie("access_token", tokenProfesional)))
@@ -119,7 +119,7 @@ class ClinicalPatientHistoryControllerTest {
 
     @Test
     @DisplayName("GET /clinical/patients/{id}/history: 403 Forbidden para ROLE_PACIENTE")
-    void obtenerHistoriaPaciente_paciente_403Forbidden() throws Exception {
+    void getHistoryPatient_patient_403Forbidden() throws Exception {
         mockAuth(tokenPaciente, "u-pac-1", "ROLE_PACIENTE");
 
         mockMvc.perform(get("/api/v1/clinical/patients/pac-1234/history")
@@ -129,7 +129,7 @@ class ClinicalPatientHistoryControllerTest {
 
     @Test
     @DisplayName("GET /clinical/patients/{id}/history: 403 Forbidden para ROLE_ADMINISTRADOR")
-    void obtenerHistoriaPaciente_admin_403Forbidden() throws Exception {
+    void getHistoryPatient_admin_403Forbidden() throws Exception {
         mockAuth(tokenAdmin, "u-admin-1", "ROLE_ADMINISTRADOR");
 
         mockMvc.perform(get("/api/v1/clinical/patients/pac-1234/history")
@@ -139,7 +139,7 @@ class ClinicalPatientHistoryControllerTest {
 
     @Test
     @DisplayName("GET /clinical/patients/{id}/history: 401 Unauthorized sin sesión")
-    void obtenerHistoriaPaciente_sinSesion_401Unauthorized() throws Exception {
+    void getHistoryPatient_withoutSession_401Unauthorized() throws Exception {
         mockMvc.perform(get("/api/v1/clinical/patients/pac-1234/history"))
                 .andExpect(status().isUnauthorized());
     }

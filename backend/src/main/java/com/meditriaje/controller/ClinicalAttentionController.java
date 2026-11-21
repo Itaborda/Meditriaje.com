@@ -1,10 +1,10 @@
 package com.meditriaje.controller;
 
-import com.meditriaje.dto.clinical.AtencionResponse;
-import com.meditriaje.dto.clinical.CerrarAtencionRequest;
-import com.meditriaje.dto.clinical.CrearEnmiendaRequest;
-import com.meditriaje.dto.clinical.EnmiendaResponse;
-import com.meditriaje.dto.clinical.IniciarAtencionRequest;
+import com.meditriaje.dto.clinical.ClinicalAttentionResponse;
+import com.meditriaje.dto.clinical.CloseAttentionRequest;
+import com.meditriaje.dto.clinical.CreateAmendmentRequest;
+import com.meditriaje.dto.clinical.AmendmentResponse;
+import com.meditriaje.dto.clinical.StartAttentionRequest;
 import com.meditriaje.service.ClinicalAttentionService;
 import com.meditriaje.util.IpUtil;
 import jakarta.servlet.http.HttpServletRequest;
@@ -43,15 +43,15 @@ public class ClinicalAttentionController {
      */
     @PostMapping
     @PreAuthorize("hasAuthority('ROLE_PROFESIONAL')")
-    public ResponseEntity<AtencionResponse> iniciarAtencion(
-            @Valid @RequestBody IniciarAtencionRequest request,
+    public ResponseEntity<ClinicalAttentionResponse> startAttention(
+            @Valid @RequestBody StartAttentionRequest request,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String usuarioPublicId = authentication.getName();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
+        String sourceIp = IpUtil.extractIp(httpRequest);
 
-        AtencionResponse response = clinicalAttentionService.iniciarAtencion(request, usuarioPublicId, ipOrigen);
+        ClinicalAttentionResponse response = clinicalAttentionService.startAttention(request, usuarioPublicId, sourceIp);
         URI location = URI.create("/api/v1/attentions/" + response.publicId());
 
         return ResponseEntity.created(location).body(response);
@@ -63,16 +63,16 @@ public class ClinicalAttentionController {
      */
     @PostMapping("/{publicId}/close")
     @PreAuthorize("hasAuthority('ROLE_PROFESIONAL')")
-    public ResponseEntity<AtencionResponse> cerrarAtencion(
-            @PathVariable String publicId,
-            @Valid @RequestBody CerrarAtencionRequest request,
+    public ResponseEntity<ClinicalAttentionResponse> closeAttention(
+            @PathVariable("publicId") String publicId,
+            @Valid @RequestBody CloseAttentionRequest request,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String usuarioPublicId = authentication.getName();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
+        String sourceIp = IpUtil.extractIp(httpRequest);
 
-        AtencionResponse response = clinicalAttentionService.cerrarAtencion(publicId, request, usuarioPublicId, ipOrigen);
+        ClinicalAttentionResponse response = clinicalAttentionService.closeAttention(publicId, request, usuarioPublicId, sourceIp);
         return ResponseEntity.ok(response);
     }
 
@@ -82,16 +82,16 @@ public class ClinicalAttentionController {
      */
     @GetMapping("/{publicId}")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<AtencionResponse> obtenerAtencion(
-            @PathVariable String publicId,
+    public ResponseEntity<ClinicalAttentionResponse> getAttention(
+            @PathVariable("publicId") String publicId,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String usuarioPublicId = authentication.getName();
         Collection<? extends GrantedAuthority> authorities = authentication.getAuthorities();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
+        String sourceIp = IpUtil.extractIp(httpRequest);
 
-        AtencionResponse response = clinicalAttentionService.obtenerPorPublicId(publicId, usuarioPublicId, authorities, ipOrigen);
+        ClinicalAttentionResponse response = clinicalAttentionService.getByPublicId(publicId, usuarioPublicId, authorities, sourceIp);
         return ResponseEntity.ok(response);
     }
 
@@ -101,16 +101,16 @@ public class ClinicalAttentionController {
      */
     @PostMapping("/{publicId}/amendments")
     @PreAuthorize("hasAuthority('ROLE_PROFESIONAL')")
-    public ResponseEntity<EnmiendaResponse> crearEnmienda(
-            @PathVariable String publicId,
-            @Valid @RequestBody CrearEnmiendaRequest request,
+    public ResponseEntity<AmendmentResponse> createAmendment(
+            @PathVariable("publicId") String publicId,
+            @Valid @RequestBody CreateAmendmentRequest request,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String usuarioPublicId = authentication.getName();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
+        String sourceIp = IpUtil.extractIp(httpRequest);
 
-        EnmiendaResponse response = clinicalAttentionService.crearEnmienda(publicId, request, usuarioPublicId, ipOrigen);
+        AmendmentResponse response = clinicalAttentionService.createAmendment(publicId, request, usuarioPublicId, sourceIp);
         URI location = URI.create("/api/v1/attentions/" + publicId);
 
         return ResponseEntity.created(location).body(response);

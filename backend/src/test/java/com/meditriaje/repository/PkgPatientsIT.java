@@ -4,14 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.meditriaje.db.OracleTestDatabase;
-import com.meditriaje.dto.PacientePerfilResponse;
-import com.meditriaje.dto.affiliation.RepresentacionLegalResponse;
-import com.meditriaje.dto.allergy.AlergiaResponse;
-import com.meditriaje.exception.ConflictoOperacionException;
-import com.meditriaje.model.Alergia;
-import com.meditriaje.model.IdentidadProvisional;
-import com.meditriaje.model.Paciente;
-import com.meditriaje.model.RepresentacionLegal;
+import com.meditriaje.dto.PatientProfileResponse;
+import com.meditriaje.dto.affiliation.LegalRepresentationResponse;
+import com.meditriaje.dto.allergy.AllergyResponse;
+import com.meditriaje.exception.OperationConflictException;
+import com.meditriaje.model.Allergy;
+import com.meditriaje.model.ProvisionalIdentity;
+import com.meditriaje.model.Patient;
+import com.meditriaje.model.LegalRepresentation;
 import com.meditriaje.repository.plsql.OracleErrorTranslator;
 import com.meditriaje.repository.plsql.PackageGateway;
 import java.time.Duration;
@@ -37,11 +37,11 @@ class PkgPatientsIT {
 
     private static OracleContainer oracle;
     private static JdbcTemplate owner;
-    private static PacienteRepository pacientes;
-    private static ConsentimientoRepository consentimientos;
-    private static RepresentacionLegalRepository representaciones;
-    private static IdentidadProvisionalRepository identidades;
-    private static AlergiaRepository alergias;
+    private static PatientRepository pacientes;
+    private static ConsentRepository consentimientos;
+    private static LegalRepresentationRepository representaciones;
+    private static ProvisionalIdentityRepository identidades;
+    private static AllergyRepository alergias;
 
     @BeforeAll
     static void migrate() {
@@ -53,11 +53,11 @@ class PkgPatientsIT {
         DataSource appDs = OracleTestDatabase.dataSource(
                 oracle, OracleTestDatabase.APP_USER, OracleTestDatabase.APP_PASSWORD);
         PackageGateway gateway = new PackageGateway(appDs, OWNER, new OracleErrorTranslator());
-        pacientes = new PacienteRepository(gateway);
-        consentimientos = new ConsentimientoRepository(gateway);
-        representaciones = new RepresentacionLegalRepository(gateway);
-        identidades = new IdentidadProvisionalRepository(gateway);
-        alergias = new AlergiaRepository(gateway);
+        pacientes = new PatientRepository(gateway);
+        consentimientos = new ConsentRepository(gateway);
+        representaciones = new LegalRepresentationRepository(gateway);
+        identidades = new ProvisionalIdentityRepository(gateway);
+        alergias = new AllergyRepository(gateway);
     }
 
     @AfterAll
@@ -76,33 +76,33 @@ class PkgPatientsIT {
         return new Object[] {id, publicId};
     }
 
-    private static Paciente newPatient(String document) {
+    private static Patient newPatient(String document) {
         Object[] user = newUser();
         String publicId = UUID.randomUUID().toString();
-        Long id = pacientes.crear((Long) user[0], publicId, "CC", document, "Ana", "Diaz",
+        Long id = pacientes.create((Long) user[0], publicId, "CC", document, "Ana", "Diaz",
                 LocalDate.of(1990, 5, 17), "3000000000");
-        return pacientes.buscarPorId(id).orElseThrow();
+        return pacientes.findById(id).orElseThrow();
     }
 
     @Test
     void patientRoutinesRoundTrip() {
         Object[] user = newUser();
         String publicId = UUID.randomUUID().toString();
-        Long id = pacientes.crear((Long) user[0], publicId, "CC", "900100", "Ana", "Diaz",
+        Long id = pacientes.create((Long) user[0], publicId, "CC", "900100", "Ana", "Diaz",
                 LocalDate.of(1990, 5, 17), null);
 
-        Paciente byId = pacientes.buscarPorId(id).orElseThrow();
+        Patient byId = pacientes.findById(id).orElseThrow();
         assertThat(byId.publicId()).isEqualTo(publicId);
-        assertThat(byId.fechaNacimiento()).isEqualTo(LocalDate.of(1990, 5, 17));
+        assertThat(byId.birthDate()).isEqualTo(LocalDate.of(1990, 5, 17));
         assertThat(byId.createdAt()).isNotNull();
-        assertThat(pacientes.buscarPorUsuarioId((Long) user[0])).contains(byId);
-        assertThat(pacientes.buscarPorPublicId(publicId)).contains(byId);
-        assertThat(pacientes.buscarPorDocumento("CC", "900100")).contains(byId);
-        assertThat(pacientes.existePorDocumento("CC", "900100")).isTrue();
-        assertThat(pacientes.existePorDocumento("CC", "no-existe")).isFalse();
-        assertThat(pacientes.buscarPorPublicId("no-existe")).isEmpty();
+        assertThat(pacientes.findByUserId((Long) user[0])).contains(byId);
+        assertThat(pacientes.findByPublicId(publicId)).contains(byId);
+        assertThat(pacientes.findByDocument("CC", "900100")).contains(byId);
+        assertThat(pacientes.existsByDocument("CC", "900100")).isTrue();
+        assertThat(pacientes.existsByDocument("CC", "no-existe")).isFalse();
+        assertThat(pacientes.findByPublicId("no-existe")).isEmpty();
 
-        PacientePerfilResponse perfil = pacientes.buscarPerfilPorUsuarioPublicId((String) user[1]).orElseThrow();
+        PatientProfileResponse perfil = pacientes.findProfileByUserPublicId((String) user[1]).orElseThrow();
         assertThat(perfil.publicId()).isEqualTo(publicId);
         assertThat(perfil.email()).endsWith("@test.co");
     }
@@ -111,14 +111,14 @@ class PkgPatientsIT {
     void duplicatedDocumentIsAConflict() {
         newPatient("900200");
 
-        assertThatThrownBy(() -> newPatient("900200")).isInstanceOf(ConflictoOperacionException.class);
+        assertThatThrownBy(() -> newPatient("900200")).isInstanceOf(OperationConflictException.class);
     }
 
     @Test
     void consentIsRegistered() {
         Object[] user = newUser();
 
-        Long id = consentimientos.registrar((Long) user[0], "v1.0", true, "127.0.0.1");
+        Long id = consentimientos.record((Long) user[0], "v1.0", true, "127.0.0.1");
 
         assertThat(id).isPositive();
         assertThat(owner.queryForObject("SELECT REVOCADO FROM CONSENTIMIENTO WHERE ID = ?", Integer.class, id))
@@ -127,77 +127,77 @@ class PkgPatientsIT {
 
     @Test
     void legalRepresentationIsStoredAndListed() {
-        Paciente menor = newPatient("900301");
-        Paciente representante = newPatient("900302");
+        Patient menor = newPatient("900301");
+        Patient representante = newPatient("900302");
 
-        RepresentacionLegal saved = representaciones.guardar(new RepresentacionLegal(null,
+        LegalRepresentation saved = representaciones.save(new LegalRepresentation(null,
                 UUID.randomUUID().toString(), menor.id(), representante.id(), "MADRE", null, true, null));
-        List<RepresentacionLegalResponse> list = representaciones.listarPorRepresentanteId(representante.id());
+        List<LegalRepresentationResponse> list = representaciones.listByRepresentativeId(representante.id());
 
         assertThat(saved.id()).isNotNull();
-        assertThat(saved.verificado()).isTrue();
-        assertThat(representaciones.buscarPorId(saved.id())).isPresent();
+        assertThat(saved.verified()).isTrue();
+        assertThat(representaciones.findById(saved.id())).isPresent();
         assertThat(list).hasSize(1);
-        assertThat(list.get(0).menorNombre()).isEqualTo("Ana Diaz");
+        assertThat(list.get(0).minorName()).isEqualTo("Ana Diaz");
     }
 
     @Test
     void provisionalIdentityIsCreatedFoundAndReconciled() {
-        Paciente paciente = newPatient("900400");
+        Patient paciente = newPatient("900400");
         String episodePublicId = UUID.randomUUID().toString();
         owner.update("INSERT INTO EPISODIO_ATENCION (PUBLIC_ID, TIPO) VALUES (?, 'URGENCIA')", episodePublicId);
         Long episodeId = owner.queryForObject(
                 "SELECT ID FROM EPISODIO_ATENCION WHERE PUBLIC_ID = ?", Long.class, episodePublicId);
 
-        IdentidadProvisional created = identidades.guardar(new IdentidadProvisional(null,
+        ProvisionalIdentity created = identidades.save(new ProvisionalIdentity(null,
                 UUID.randomUUID().toString(), episodeId, "NN-IT-1", "Adulto", 40, "MASCULINO", "Consciente",
                 "PROVISIONAL", null, null, null, null));
 
         assertThat(created.id()).isNotNull();
-        IdentidadProvisional byEpisode = identidades.buscarPorEpisodioId(episodeId).orElseThrow();
-        assertThat(byEpisode.edadAparente()).isEqualTo(40);
-        assertThat(byEpisode.vinculadoPacienteId()).isNull();
-        assertThat(byEpisode.confirmadoPorUsuarioId()).isNull();
-        assertThat(identidades.buscarPorCodigo("NN-IT-1")).isPresent();
-        assertThat(identidades.buscarPorCodigo("NN-NO")).isEmpty();
-        assertThat(identidades.reconciliarIdentidad(created.id(), paciente.id(), paciente.usuarioId(), Instant.now()))
+        ProvisionalIdentity byEpisode = identidades.findByEpisodeId(episodeId).orElseThrow();
+        assertThat(byEpisode.apparentAge()).isEqualTo(40);
+        assertThat(byEpisode.linkedPatientId()).isNull();
+        assertThat(byEpisode.confirmedByUserId()).isNull();
+        assertThat(identidades.findByCode("NN-IT-1")).isPresent();
+        assertThat(identidades.findByCode("NN-NO")).isEmpty();
+        assertThat(identidades.reconcileIdentity(created.id(), paciente.id(), paciente.userId(), Instant.now()))
                 .isEqualTo(1);
-        assertThat(identidades.reconciliarIdentidad(created.id(), paciente.id(), paciente.usuarioId(), null))
+        assertThat(identidades.reconcileIdentity(created.id(), paciente.id(), paciente.userId(), null))
                 .isZero();
-        IdentidadProvisional reconciled = identidades.buscarPorCodigo("NN-IT-1").orElseThrow();
-        assertThat(reconciled.estado()).isEqualTo("VINCULADA");
-        assertThat(reconciled.vinculadoPacienteId()).isEqualTo(paciente.id());
-        assertThat(reconciled.confirmadoPorUsuarioId()).isEqualTo(paciente.usuarioId());
+        ProvisionalIdentity reconciled = identidades.findByCode("NN-IT-1").orElseThrow();
+        assertThat(reconciled.status()).isEqualTo("VINCULADA");
+        assertThat(reconciled.linkedPatientId()).isEqualTo(paciente.id());
+        assertThat(reconciled.confirmedByUserId()).isEqualTo(paciente.userId());
     }
 
     @Test
     void allergyRoutinesRoundTrip() {
-        Paciente paciente = newPatient("900500");
+        Patient paciente = newPatient("900500");
 
-        Long id = alergias.crear(new Alergia(null, null, paciente.id(), " Penicilina ", "Anafilaxia", "GRAVE",
-                "ACTIVA", "PROFESIONAL", paciente.usuarioId(), null, null, null, null, null, null));
-        Alergia entity = alergias.listarPorPacienteId(paciente.id()).get(0);
+        Long id = alergias.create(new Allergy(null, null, paciente.id(), " Penicilina ", "Anafilaxia", "GRAVE",
+                "ACTIVA", "PROFESIONAL", paciente.userId(), null, null, null, null, null, null));
+        Allergy entity = alergias.listByPatientId(paciente.id()).get(0);
 
         assertThat(entity.id()).isEqualTo(id);
-        assertThat(entity.sustancia()).isEqualTo("Penicilina");
-        assertThat(entity.registradaPorUsuarioId()).isEqualTo(paciente.usuarioId());
-        assertThat(entity.atencionId()).isNull();
-        assertThat(alergias.existeActivaPorSustancia(paciente.id(), "  penicilina")).isTrue();
-        assertThat(alergias.buscarEntidadPorPublicId(entity.publicId())).isPresent();
-        AlergiaResponse view = alergias.buscarPorPublicId(entity.publicId()).orElseThrow();
-        assertThat(view.pacientePublicId()).isEqualTo(paciente.publicId());
-        assertThatThrownBy(() -> alergias.crear(
-                        new Alergia(null, paciente.id(), "PENICILINA", "Shock", "GRAVE", null)))
-                .isInstanceOf(ConflictoOperacionException.class);
+        assertThat(entity.substance()).isEqualTo("Penicilina");
+        assertThat(entity.registeredByUserId()).isEqualTo(paciente.userId());
+        assertThat(entity.attentionId()).isNull();
+        assertThat(alergias.existsActiveBySubstance(paciente.id(), "  penicilina")).isTrue();
+        assertThat(alergias.findEntityByPublicId(entity.publicId())).isPresent();
+        AllergyResponse view = alergias.findByPublicId(entity.publicId()).orElseThrow();
+        assertThat(view.patientPublicId()).isEqualTo(paciente.publicId());
+        assertThatThrownBy(() -> alergias.create(
+                        new Allergy(null, paciente.id(), "PENICILINA", "Shock", "GRAVE", null)))
+                .isInstanceOf(OperationConflictException.class);
 
-        assertThat(alergias.inactivar(id, paciente.usuarioId(), " Descartada ", null)).isEqualTo(1);
-        assertThat(alergias.inactivar(id, paciente.usuarioId(), "Otra vez", null)).isZero();
-        assertThat(alergias.listarPorPacienteId(paciente.id())).isEmpty();
-        assertThat(alergias.listarPorPacienteId(paciente.id(), false)).hasSize(1);
-        assertThat(alergias.listarPorPacientePublicId(paciente.publicId(), false)).isEmpty();
-        List<AlergiaResponse> all = alergias.listarPorPacientePublicId(paciente.publicId(), true);
+        assertThat(alergias.inactivate(id, paciente.userId(), " Descartada ", null)).isEqualTo(1);
+        assertThat(alergias.inactivate(id, paciente.userId(), "Otra vez", null)).isZero();
+        assertThat(alergias.listByPatientId(paciente.id())).isEmpty();
+        assertThat(alergias.listByPatientId(paciente.id(), false)).hasSize(1);
+        assertThat(alergias.listByPatientPublicId(paciente.publicId(), false)).isEmpty();
+        List<AllergyResponse> all = alergias.listByPatientPublicId(paciente.publicId(), true);
         assertThat(all).hasSize(1);
-        assertThat(all.get(0).estado()).isEqualTo("INACTIVA");
-        assertThat(all.get(0).motivoInactivacion()).isEqualTo("Descartada");
+        assertThat(all.get(0).status()).isEqualTo("INACTIVA");
+        assertThat(all.get(0).inactivationReason()).isEqualTo("Descartada");
     }
 }

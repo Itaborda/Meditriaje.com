@@ -2,14 +2,14 @@ package com.meditriaje.controller;
 
 import com.meditriaje.config.CorsConfig;
 import com.meditriaje.config.SecurityConfig;
-import com.meditriaje.dto.emergency.ConsultarResumenRequest;
-import com.meditriaje.dto.emergency.VerificarQrResponse;
-import com.meditriaje.dto.emergency.summary.PacienteEmergenciaDto;
-import com.meditriaje.dto.emergency.summary.ResumenSaludResponse;
-import com.meditriaje.exception.CredencialesInvalidasException;
-import com.meditriaje.exception.DatosInvalidosException;
+import com.meditriaje.dto.emergency.ConsultSummaryRequest;
+import com.meditriaje.dto.emergency.VerifyQrResponse;
+import com.meditriaje.dto.emergency.summary.EmergencyPatientDto;
+import com.meditriaje.dto.emergency.summary.HealthSummaryResponse;
+import com.meditriaje.exception.InvalidCredentialsException;
+import com.meditriaje.exception.InvalidDataException;
 import com.meditriaje.exception.GlobalExceptionHandler;
-import com.meditriaje.exception.RecursoNoEncontradoException;
+import com.meditriaje.exception.ResourceNotFoundException;
 import com.meditriaje.security.JwtService;
 import com.meditriaje.service.EmergencyQrService;
 import com.meditriaje.service.EmergencySummaryService;
@@ -55,9 +55,9 @@ class EmergencySummaryControllerTest {
 
     @Test
     @DisplayName("GET /api/v1/emergency-summary/{token}/check: público sin sesión retorna 200 OK")
-    void verificarToken_publico_retorna200() throws Exception {
-        when(emergencyQrService.verificarTokenPublico("token-abc"))
-                .thenReturn(new VerificarQrResponse(true, true, "ACTIVO", Instant.now().plusSeconds(600)));
+    void verifyToken_public_returns200() throws Exception {
+        when(emergencyQrService.verifyPublicToken("token-abc"))
+                .thenReturn(new VerifyQrResponse(true, true, "ACTIVO", Instant.now().plusSeconds(600)));
 
         mockMvc.perform(get("/api/v1/emergency-summary/token-abc/check"))
                 .andExpect(status().isOk())
@@ -68,12 +68,12 @@ class EmergencySummaryControllerTest {
 
     @Test
     @DisplayName("POST /api/v1/emergency-summary/{token}: público con PIN correcto retorna 200 OK y resumen")
-    void consultarResumen_exito_retorna200() throws Exception {
-        PacienteEmergenciaDto pacienteDto = new PacienteEmergenciaDto(
+    void getSummary_success_returns200() throws Exception {
+        EmergencyPatientDto pacienteDto = new EmergencyPatientDto(
                 "Carlos Gomez", "CC", "123456789",
                 LocalDate.of(1990, 5, 15), 36, "3001234567", "carlos@test.com"
         );
-        ResumenSaludResponse resumen = new ResumenSaludResponse(
+        HealthSummaryResponse resumen = new HealthSummaryResponse(
                 pacienteDto,
                 List.of(),
                 List.of(),
@@ -82,7 +82,7 @@ class EmergencySummaryControllerTest {
                 "Aviso legal"
         );
 
-        when(emergencySummaryService.consultarResumenPorToken(eq("token-abc"), any(), anyString()))
+        when(emergencySummaryService.getSummaryByToken(eq("token-abc"), any(), anyString()))
                 .thenReturn(resumen);
 
         mockMvc.perform(post("/api/v1/emergency-summary/token-abc")
@@ -96,9 +96,9 @@ class EmergencySummaryControllerTest {
 
     @Test
     @DisplayName("POST /api/v1/emergency-summary/{token}: PIN incorrecto retorna 401 Unauthorized")
-    void consultarResumen_pinInvalido_retorna401() throws Exception {
-        when(emergencySummaryService.consultarResumenPorToken(eq("token-abc"), any(), anyString()))
-                .thenThrow(new CredencialesInvalidasException("El PIN de seguridad proporcionado es incorrecto."));
+    void getSummary_pinInvalid_returns401() throws Exception {
+        when(emergencySummaryService.getSummaryByToken(eq("token-abc"), any(), anyString()))
+                .thenThrow(new InvalidCredentialsException("El PIN de seguridad proporcionado es incorrecto."));
 
         mockMvc.perform(post("/api/v1/emergency-summary/token-abc")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -110,9 +110,9 @@ class EmergencySummaryControllerTest {
 
     @Test
     @DisplayName("POST /api/v1/emergency-summary/{token}: token inexistente retorna 404 Not Found")
-    void consultarResumen_tokenNoEncontrado_retorna404() throws Exception {
-        when(emergencySummaryService.consultarResumenPorToken(eq("token-inexistente"), any(), anyString()))
-                .thenThrow(new RecursoNoEncontradoException("Acceso de emergencia no valido o inexistente."));
+    void getSummary_tokenNotFound_returns404() throws Exception {
+        when(emergencySummaryService.getSummaryByToken(eq("token-inexistente"), any(), anyString()))
+                .thenThrow(new ResourceNotFoundException("Acceso de emergencia no valido o inexistente."));
 
         mockMvc.perform(post("/api/v1/emergency-summary/token-inexistente")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -123,9 +123,9 @@ class EmergencySummaryControllerTest {
 
     @Test
     @DisplayName("POST /api/v1/emergency-summary/{token}: token expirado retorna 400 Bad Request")
-    void consultarResumen_tokenExpirado_retorna400() throws Exception {
-        when(emergencySummaryService.consultarResumenPorToken(eq("token-expirado"), any(), anyString()))
-                .thenThrow(new DatosInvalidosException("El acceso QR ha expirado."));
+    void getSummary_tokenExpired_returns400() throws Exception {
+        when(emergencySummaryService.getSummaryByToken(eq("token-expirado"), any(), anyString()))
+                .thenThrow(new InvalidDataException("El acceso QR ha expirado."));
 
         mockMvc.perform(post("/api/v1/emergency-summary/token-expirado")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -136,9 +136,9 @@ class EmergencySummaryControllerTest {
 
     @Test
     @DisplayName("Rate Limit: exceso de peticiones sobre endpoint QR retorna 429 Too Many Requests")
-    void qr_excesoDePeticionesPorIp_retorna429() throws Exception {
-        when(emergencyQrService.verificarTokenPublico("token-rate-limit"))
-                .thenReturn(new VerificarQrResponse(true, false, "ACTIVO", Instant.now().plusSeconds(600)));
+    void qr_excesoOfRequestsByIp_returns429() throws Exception {
+        when(emergencyQrService.verifyPublicToken("token-rate-limit"))
+                .thenReturn(new VerifyQrResponse(true, false, "ACTIVO", Instant.now().plusSeconds(600)));
 
         String testIp = "192.168.100.99";
         for (int i = 0; i < 15; i++) {

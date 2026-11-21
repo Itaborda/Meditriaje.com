@@ -4,16 +4,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.meditriaje.config.CorsConfig;
 import com.meditriaje.config.SecurityConfig;
 import com.meditriaje.controller.admin.AdminReportController;
-import com.meditriaje.dto.report.DistribucionItemDto;
-import com.meditriaje.dto.report.MetricasBreakGlassDto;
-import com.meditriaje.dto.report.MetricasCitasDto;
-import com.meditriaje.dto.report.MetricasFarmaciaDto;
-import com.meditriaje.dto.report.MetricasTriajeDto;
-import com.meditriaje.dto.report.ResumenOperativoResponse;
-import com.meditriaje.exception.DatosInvalidosException;
+import com.meditriaje.dto.report.DistributionItemDto;
+import com.meditriaje.dto.report.BreakGlassMetricsDto;
+import com.meditriaje.dto.report.AppointmentMetricsDto;
+import com.meditriaje.dto.report.PharmacyMetricsDto;
+import com.meditriaje.dto.report.TriageMetricsDto;
+import com.meditriaje.dto.report.OperationalSummaryResponse;
+import com.meditriaje.exception.InvalidDataException;
 import com.meditriaje.exception.GlobalExceptionHandler;
 import com.meditriaje.security.JwtService;
-import com.meditriaje.service.ReporteService;
+import com.meditriaje.service.ReportService;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -49,7 +49,7 @@ class AdminReportControllerTest {
     private ObjectMapper objectMapper;
 
     @MockBean
-    private ReporteService reporteService;
+    private ReportService reporteService;
 
     @MockBean
     private JwtService jwtService;
@@ -61,16 +61,16 @@ class AdminReportControllerTest {
 
     @BeforeEach
     void setUpTokens() {
-        when(jwtService.esValido(TOKEN_ADMIN)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_ADMIN)).thenReturn(ADMIN_UUID);
-        when(jwtService.extraerRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
+        when(jwtService.isValid(TOKEN_ADMIN)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_ADMIN)).thenReturn(ADMIN_UUID);
+        when(jwtService.extractRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
 
-        when(jwtService.esValido(TOKEN_PACIENTE)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_PACIENTE)).thenReturn("paciente-uuid-1");
-        when(jwtService.extraerRoles(TOKEN_PACIENTE)).thenReturn(List.of("ROLE_PACIENTE"));
+        when(jwtService.isValid(TOKEN_PACIENTE)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_PACIENTE)).thenReturn("paciente-uuid-1");
+        when(jwtService.extractRoles(TOKEN_PACIENTE)).thenReturn(List.of("ROLE_PACIENTE"));
 
-        when(jwtService.esValido(TOKEN_PROFESIONAL)).thenReturn(true);
-        when(jwtService.extraerRoles(TOKEN_PROFESIONAL)).thenReturn(List.of("ROLE_PROFESIONAL"));
+        when(jwtService.isValid(TOKEN_PROFESIONAL)).thenReturn(true);
+        when(jwtService.extractRoles(TOKEN_PROFESIONAL)).thenReturn(List.of("ROLE_PROFESIONAL"));
     }
 
     // =========================================================================
@@ -87,7 +87,7 @@ class AdminReportControllerTest {
 
     @Test
     @DisplayName("GET /operational con rol PACIENTE retorna 403 Forbidden")
-    void getOperational_conRolPaciente_retorna403Forbidden() throws Exception {
+    void getOperational_withPatientRole_returns403Forbidden() throws Exception {
         mockMvc.perform(get("/api/v1/admin/reports/operational")
                         .cookie(new Cookie("access_token", TOKEN_PACIENTE)))
                 .andExpect(status().isForbidden())
@@ -96,7 +96,7 @@ class AdminReportControllerTest {
 
     @Test
     @DisplayName("GET /operational con rol PROFESIONAL retorna 403 Forbidden")
-    void getOperational_conRolProfesional_retorna403Forbidden() throws Exception {
+    void getOperational_withProfessionalRole_returns403Forbidden() throws Exception {
         mockMvc.perform(get("/api/v1/admin/reports/operational")
                         .cookie(new Cookie("access_token", TOKEN_PROFESIONAL)))
                 .andExpect(status().isForbidden())
@@ -109,20 +109,20 @@ class AdminReportControllerTest {
 
     @Test
     @DisplayName("GET /operational con rol ADMIN retorna 200 OK con métricas agregadas")
-    void getOperational_conRolAdmin_retorna200Ok() throws Exception {
-        ResumenOperativoResponse mockResponse = new ResumenOperativoResponse(
+    void getOperational_withAdminRole_returns200Ok() throws Exception {
+        OperationalSummaryResponse mockResponse = new OperationalSummaryResponse(
                 null,
                 null,
-                new MetricasCitasDto(100L, 20L, 30L, 40L, 5L, 3L, 2L, 40.0, 8.0,
-                        List.of(new DistribucionItemDto("Medicina General", 60L)),
-                        List.of(new DistribucionItemDto("Sede Norte", 100L))),
-                new MetricasTriajeDto(50L, 5L, 10L, 20L, 10L, 5L, 5L, 10.0),
-                new MetricasFarmaciaDto(80L, 10L, 20L, 50L, 240L),
-                new MetricasBreakGlassDto(2L, 0L, List.of(new DistribucionItemDto("Urgencias", 2L))),
+                new AppointmentMetricsDto(100L, 20L, 30L, 40L, 5L, 3L, 2L, 40.0, 8.0,
+                        List.of(new DistributionItemDto("Medicina General", 60L)),
+                        List.of(new DistributionItemDto("Sede Norte", 100L))),
+                new TriageMetricsDto(50L, 5L, 10L, 20L, 10L, 5L, 5L, 10.0),
+                new PharmacyMetricsDto(80L, 10L, 20L, 50L, 240L),
+                new BreakGlassMetricsDto(2L, 0L, List.of(new DistributionItemDto("Urgencias", 2L))),
                 Instant.now()
         );
 
-        when(reporteService.obtenerResumenOperativo(any(), any(), eq(ADMIN_UUID), anyString()))
+        when(reporteService.getOperationalSummary(any(), any(), eq(ADMIN_UUID), anyString()))
                 .thenReturn(mockResponse);
 
         mockMvc.perform(get("/api/v1/admin/reports/operational")
@@ -138,9 +138,9 @@ class AdminReportControllerTest {
 
     @Test
     @DisplayName("GET /operational con fechas invertidas retorna 400 Bad Request")
-    void getOperational_conFechasInvertidas_retorna400BadRequest() throws Exception {
-        when(reporteService.obtenerResumenOperativo(eq(LocalDate.of(2026, 12, 31)), eq(LocalDate.of(2026, 1, 1)), eq(ADMIN_UUID), anyString()))
-                .thenThrow(new DatosInvalidosException("La fecha desde no puede ser posterior a la fecha hasta."));
+    void getOperational_withDatesInvertidas_returns400BadRequest() throws Exception {
+        when(reporteService.getOperationalSummary(eq(LocalDate.of(2026, 12, 31)), eq(LocalDate.of(2026, 1, 1)), eq(ADMIN_UUID), anyString()))
+                .thenThrow(new InvalidDataException("La fecha desde no puede ser posterior a la fecha hasta."));
 
         mockMvc.perform(get("/api/v1/admin/reports/operational")
                         .cookie(new Cookie("access_token", TOKEN_ADMIN))
@@ -157,14 +157,14 @@ class AdminReportControllerTest {
 
     @Test
     @DisplayName("GET /appointments con rol ADMIN retorna 200 OK")
-    void getAppointments_conRolAdmin_retorna200Ok() throws Exception {
-        MetricasCitasDto mockDto = new MetricasCitasDto(
+    void getAppointments_withAdminRole_returns200Ok() throws Exception {
+        AppointmentMetricsDto mockDto = new AppointmentMetricsDto(
                 50L, 10L, 15L, 20L, 2L, 1L, 2L, 40.0, 6.0,
-                List.of(new DistribucionItemDto("Pediatría", 30L)),
-                List.of(new DistribucionItemDto("Sede Centro", 50L))
+                List.of(new DistributionItemDto("Pediatría", 30L)),
+                List.of(new DistributionItemDto("Sede Centro", 50L))
         );
 
-        when(reporteService.obtenerReporteCitas(any(), any(), eq(ADMIN_UUID), anyString()))
+        when(reporteService.getAppointmentsReport(any(), any(), eq(ADMIN_UUID), anyString()))
                 .thenReturn(mockDto);
 
         mockMvc.perform(get("/api/v1/admin/reports/appointments")
@@ -178,7 +178,7 @@ class AdminReportControllerTest {
 
     @Test
     @DisplayName("GET /appointments con rol PACIENTE retorna 403 Forbidden")
-    void getAppointments_conRolPaciente_retorna403Forbidden() throws Exception {
+    void getAppointments_withPatientRole_returns403Forbidden() throws Exception {
         mockMvc.perform(get("/api/v1/admin/reports/appointments")
                         .cookie(new Cookie("access_token", TOKEN_PACIENTE)))
                 .andExpect(status().isForbidden())
@@ -187,10 +187,10 @@ class AdminReportControllerTest {
 
     @Test
     @DisplayName("GET /triage con rol ADMIN retorna 200 OK")
-    void getTriage_conRolAdmin_retorna200Ok() throws Exception {
-        MetricasTriajeDto mockDto = new MetricasTriajeDto(40L, 2L, 8L, 15L, 10L, 5L, 2L, 5.0);
+    void getTriage_withAdminRole_returns200Ok() throws Exception {
+        TriageMetricsDto mockDto = new TriageMetricsDto(40L, 2L, 8L, 15L, 10L, 5L, 2L, 5.0);
 
-        when(reporteService.obtenerReporteTriaje(any(), any(), eq(ADMIN_UUID), anyString()))
+        when(reporteService.getTriageReport(any(), any(), eq(ADMIN_UUID), anyString()))
                 .thenReturn(mockDto);
 
         mockMvc.perform(get("/api/v1/admin/reports/triage")
@@ -203,7 +203,7 @@ class AdminReportControllerTest {
 
     @Test
     @DisplayName("GET /triage con rol PROFESIONAL retorna 403 Forbidden")
-    void getTriage_conRolProfesional_retorna403Forbidden() throws Exception {
+    void getTriage_withProfessionalRole_returns403Forbidden() throws Exception {
         mockMvc.perform(get("/api/v1/admin/reports/triage")
                         .cookie(new Cookie("access_token", TOKEN_PROFESIONAL)))
                 .andExpect(status().isForbidden())

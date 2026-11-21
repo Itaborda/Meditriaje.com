@@ -21,14 +21,14 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 public class DefaultEmailService implements EmailService {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultEmailService.class);
-    private static final String PLANTILLA_RECUPERACION = "templates/email/recuperacion-password.html";
-    private static final String PLANTILLA_BIENVENIDA = "templates/email/bienvenida-credenciales.html";
+    private static final String RECOVERY_TEMPLATE = "templates/email/recuperacion-password.html";
+    private static final String WELCOME_TEMPLATE = "templates/email/bienvenida-credenciales.html";
 
     private final EmailTemplateService templateService;
     private final EmailTransport emailTransport;
     private final String frontendUrl;
 
-    private final ConcurrentLinkedDeque<CorreoEnviado> bufferCorreos = new ConcurrentLinkedDeque<>();
+    private final ConcurrentLinkedDeque<SentEmail> emailBuffer = new ConcurrentLinkedDeque<>();
 
     @Autowired
     public DefaultEmailService(
@@ -69,33 +69,33 @@ public class DefaultEmailService implements EmailService {
     }
 
     @Override
-    public ResultadoEnvio enviarCorreoHtml(String destinatarioEmail, String asunto, String cuerpoHtml) {
+    public EmailSendResult sendHtmlEmail(String destinatarioEmail, String asunto, String cuerpoHtml) {
         Objects.requireNonNull(destinatarioEmail, "destinatarioEmail no puede ser nulo");
         Objects.requireNonNull(asunto, "asunto no puede ser nulo");
         Objects.requireNonNull(cuerpoHtml, "cuerpoHtml no puede ser nulo");
 
-        CorreoEnviado correo = new CorreoEnviado(destinatarioEmail, asunto, cuerpoHtml, Instant.now());
-        bufferCorreos.addFirst(correo);
+        SentEmail correo = new SentEmail(destinatarioEmail, asunto, cuerpoHtml, Instant.now());
+        emailBuffer.addFirst(correo);
 
         // Mantener tamaño máximo del buffer en memoria (50 últimos correos)
-        while (bufferCorreos.size() > 50) {
-            bufferCorreos.removeLast();
+        while (emailBuffer.size() > 50) {
+            emailBuffer.removeLast();
         }
 
         // Delegar envío al transporte configurado
-        ResultadoEnvio resultado = emailTransport.enviar(destinatarioEmail, asunto, cuerpoHtml);
-        if (!resultado.exito()) {
+        EmailSendResult resultado = emailTransport.send(destinatarioEmail, asunto, cuerpoHtml);
+        if (!resultado.success()) {
             log.warn("Fallo al enviar correo vía transporte [{}] hacia [{}]: [code={}, msg={}]",
-                    emailTransport.getNombreTransporte(),
-                    EmailUtil.enmascararEmail(destinatarioEmail),
-                    resultado.codigo(),
-                    resultado.mensaje());
+                    emailTransport.getTransportName(),
+                    EmailUtil.maskEmail(destinatarioEmail),
+                    resultado.code(),
+                    resultado.message());
         }
         return resultado;
     }
 
     @Override
-    public ResultadoEnvio enviarCodigoRecuperacion(String destinatarioEmail, String destinatarioNombre, String codigo, int minutosExpiracion) {
+    public EmailSendResult sendRecoveryCode(String destinatarioEmail, String destinatarioNombre, String codigo, int minutosExpiracion) {
         Objects.requireNonNull(destinatarioEmail, "destinatarioEmail no puede ser nulo");
         Objects.requireNonNull(codigo, "codigo no puede ser nulo");
 
@@ -107,14 +107,14 @@ public class DefaultEmailService implements EmailService {
                 "minutosExpiracion", String.valueOf(minutosExpiracion)
         );
 
-        String cuerpoHtml = templateService.renderizar(PLANTILLA_RECUPERACION, variables);
+        String cuerpoHtml = templateService.render(RECOVERY_TEMPLATE, variables);
         String asunto = "MediTriaje 2.0 — Código de recuperación de contraseña";
 
-        return enviarCorreoHtml(destinatarioEmail, asunto, cuerpoHtml);
+        return sendHtmlEmail(destinatarioEmail, asunto, cuerpoHtml);
     }
 
     @Override
-    public ResultadoEnvio enviarCredencialesIniciales(String destinatarioEmail, String destinatarioNombre, String rol, String passwordTemporal) {
+    public EmailSendResult sendInitialCredentials(String destinatarioEmail, String destinatarioNombre, String rol, String passwordTemporal) {
         Objects.requireNonNull(destinatarioEmail, "destinatarioEmail no puede ser nulo");
         Objects.requireNonNull(passwordTemporal, "passwordTemporal no puede ser nula");
 
@@ -130,23 +130,23 @@ public class DefaultEmailService implements EmailService {
                 "enlaceLogin", enlaceLogin
         );
 
-        String cuerpoHtml = templateService.renderizar(PLANTILLA_BIENVENIDA, variables);
+        String cuerpoHtml = templateService.render(WELCOME_TEMPLATE, variables);
         String asunto = "MediTriaje 2.0 — Tus credenciales de acceso institucional";
 
-        return enviarCorreoHtml(destinatarioEmail, asunto, cuerpoHtml);
+        return sendHtmlEmail(destinatarioEmail, asunto, cuerpoHtml);
     }
 
     /**
      * Retorna el último correo despachado por el servicio (útil para pruebas).
      */
-    public Optional<CorreoEnviado> obtenerUltimoCorreoEnviado() {
-        return Optional.ofNullable(bufferCorreos.peekFirst());
+    public Optional<SentEmail> getLastSentEmail() {
+        return Optional.ofNullable(emailBuffer.peekFirst());
     }
 
     /**
      * Limpia el buffer en memoria de correos despachados.
      */
-    public void limpiarBuffer() {
-        bufferCorreos.clear();
+    public void clearBuffer() {
+        emailBuffer.clear();
     }
 }

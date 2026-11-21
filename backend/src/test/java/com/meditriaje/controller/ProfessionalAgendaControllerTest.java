@@ -2,7 +2,7 @@ package com.meditriaje.controller;
 
 import com.meditriaje.config.CorsConfig;
 import com.meditriaje.config.SecurityConfig;
-import com.meditriaje.dto.appointment.CitaResponse;
+import com.meditriaje.dto.appointment.AppointmentResponse;
 import com.meditriaje.dto.common.PaginatedResponse;
 import com.meditriaje.exception.GlobalExceptionHandler;
 import com.meditriaje.security.JwtService;
@@ -56,17 +56,17 @@ class ProfessionalAgendaControllerTest {
 
     @BeforeEach
     void setUpTokens() {
-        when(jwtService.esValido(TOKEN_PACIENTE)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_PACIENTE)).thenReturn(PACIENTE_UUID);
-        when(jwtService.extraerRoles(TOKEN_PACIENTE)).thenReturn(List.of("ROLE_PACIENTE"));
+        when(jwtService.isValid(TOKEN_PACIENTE)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_PACIENTE)).thenReturn(PACIENTE_UUID);
+        when(jwtService.extractRoles(TOKEN_PACIENTE)).thenReturn(List.of("ROLE_PACIENTE"));
 
-        when(jwtService.esValido(TOKEN_PROFESIONAL)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_PROFESIONAL)).thenReturn(PROFESIONAL_UUID);
-        when(jwtService.extraerRoles(TOKEN_PROFESIONAL)).thenReturn(List.of("ROLE_PROFESIONAL"));
+        when(jwtService.isValid(TOKEN_PROFESIONAL)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_PROFESIONAL)).thenReturn(PROFESIONAL_UUID);
+        when(jwtService.extractRoles(TOKEN_PROFESIONAL)).thenReturn(List.of("ROLE_PROFESIONAL"));
 
-        when(jwtService.esValido(TOKEN_ADMIN)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_ADMIN)).thenReturn(ADMIN_UUID);
-        when(jwtService.extraerRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
+        when(jwtService.isValid(TOKEN_ADMIN)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_ADMIN)).thenReturn(ADMIN_UUID);
+        when(jwtService.extractRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
     }
 
     // =========================================================================
@@ -82,7 +82,7 @@ class ProfessionalAgendaControllerTest {
     }
 
     @Test
-    void getAgenda_conRolPaciente_retorna403Forbidden() throws Exception {
+    void getAgenda_withPatientRole_returns403Forbidden() throws Exception {
         mockMvc.perform(get("/api/v1/professionals/me/agenda")
                         .cookie(new Cookie("access_token", TOKEN_PACIENTE))
                         .accept(MediaType.APPLICATION_JSON))
@@ -91,7 +91,7 @@ class ProfessionalAgendaControllerTest {
     }
 
     @Test
-    void getAgenda_conRolAdministrador_retorna403Forbidden() throws Exception {
+    void getAgenda_withAdminRole_returns403Forbidden() throws Exception {
         mockMvc.perform(get("/api/v1/professionals/me/agenda")
                         .cookie(new Cookie("access_token", TOKEN_ADMIN))
                         .accept(MediaType.APPLICATION_JSON))
@@ -104,8 +104,8 @@ class ProfessionalAgendaControllerTest {
     // =========================================================================
 
     @Test
-    void getAgenda_conRolProfesional_retorna200OkConAgenda() throws Exception {
-        CitaResponse cita = new CitaResponse(
+    void getAgenda_withProfessionalRole_returns200OkWithAgenda() throws Exception {
+        AppointmentResponse cita = new AppointmentResponse(
                 "cita-100", "slot-100", "pac-100", "Carlos Gomez",
                 "prof-100", "Dr. Carlos Mendoza", "esp-100", "Medicina General",
                 "sede-100", "Sede Centro", "Calle 16",
@@ -113,9 +113,9 @@ class ProfessionalAgendaControllerTest {
                 "PRESENCIAL", "PROGRAMADA", null, null, Instant.now()
         );
 
-        PaginatedResponse<CitaResponse> mockPage = PaginatedResponse.of(List.of(cita), 0, 10, 1L);
+        PaginatedResponse<AppointmentResponse> mockPage = PaginatedResponse.of(List.of(cita), 0, 10, 1L);
 
-        when(appointmentService.obtenerMiAgenda(eq(PROFESIONAL_UUID), any(), any(), eq(0), eq(10)))
+        when(appointmentService.getMyAgenda(eq(PROFESIONAL_UUID), any(), any(), eq(0), eq(10)))
                 .thenReturn(mockPage);
 
         mockMvc.perform(get("/api/v1/professionals/me/agenda")
@@ -132,10 +132,10 @@ class ProfessionalAgendaControllerTest {
     }
 
     @Test
-    void getAgenda_conFiltrosFechaYEstado_pasaParametrosAlServicio() throws Exception {
-        PaginatedResponse<CitaResponse> mockPage = PaginatedResponse.of(List.of(), 1, 20, 0L);
+    void getAgenda_withFiltersDateAndStatus_pasaParamsToServicio() throws Exception {
+        PaginatedResponse<AppointmentResponse> mockPage = PaginatedResponse.of(List.of(), 1, 20, 0L);
 
-        when(appointmentService.obtenerMiAgenda(
+        when(appointmentService.getMyAgenda(
                 eq(PROFESIONAL_UUID),
                 eq(LocalDate.of(2026, 10, 15)),
                 eq("CONFIRMADA"),
@@ -155,7 +155,7 @@ class ProfessionalAgendaControllerTest {
                 .andExpect(jsonPath("$.page").value(1))
                 .andExpect(jsonPath("$.size").value(20));
 
-        verify(appointmentService).obtenerMiAgenda(
+        verify(appointmentService).getMyAgenda(
                 eq(PROFESIONAL_UUID),
                 eq(LocalDate.of(2026, 10, 15)),
                 eq("CONFIRMADA"),

@@ -1,17 +1,17 @@
 package com.meditriaje.service;
 
-import com.meditriaje.dto.admin.ActualizarEspecialidadRequest;
-import com.meditriaje.dto.admin.CrearEspecialidadRequest;
-import com.meditriaje.dto.admin.EspecialidadResponse;
+import com.meditriaje.dto.admin.UpdateSpecialtyRequest;
+import com.meditriaje.dto.admin.CreateSpecialtyRequest;
+import com.meditriaje.dto.admin.SpecialtyResponse;
 import com.meditriaje.dto.common.PaginatedResponse;
-import com.meditriaje.exception.DatosInvalidosException;
-import com.meditriaje.exception.RecursoNoEncontradoException;
-import com.meditriaje.model.AccionAuditable;
-import com.meditriaje.model.Especialidad;
-import com.meditriaje.model.ResultadoAuditoria;
-import com.meditriaje.model.Usuario;
-import com.meditriaje.repository.EspecialidadRepository;
-import com.meditriaje.repository.UsuarioRepository;
+import com.meditriaje.exception.InvalidDataException;
+import com.meditriaje.exception.ResourceNotFoundException;
+import com.meditriaje.model.AuditableAction;
+import com.meditriaje.model.Specialty;
+import com.meditriaje.model.AuditResult;
+import com.meditriaje.model.User;
+import com.meditriaje.repository.SpecialtyRepository;
+import com.meditriaje.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,24 +28,24 @@ import java.util.UUID;
 @Service
 public class AdminCatalogService {
 
-    private static final String ESTADO_ACTIVO = "ACTIVO";
-    private static final String ESTADO_INACTIVO = "INACTIVO";
-    private static final Set<String> ESTADOS_PERMITIDOS = Set.of(ESTADO_ACTIVO, ESTADO_INACTIVO);
+    private static final String STATUS_ACTIVE = "ACTIVO";
+    private static final String STATUS_INACTIVE = "INACTIVO";
+    private static final Set<String> ALLOWED_STATUSES = Set.of(STATUS_ACTIVE, STATUS_INACTIVE);
 
-    private static final String RECURSO_ESPECIALIDAD = "ESPECIALIDAD";
+    private static final String RESOURCE_SPECIALTY = "ESPECIALIDAD";
 
-    private final EspecialidadRepository especialidadRepository;
-    private final UsuarioRepository usuarioRepository;
-    private final AuditoriaService auditoriaService;
+    private final SpecialtyRepository specialtyRepository;
+    private final UserRepository userRepository;
+    private final AuditService auditService;
 
     public AdminCatalogService(
-            EspecialidadRepository especialidadRepository,
-            UsuarioRepository usuarioRepository,
-            AuditoriaService auditoriaService
+            SpecialtyRepository specialtyRepository,
+            UserRepository userRepository,
+            AuditService auditService
     ) {
-        this.especialidadRepository = Objects.requireNonNull(especialidadRepository, "EspecialidadRepository no puede ser nulo");
-        this.usuarioRepository = Objects.requireNonNull(usuarioRepository, "UsuarioRepository no puede ser nulo");
-        this.auditoriaService = Objects.requireNonNull(auditoriaService, "AuditoriaService no puede ser nulo");
+        this.specialtyRepository = Objects.requireNonNull(specialtyRepository, "EspecialidadRepository no puede ser nulo");
+        this.userRepository = Objects.requireNonNull(userRepository, "UsuarioRepository no puede ser nulo");
+        this.auditService = Objects.requireNonNull(auditService, "AuditoriaService no puede ser nulo");
     }
 
     // =========================================================================
@@ -53,137 +53,137 @@ public class AdminCatalogService {
     // =========================================================================
 
     @Transactional
-    public EspecialidadResponse crearEspecialidad(CrearEspecialidadRequest req, String adminPublicId, String ipOrigen) {
-        String nombreLimpio = req.nombre().trim();
-        if (especialidadRepository.existePorNombre(nombreLimpio)) {
-            throw new DatosInvalidosException("Ya existe una especialidad con el nombre: " + nombreLimpio);
+    public SpecialtyResponse createSpecialty(CreateSpecialtyRequest req, String adminPublicId, String ipOrigen) {
+        String nombreLimpio = req.name().trim();
+        if (specialtyRepository.existsByName(nombreLimpio)) {
+            throw new InvalidDataException("Ya existe una especialidad con el nombre: " + nombreLimpio);
         }
 
         String publicId = UUID.randomUUID().toString();
-        Especialidad especialidad = especialidadRepository.crear(publicId, nombreLimpio, req.duracionSlotMin());
+        Specialty especialidad = specialtyRepository.create(publicId, nombreLimpio, req.slotDurationMinutes());
 
-        Long adminId = obtenerAdminUsuarioId(adminPublicId);
-        auditoriaService.registrarEvento(
+        Long adminId = getAdminUserId(adminPublicId);
+        auditService.recordEvent(
                 adminId,
-                AccionAuditable.CAMBIO_ADMINISTRATIVO,
-                RECURSO_ESPECIALIDAD,
+                AuditableAction.CAMBIO_ADMINISTRATIVO,
+                RESOURCE_SPECIALTY,
                 especialidad.publicId(),
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         );
 
-        return toEspecialidadResponse(especialidad);
+        return toSpecialtyResponse(especialidad);
     }
 
     @Transactional
-    public EspecialidadResponse actualizarEspecialidad(String publicId, ActualizarEspecialidadRequest req, String adminPublicId, String ipOrigen) {
-        Especialidad actual = especialidadRepository.buscarPorPublicId(publicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Especialidad: " + publicId));
+    public SpecialtyResponse updateSpecialty(String publicId, UpdateSpecialtyRequest req, String adminPublicId, String ipOrigen) {
+        Specialty actual = specialtyRepository.findByPublicId(publicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Especialidad: " + publicId));
 
-        String nombreLimpio = req.nombre().trim();
-        if (especialidadRepository.existePorNombreYNoPublicId(nombreLimpio, publicId)) {
-            throw new DatosInvalidosException("Ya existe otra especialidad con el nombre: " + nombreLimpio);
+        String nombreLimpio = req.name().trim();
+        if (specialtyRepository.existsByNameAndNotPublicId(nombreLimpio, publicId)) {
+            throw new InvalidDataException("Ya existe otra especialidad con el nombre: " + nombreLimpio);
         }
 
-        especialidadRepository.actualizar(publicId, nombreLimpio, req.duracionSlotMin());
+        specialtyRepository.update(publicId, nombreLimpio, req.slotDurationMinutes());
 
-        Long adminId = obtenerAdminUsuarioId(adminPublicId);
-        auditoriaService.registrarEvento(
+        Long adminId = getAdminUserId(adminPublicId);
+        auditService.recordEvent(
                 adminId,
-                AccionAuditable.CAMBIO_ADMINISTRATIVO,
-                RECURSO_ESPECIALIDAD,
+                AuditableAction.CAMBIO_ADMINISTRATIVO,
+                RESOURCE_SPECIALTY,
                 publicId,
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         );
 
-        return new EspecialidadResponse(publicId, nombreLimpio, req.duracionSlotMin(), actual.estado());
+        return new SpecialtyResponse(publicId, nombreLimpio, req.slotDurationMinutes(), actual.status());
     }
 
     @Transactional(readOnly = true)
-    public EspecialidadResponse obtenerEspecialidad(String publicId) {
-        Especialidad especialidad = especialidadRepository.buscarPorPublicId(publicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Especialidad: " + publicId));
-        return toEspecialidadResponse(especialidad);
+    public SpecialtyResponse getSpecialty(String publicId) {
+        Specialty especialidad = specialtyRepository.findByPublicId(publicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Especialidad: " + publicId));
+        return toSpecialtyResponse(especialidad);
     }
 
     @Transactional(readOnly = true)
-    public PaginatedResponse<EspecialidadResponse> listarEspecialidades(int page, int size, String estadoFiltro) {
-        String estadoNormalizado = normalizarYValidarEstado(estadoFiltro);
-        List<Especialidad> lista = especialidadRepository.listar(page, size, estadoNormalizado);
-        long total = especialidadRepository.contar(estadoNormalizado);
+    public PaginatedResponse<SpecialtyResponse> listSpecialties(int page, int size, String estadoFiltro) {
+        String estadoNormalizado = normalizeAndValidateStatus(estadoFiltro);
+        List<Specialty> lista = specialtyRepository.list(page, size, estadoNormalizado);
+        long total = specialtyRepository.count(estadoNormalizado);
 
-        List<EspecialidadResponse> responses = lista.stream().map(this::toEspecialidadResponse).toList();
+        List<SpecialtyResponse> responses = lista.stream().map(this::toSpecialtyResponse).toList();
         return PaginatedResponse.of(responses, page, size, total);
     }
 
     @Transactional
-    public EspecialidadResponse desactivarEspecialidad(String publicId, String adminPublicId, String ipOrigen) {
-        Especialidad especialidad = especialidadRepository.buscarPorPublicId(publicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Especialidad: " + publicId));
+    public SpecialtyResponse deactivateSpecialty(String publicId, String adminPublicId, String ipOrigen) {
+        Specialty especialidad = specialtyRepository.findByPublicId(publicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Especialidad: " + publicId));
 
-        especialidadRepository.cambiarEstado(publicId, ESTADO_INACTIVO);
+        specialtyRepository.changeStatus(publicId, STATUS_INACTIVE);
 
-        Long adminId = obtenerAdminUsuarioId(adminPublicId);
-        auditoriaService.registrarEvento(
+        Long adminId = getAdminUserId(adminPublicId);
+        auditService.recordEvent(
                 adminId,
-                AccionAuditable.CAMBIO_ADMINISTRATIVO,
-                RECURSO_ESPECIALIDAD,
+                AuditableAction.CAMBIO_ADMINISTRATIVO,
+                RESOURCE_SPECIALTY,
                 publicId,
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         );
 
-        return new EspecialidadResponse(especialidad.publicId(), especialidad.nombre(), especialidad.duracionSlotMin(), ESTADO_INACTIVO);
+        return new SpecialtyResponse(especialidad.publicId(), especialidad.name(), especialidad.slotDurationMinutes(), STATUS_INACTIVE);
     }
 
     @Transactional
-    public EspecialidadResponse activarEspecialidad(String publicId, String adminPublicId, String ipOrigen) {
-        Especialidad especialidad = especialidadRepository.buscarPorPublicId(publicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Especialidad: " + publicId));
+    public SpecialtyResponse activateSpecialty(String publicId, String adminPublicId, String ipOrigen) {
+        Specialty especialidad = specialtyRepository.findByPublicId(publicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Especialidad: " + publicId));
 
-        especialidadRepository.cambiarEstado(publicId, ESTADO_ACTIVO);
+        specialtyRepository.changeStatus(publicId, STATUS_ACTIVE);
 
-        Long adminId = obtenerAdminUsuarioId(adminPublicId);
-        auditoriaService.registrarEvento(
+        Long adminId = getAdminUserId(adminPublicId);
+        auditService.recordEvent(
                 adminId,
-                AccionAuditable.CAMBIO_ADMINISTRATIVO,
-                RECURSO_ESPECIALIDAD,
+                AuditableAction.CAMBIO_ADMINISTRATIVO,
+                RESOURCE_SPECIALTY,
                 publicId,
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         );
 
-        return new EspecialidadResponse(especialidad.publicId(), especialidad.nombre(), especialidad.duracionSlotMin(), ESTADO_ACTIVO);
+        return new SpecialtyResponse(especialidad.publicId(), especialidad.name(), especialidad.slotDurationMinutes(), STATUS_ACTIVE);
     }
 
     // =========================================================================
     // MAPPERS Y HELPERS PRIVADOS
     // =========================================================================
 
-    private Long obtenerAdminUsuarioId(String adminPublicId) {
-        return usuarioRepository.buscarPorPublicId(adminPublicId)
-                .map(Usuario::id)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario administrador"));
+    private Long getAdminUserId(String adminPublicId) {
+        return userRepository.findByPublicId(adminPublicId)
+                .map(User::id)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario administrador"));
     }
 
-    private String normalizarYValidarEstado(String estado) {
+    private String normalizeAndValidateStatus(String estado) {
         if (estado == null || estado.isBlank()) {
             return null;
         }
         String normalizado = estado.trim().toUpperCase();
-        if (!ESTADOS_PERMITIDOS.contains(normalizado)) {
-            throw new DatosInvalidosException("Estado invalido. Los valores permitidos son: ACTIVO, INACTIVO.");
+        if (!ALLOWED_STATUSES.contains(normalizado)) {
+            throw new InvalidDataException("Estado invalido. Los valores permitidos son: ACTIVO, INACTIVO.");
         }
         return normalizado;
     }
 
-    private EspecialidadResponse toEspecialidadResponse(Especialidad esp) {
-        return new EspecialidadResponse(
+    private SpecialtyResponse toSpecialtyResponse(Specialty esp) {
+        return new SpecialtyResponse(
                 esp.publicId(),
-                esp.nombre(),
-                esp.duracionSlotMin(),
-                esp.estado()
+                esp.name(),
+                esp.slotDurationMinutes(),
+                esp.status()
         );
     }
 }

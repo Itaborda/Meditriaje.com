@@ -2,18 +2,18 @@ package com.meditriaje.controller;
 
 import com.meditriaje.dto.AuthSessionResponse;
 import com.meditriaje.dto.AuthTokens;
-import com.meditriaje.dto.CambiarPasswordRequest;
+import com.meditriaje.dto.ChangePasswordRequest;
 import com.meditriaje.dto.LoginRequest;
-import com.meditriaje.dto.RegistroPacienteRequest;
-import com.meditriaje.dto.RegistroPacienteResponse;
+import com.meditriaje.dto.RegisterPatientRequest;
+import com.meditriaje.dto.RegisterPatientResponse;
 import com.meditriaje.dto.auth.MfaAuthenticateRequest;
 import com.meditriaje.dto.auth.MfaSetupResponse;
 import com.meditriaje.dto.auth.MfaVerifyRequest;
 import com.meditriaje.dto.auth.MfaVerifyResponse;
-import com.meditriaje.dto.auth.RestablecerPasswordRequest;
-import com.meditriaje.dto.auth.RestablecerPasswordResponse;
-import com.meditriaje.dto.auth.SolicitarRecuperacionRequest;
-import com.meditriaje.dto.auth.SolicitarRecuperacionResponse;
+import com.meditriaje.dto.auth.ResetPasswordRequest;
+import com.meditriaje.dto.auth.ResetPasswordResponse;
+import com.meditriaje.dto.auth.RequestPasswordResetRequest;
+import com.meditriaje.dto.auth.RequestPasswordResetResponse;
 import com.meditriaje.service.AuthService;
 import com.meditriaje.util.IpUtil;
 import jakarta.servlet.http.HttpServletRequest;
@@ -54,12 +54,12 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    public ResponseEntity<RegistroPacienteResponse> registrarPaciente(
-            @Valid @RequestBody RegistroPacienteRequest request,
+    public ResponseEntity<RegisterPatientResponse> registerPatient(
+            @Valid @RequestBody RegisterPatientRequest request,
             HttpServletRequest httpRequest
     ) {
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
-        RegistroPacienteResponse response = authService.registrarPaciente(request, ipOrigen);
+        String sourceIp = IpUtil.extractIp(httpRequest);
+        RegisterPatientResponse response = authService.registerPatient(request, sourceIp);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -68,16 +68,16 @@ public class AuthController {
             @Valid @RequestBody LoginRequest request,
             HttpServletRequest httpRequest
     ) {
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
-        AuthTokens tokens = authService.login(request, ipOrigen);
+        String sourceIp = IpUtil.extractIp(httpRequest);
+        AuthTokens tokens = authService.login(request, sourceIp);
 
         // Si se requiere segundo factor MFA, retornar el desafío sin fijar cookies de sesión (ADR-014, F2.1.4)
-        if (tokens.sessionResponse().mfaRequerido()) {
+        if (tokens.sessionResponse().mfaRequired()) {
             return ResponseEntity.ok(tokens.sessionResponse());
         }
 
-        ResponseCookie accessCookie = crearAccessCookie(tokens.accessToken(), Duration.ofMinutes(15));
-        ResponseCookie refreshCookie = crearRefreshCookie(tokens.rawRefreshToken(), Duration.ofDays(7));
+        ResponseCookie accessCookie = createAccessCookie(tokens.accessToken(), Duration.ofMinutes(15));
+        ResponseCookie refreshCookie = createRefreshCookie(tokens.rawRefreshToken(), Duration.ofDays(7));
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, accessCookie.toString())
@@ -90,11 +90,11 @@ public class AuthController {
             @CookieValue(name = "refresh_token", required = false) String refreshToken,
             HttpServletRequest httpRequest
     ) {
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
-        AuthTokens tokens = authService.refresh(refreshToken, ipOrigen);
+        String sourceIp = IpUtil.extractIp(httpRequest);
+        AuthTokens tokens = authService.refresh(refreshToken, sourceIp);
 
-        ResponseCookie accessCookie = crearAccessCookie(tokens.accessToken(), Duration.ofMinutes(15));
-        ResponseCookie refreshCookie = crearRefreshCookie(tokens.rawRefreshToken(), Duration.ofDays(7));
+        ResponseCookie accessCookie = createAccessCookie(tokens.accessToken(), Duration.ofMinutes(15));
+        ResponseCookie refreshCookie = createRefreshCookie(tokens.rawRefreshToken(), Duration.ofDays(7));
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, accessCookie.toString())
@@ -107,11 +107,11 @@ public class AuthController {
             @CookieValue(name = "refresh_token", required = false) String refreshToken,
             HttpServletRequest httpRequest
     ) {
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
-        authService.logout(refreshToken, ipOrigen);
+        String sourceIp = IpUtil.extractIp(httpRequest);
+        authService.logout(refreshToken, sourceIp);
 
-        ResponseCookie clearAccessCookie = crearAccessCookie("", Duration.ZERO);
-        ResponseCookie clearRefreshCookie = crearRefreshCookie("", Duration.ZERO);
+        ResponseCookie clearAccessCookie = createAccessCookie("", Duration.ZERO);
+        ResponseCookie clearRefreshCookie = createRefreshCookie("", Duration.ZERO);
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, clearAccessCookie.toString())
@@ -120,22 +120,22 @@ public class AuthController {
     }
 
     @PostMapping("/forgot-password")
-    public ResponseEntity<SolicitarRecuperacionResponse> forgotPassword(
-            @Valid @RequestBody SolicitarRecuperacionRequest request,
+    public ResponseEntity<RequestPasswordResetResponse> forgotPassword(
+            @Valid @RequestBody RequestPasswordResetRequest request,
             HttpServletRequest httpRequest
     ) {
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
-        SolicitarRecuperacionResponse response = authService.solicitarRecuperacionPassword(request, ipOrigen);
+        String sourceIp = IpUtil.extractIp(httpRequest);
+        RequestPasswordResetResponse response = authService.requestPasswordReset(request, sourceIp);
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/reset-password")
-    public ResponseEntity<RestablecerPasswordResponse> resetPassword(
-            @Valid @RequestBody RestablecerPasswordRequest request,
+    public ResponseEntity<ResetPasswordResponse> resetPassword(
+            @Valid @RequestBody ResetPasswordRequest request,
             HttpServletRequest httpRequest
     ) {
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
-        RestablecerPasswordResponse response = authService.restablecerPassword(request, ipOrigen);
+        String sourceIp = IpUtil.extractIp(httpRequest);
+        ResetPasswordResponse response = authService.resetPassword(request, sourceIp);
         return ResponseEntity.ok(response);
     }
 
@@ -146,8 +146,8 @@ public class AuthController {
             HttpServletRequest httpRequest
     ) {
         String usuarioPublicId = (String) authentication.getPrincipal();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
-        MfaSetupResponse response = authService.setupMfa(usuarioPublicId, ipOrigen);
+        String sourceIp = IpUtil.extractIp(httpRequest);
+        MfaSetupResponse response = authService.setupMfa(usuarioPublicId, sourceIp);
         return ResponseEntity.ok(response);
     }
 
@@ -159,8 +159,8 @@ public class AuthController {
             HttpServletRequest httpRequest
     ) {
         String usuarioPublicId = (String) authentication.getPrincipal();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
-        MfaVerifyResponse response = authService.verifyMfa(usuarioPublicId, request, ipOrigen);
+        String sourceIp = IpUtil.extractIp(httpRequest);
+        MfaVerifyResponse response = authService.verifyMfa(usuarioPublicId, request, sourceIp);
         return ResponseEntity.ok(response);
     }
 
@@ -169,11 +169,11 @@ public class AuthController {
             @Valid @RequestBody MfaAuthenticateRequest request,
             HttpServletRequest httpRequest
     ) {
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
-        AuthTokens tokens = authService.autenticarMfa(request, ipOrigen);
+        String sourceIp = IpUtil.extractIp(httpRequest);
+        AuthTokens tokens = authService.authenticateMfa(request, sourceIp);
 
-        ResponseCookie accessCookie = crearAccessCookie(tokens.accessToken(), Duration.ofMinutes(15));
-        ResponseCookie refreshCookie = crearRefreshCookie(tokens.rawRefreshToken(), Duration.ofDays(7));
+        ResponseCookie accessCookie = createAccessCookie(tokens.accessToken(), Duration.ofMinutes(15));
+        ResponseCookie refreshCookie = createRefreshCookie(tokens.rawRefreshToken(), Duration.ofDays(7));
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, accessCookie.toString())
@@ -183,18 +183,18 @@ public class AuthController {
 
     @PostMapping("/change-password")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<Map<String, String>> cambiarPassword(
-            @Valid @RequestBody CambiarPasswordRequest request,
+    public ResponseEntity<Map<String, String>> changePassword(
+            @Valid @RequestBody ChangePasswordRequest request,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String usuarioPublicId = (String) authentication.getPrincipal();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
-        authService.cambiarPassword(usuarioPublicId, request, ipOrigen);
+        String sourceIp = IpUtil.extractIp(httpRequest);
+        authService.changePassword(usuarioPublicId, request, sourceIp);
         return ResponseEntity.ok(Map.of("mensaje", "Contrasena actualizada exitosamente."));
     }
 
-    private ResponseCookie crearAccessCookie(String token, Duration maxAge) {
+    private ResponseCookie createAccessCookie(String token, Duration maxAge) {
         return ResponseCookie.from("access_token", token)
                 .httpOnly(true)
                 .secure(cookieSecure)
@@ -204,7 +204,7 @@ public class AuthController {
                 .build();
     }
 
-    private ResponseCookie crearRefreshCookie(String token, Duration maxAge) {
+    private ResponseCookie createRefreshCookie(String token, Duration maxAge) {
         return ResponseCookie.from("refresh_token", token)
                 .httpOnly(true)
                 .secure(cookieSecure)

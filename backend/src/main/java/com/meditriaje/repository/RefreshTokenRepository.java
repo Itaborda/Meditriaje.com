@@ -70,7 +70,7 @@ public class RefreshTokenRepository {
         this.gateway = Objects.requireNonNull(gateway, "gateway no puede ser nulo");
     }
 
-    public Long crear(Long usuarioId, String tokenHash, Instant expiracion) {
+    public Long create(Long usuarioId, String tokenHash, Instant expiracion) {
         Map<String, Object> out = gateway.execute(CREATE_REFRESH_TOKEN, new MapSqlParameterSource()
                 .addValue("p_user_id", usuarioId)
                 .addValue("p_token_hash", tokenHash)
@@ -82,21 +82,21 @@ public class RefreshTokenRepository {
         return key.longValue();
     }
 
-    public Optional<RefreshToken> buscarPorTokenHash(String tokenHash) {
+    public Optional<RefreshToken> findByTokenHash(String tokenHash) {
         List<RefreshToken> resultados = gateway.list(
                 GET_REFRESH_TOKEN_BY_HASH, new MapSqlParameterSource("p_token_hash", tokenHash), "o_token");
         return resultados.stream().findFirst();
     }
 
-    public void revocar(Long tokenId) {
+    public void revoke(Long tokenId) {
         gateway.execute(REVOKE_REFRESH_TOKEN, new MapSqlParameterSource("p_token_id", tokenId));
     }
 
-    public void revocarPorTokenHash(String tokenHash) {
+    public void revokeByTokenHash(String tokenHash) {
         gateway.execute(REVOKE_REFRESH_TOKEN_BY_HASH, new MapSqlParameterSource("p_token_hash", tokenHash));
     }
 
-    public void revocarTodosPorUsuario(Long usuarioId) {
+    public void revokeAllByUser(Long usuarioId) {
         gateway.execute(REVOKE_USER_REFRESH_TOKENS, new MapSqlParameterSource("p_user_id", usuarioId));
     }
 }

@@ -1,17 +1,17 @@
 package com.meditriaje.service;
 
-import com.meditriaje.dto.admin.ActualizarEspecialidadRequest;
-import com.meditriaje.dto.admin.CrearEspecialidadRequest;
-import com.meditriaje.dto.admin.EspecialidadResponse;
+import com.meditriaje.dto.admin.UpdateSpecialtyRequest;
+import com.meditriaje.dto.admin.CreateSpecialtyRequest;
+import com.meditriaje.dto.admin.SpecialtyResponse;
 import com.meditriaje.dto.common.PaginatedResponse;
-import com.meditriaje.exception.DatosInvalidosException;
-import com.meditriaje.exception.RecursoNoEncontradoException;
-import com.meditriaje.model.AccionAuditable;
-import com.meditriaje.model.Especialidad;
-import com.meditriaje.model.ResultadoAuditoria;
-import com.meditriaje.model.Usuario;
-import com.meditriaje.repository.EspecialidadRepository;
-import com.meditriaje.repository.UsuarioRepository;
+import com.meditriaje.exception.InvalidDataException;
+import com.meditriaje.exception.ResourceNotFoundException;
+import com.meditriaje.model.AuditableAction;
+import com.meditriaje.model.Specialty;
+import com.meditriaje.model.AuditResult;
+import com.meditriaje.model.User;
+import com.meditriaje.repository.SpecialtyRepository;
+import com.meditriaje.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,13 +37,13 @@ import static org.mockito.Mockito.when;
 class AdminCatalogServiceTest {
 
     @Mock
-    private EspecialidadRepository especialidadRepository;
+    private SpecialtyRepository specialtyRepository;
 
     @Mock
-    private UsuarioRepository usuarioRepository;
+    private UserRepository userRepository;
 
     @Mock
-    private AuditoriaService auditoriaService;
+    private AuditService auditService;
 
     private AdminCatalogService catalogService;
 
@@ -54,14 +54,14 @@ class AdminCatalogServiceTest {
     @BeforeEach
     void setUp() {
         catalogService = new AdminCatalogService(
-                especialidadRepository,
-                usuarioRepository,
-                auditoriaService
+                specialtyRepository,
+                userRepository,
+                auditService
         );
     }
 
-    private void mockAdminUsuario() {
-        Usuario adminUsuario = new Usuario(
+    private void mockAdminUser() {
+        User adminUsuario = new User(
                 ADMIN_ID,
                 ADMIN_PUBLIC_ID,
                 "admin@meditriaje.com",
@@ -71,7 +71,7 @@ class AdminCatalogServiceTest {
                 null,
                 Instant.now()
         );
-        when(usuarioRepository.buscarPorPublicId(ADMIN_PUBLIC_ID)).thenReturn(Optional.of(adminUsuario));
+        when(userRepository.findByPublicId(ADMIN_PUBLIC_ID)).thenReturn(Optional.of(adminUsuario));
     }
 
     // =========================================================================
@@ -79,121 +79,121 @@ class AdminCatalogServiceTest {
     // =========================================================================
 
     @Test
-    void crearEspecialidad_exito_creaYAudita() {
-        mockAdminUsuario();
-        CrearEspecialidadRequest req = new CrearEspecialidadRequest("Medicina General", 20);
-        when(especialidadRepository.existePorNombre("Medicina General")).thenReturn(false);
-        when(especialidadRepository.crear(anyString(), eq("Medicina General"), eq(20)))
-                .thenReturn(new Especialidad(1L, "esp-uuid-1", "Medicina General", 20, "ACTIVO"));
+    void createSpecialty_success_createsAndAudits() {
+        mockAdminUser();
+        CreateSpecialtyRequest req = new CreateSpecialtyRequest("Medicina General", 20);
+        when(specialtyRepository.existsByName("Medicina General")).thenReturn(false);
+        when(specialtyRepository.create(anyString(), eq("Medicina General"), eq(20)))
+                .thenReturn(new Specialty(1L, "esp-uuid-1", "Medicina General", 20, "ACTIVO"));
 
-        EspecialidadResponse resp = catalogService.crearEspecialidad(req, ADMIN_PUBLIC_ID, IP_ORIGEN);
+        SpecialtyResponse resp = catalogService.createSpecialty(req, ADMIN_PUBLIC_ID, IP_ORIGEN);
 
         assertThat(resp).isNotNull();
         assertThat(resp.publicId()).isEqualTo("esp-uuid-1");
-        assertThat(resp.nombre()).isEqualTo("Medicina General");
-        assertThat(resp.duracionSlotMin()).isEqualTo(20);
-        assertThat(resp.estado()).isEqualTo("ACTIVO");
+        assertThat(resp.name()).isEqualTo("Medicina General");
+        assertThat(resp.slotDurationMinutes()).isEqualTo(20);
+        assertThat(resp.status()).isEqualTo("ACTIVO");
 
-        verify(auditoriaService).registrarEvento(
+        verify(auditService).recordEvent(
                 eq(ADMIN_ID),
-                eq(AccionAuditable.CAMBIO_ADMINISTRATIVO),
+                eq(AuditableAction.CAMBIO_ADMINISTRATIVO),
                 eq("ESPECIALIDAD"),
                 eq("esp-uuid-1"),
-                eq(ResultadoAuditoria.EXITO),
+                eq(AuditResult.EXITO),
                 eq(IP_ORIGEN)
         );
     }
 
     @Test
-    void crearEspecialidad_nombreDuplicado_lanzaDatosInvalidos() {
-        CrearEspecialidadRequest req = new CrearEspecialidadRequest("Medicina General", 20);
-        when(especialidadRepository.existePorNombre("Medicina General")).thenReturn(true);
+    void createSpecialty_duplicateName_throwsInvalidData() {
+        CreateSpecialtyRequest req = new CreateSpecialtyRequest("Medicina General", 20);
+        when(specialtyRepository.existsByName("Medicina General")).thenReturn(true);
 
-        assertThatThrownBy(() -> catalogService.crearEspecialidad(req, ADMIN_PUBLIC_ID, IP_ORIGEN))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> catalogService.createSpecialty(req, ADMIN_PUBLIC_ID, IP_ORIGEN))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("Ya existe una especialidad");
 
-        verify(especialidadRepository, never()).crear(anyString(), anyString(), anyInt());
-        verify(auditoriaService, never()).registrarEvento(anyLong(), any(), any(), any(), any(), any());
+        verify(specialtyRepository, never()).create(anyString(), anyString(), anyInt());
+        verify(auditService, never()).recordEvent(anyLong(), any(), any(), any(), any(), any());
     }
 
     @Test
-    void actualizarEspecialidad_exito_actualizaYAudita() {
-        mockAdminUsuario();
-        ActualizarEspecialidadRequest req = new ActualizarEspecialidadRequest("Pediatría Integral", 30);
-        Especialidad actual = new Especialidad(2L, "esp-uuid-2", "Pediatría", 20, "ACTIVO");
-        when(especialidadRepository.buscarPorPublicId("esp-uuid-2")).thenReturn(Optional.of(actual));
-        when(especialidadRepository.existePorNombreYNoPublicId("Pediatría Integral", "esp-uuid-2")).thenReturn(false);
+    void updateSpecialty_success_updatesAndAudits() {
+        mockAdminUser();
+        UpdateSpecialtyRequest req = new UpdateSpecialtyRequest("Pediatría Integral", 30);
+        Specialty actual = new Specialty(2L, "esp-uuid-2", "Pediatría", 20, "ACTIVO");
+        when(specialtyRepository.findByPublicId("esp-uuid-2")).thenReturn(Optional.of(actual));
+        when(specialtyRepository.existsByNameAndNotPublicId("Pediatría Integral", "esp-uuid-2")).thenReturn(false);
 
-        EspecialidadResponse resp = catalogService.actualizarEspecialidad("esp-uuid-2", req, ADMIN_PUBLIC_ID, IP_ORIGEN);
+        SpecialtyResponse resp = catalogService.updateSpecialty("esp-uuid-2", req, ADMIN_PUBLIC_ID, IP_ORIGEN);
 
-        assertThat(resp.nombre()).isEqualTo("Pediatría Integral");
-        assertThat(resp.duracionSlotMin()).isEqualTo(30);
+        assertThat(resp.name()).isEqualTo("Pediatría Integral");
+        assertThat(resp.slotDurationMinutes()).isEqualTo(30);
 
-        verify(especialidadRepository).actualizar("esp-uuid-2", "Pediatría Integral", 30);
-        verify(auditoriaService).registrarEvento(
+        verify(specialtyRepository).update("esp-uuid-2", "Pediatría Integral", 30);
+        verify(auditService).recordEvent(
                 eq(ADMIN_ID),
-                eq(AccionAuditable.CAMBIO_ADMINISTRATIVO),
+                eq(AuditableAction.CAMBIO_ADMINISTRATIVO),
                 eq("ESPECIALIDAD"),
                 eq("esp-uuid-2"),
-                eq(ResultadoAuditoria.EXITO),
+                eq(AuditResult.EXITO),
                 eq(IP_ORIGEN)
         );
     }
 
     @Test
-    void actualizarEspecialidad_noExiste_lanzaRecursoNoEncontrado() {
-        ActualizarEspecialidadRequest req = new ActualizarEspecialidadRequest("Pediatría", 30);
-        when(especialidadRepository.buscarPorPublicId("no-existe")).thenReturn(Optional.empty());
+    void updateSpecialty_notFound_throwsResourceNotFound() {
+        UpdateSpecialtyRequest req = new UpdateSpecialtyRequest("Pediatría", 30);
+        when(specialtyRepository.findByPublicId("no-existe")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> catalogService.actualizarEspecialidad("no-existe", req, ADMIN_PUBLIC_ID, IP_ORIGEN))
-                .isInstanceOf(RecursoNoEncontradoException.class);
+        assertThatThrownBy(() -> catalogService.updateSpecialty("no-existe", req, ADMIN_PUBLIC_ID, IP_ORIGEN))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
-    void actualizarEspecialidad_nombreDuplicado_lanzaDatosInvalidos() {
-        ActualizarEspecialidadRequest req = new ActualizarEspecialidadRequest("Cardiología", 30);
-        Especialidad actual = new Especialidad(2L, "esp-uuid-2", "Pediatría", 20, "ACTIVO");
-        when(especialidadRepository.buscarPorPublicId("esp-uuid-2")).thenReturn(Optional.of(actual));
-        when(especialidadRepository.existePorNombreYNoPublicId("Cardiología", "esp-uuid-2")).thenReturn(true);
+    void updateSpecialty_duplicateName_throwsInvalidData() {
+        UpdateSpecialtyRequest req = new UpdateSpecialtyRequest("Cardiología", 30);
+        Specialty actual = new Specialty(2L, "esp-uuid-2", "Pediatría", 20, "ACTIVO");
+        when(specialtyRepository.findByPublicId("esp-uuid-2")).thenReturn(Optional.of(actual));
+        when(specialtyRepository.existsByNameAndNotPublicId("Cardiología", "esp-uuid-2")).thenReturn(true);
 
-        assertThatThrownBy(() -> catalogService.actualizarEspecialidad("esp-uuid-2", req, ADMIN_PUBLIC_ID, IP_ORIGEN))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> catalogService.updateSpecialty("esp-uuid-2", req, ADMIN_PUBLIC_ID, IP_ORIGEN))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("Ya existe otra especialidad");
     }
 
     @Test
-    void desactivarEspecialidad_exito_cambiaEstadoAInactivo() {
-        mockAdminUsuario();
-        Especialidad actual = new Especialidad(1L, "esp-uuid-1", "Medicina", 20, "ACTIVO");
-        when(especialidadRepository.buscarPorPublicId("esp-uuid-1")).thenReturn(Optional.of(actual));
+    void deactivateSpecialty_success_changesStatusToInactive() {
+        mockAdminUser();
+        Specialty actual = new Specialty(1L, "esp-uuid-1", "Medicina", 20, "ACTIVO");
+        when(specialtyRepository.findByPublicId("esp-uuid-1")).thenReturn(Optional.of(actual));
 
-        EspecialidadResponse resp = catalogService.desactivarEspecialidad("esp-uuid-1", ADMIN_PUBLIC_ID, IP_ORIGEN);
+        SpecialtyResponse resp = catalogService.deactivateSpecialty("esp-uuid-1", ADMIN_PUBLIC_ID, IP_ORIGEN);
 
-        assertThat(resp.estado()).isEqualTo("INACTIVO");
-        verify(especialidadRepository).cambiarEstado("esp-uuid-1", "INACTIVO");
-        verify(auditoriaService).registrarEvento(eq(ADMIN_ID), eq(AccionAuditable.CAMBIO_ADMINISTRATIVO), eq("ESPECIALIDAD"), eq("esp-uuid-1"), eq(ResultadoAuditoria.EXITO), eq(IP_ORIGEN));
+        assertThat(resp.status()).isEqualTo("INACTIVO");
+        verify(specialtyRepository).changeStatus("esp-uuid-1", "INACTIVO");
+        verify(auditService).recordEvent(eq(ADMIN_ID), eq(AuditableAction.CAMBIO_ADMINISTRATIVO), eq("ESPECIALIDAD"), eq("esp-uuid-1"), eq(AuditResult.EXITO), eq(IP_ORIGEN));
     }
 
     @Test
-    void activarEspecialidad_exito_cambiaEstadoAActivo() {
-        mockAdminUsuario();
-        Especialidad actual = new Especialidad(1L, "esp-uuid-1", "Medicina", 20, "INACTIVO");
-        when(especialidadRepository.buscarPorPublicId("esp-uuid-1")).thenReturn(Optional.of(actual));
+    void activateSpecialty_success_changesStatusToActive() {
+        mockAdminUser();
+        Specialty actual = new Specialty(1L, "esp-uuid-1", "Medicina", 20, "INACTIVO");
+        when(specialtyRepository.findByPublicId("esp-uuid-1")).thenReturn(Optional.of(actual));
 
-        EspecialidadResponse resp = catalogService.activarEspecialidad("esp-uuid-1", ADMIN_PUBLIC_ID, IP_ORIGEN);
+        SpecialtyResponse resp = catalogService.activateSpecialty("esp-uuid-1", ADMIN_PUBLIC_ID, IP_ORIGEN);
 
-        assertThat(resp.estado()).isEqualTo("ACTIVO");
-        verify(especialidadRepository).cambiarEstado("esp-uuid-1", "ACTIVO");
+        assertThat(resp.status()).isEqualTo("ACTIVO");
+        verify(specialtyRepository).changeStatus("esp-uuid-1", "ACTIVO");
     }
 
     @Test
-    void listarEspecialidades_conFiltroValido_retornaPaginado() {
-        Especialidad esp = new Especialidad(1L, "esp-1", "Cardiología", 25, "ACTIVO");
-        when(especialidadRepository.listar(0, 10, "ACTIVO")).thenReturn(List.of(esp));
-        when(especialidadRepository.contar("ACTIVO")).thenReturn(1L);
+    void listSpecialties_withFilterValid_returnsPaginated() {
+        Specialty esp = new Specialty(1L, "esp-1", "Cardiología", 25, "ACTIVO");
+        when(specialtyRepository.list(0, 10, "ACTIVO")).thenReturn(List.of(esp));
+        when(specialtyRepository.count("ACTIVO")).thenReturn(1L);
 
-        PaginatedResponse<EspecialidadResponse> pag = catalogService.listarEspecialidades(0, 10, "ACTIVO");
+        PaginatedResponse<SpecialtyResponse> pag = catalogService.listSpecialties(0, 10, "ACTIVO");
 
         assertThat(pag.content()).hasSize(1);
         assertThat(pag.totalElements()).isEqualTo(1L);
@@ -203,9 +203,9 @@ class AdminCatalogServiceTest {
     }
 
     @Test
-    void listarEspecialidades_estadoInvalido_lanzaDatosInvalidos() {
-        assertThatThrownBy(() -> catalogService.listarEspecialidades(0, 10, "PENDIENTE"))
-                .isInstanceOf(DatosInvalidosException.class)
+    void listSpecialties_statusInvalid_throwsInvalidData() {
+        assertThatThrownBy(() -> catalogService.listSpecialties(0, 10, "PENDIENTE"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("Estado invalido");
     }
 }

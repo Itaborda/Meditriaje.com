@@ -3,8 +3,8 @@ package com.meditriaje.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.meditriaje.config.CorsConfig;
 import com.meditriaje.config.SecurityConfig;
-import com.meditriaje.dto.clinical.AccesoBreakGlassResponse;
-import com.meditriaje.dto.clinical.ActivarBreakGlassRequest;
+import com.meditriaje.dto.clinical.BreakGlassAccessResponse;
+import com.meditriaje.dto.clinical.ActivateBreakGlassRequest;
 import com.meditriaje.exception.GlobalExceptionHandler;
 import com.meditriaje.security.JwtService;
 import com.meditriaje.service.BreakGlassService;
@@ -55,36 +55,36 @@ class ClinicalBreakGlassControllerTest {
     private final String tokenAdmin = "token.admin.valido";
 
     private void mockAuth(String token, String publicId, String role) {
-        when(jwtService.esValido(token)).thenReturn(true);
-        when(jwtService.extraerPublicId(token)).thenReturn(publicId);
-        when(jwtService.extraerRoles(token)).thenReturn(List.of(role));
+        when(jwtService.isValid(token)).thenReturn(true);
+        when(jwtService.extractPublicId(token)).thenReturn(publicId);
+        when(jwtService.extractRoles(token)).thenReturn(List.of(role));
     }
 
     @Test
     @DisplayName("POST /break-glass: 201 Created para ROLE_PROFESIONAL con cabecera Location")
-    void activarBreakGlass_profesional_201Created() throws Exception {
+    void activateBreakGlass_professional_201Created() throws Exception {
         mockAuth(tokenProfesional, "u-prof-1", "ROLE_PROFESIONAL");
 
-        ActivarBreakGlassRequest request = new ActivarBreakGlassRequest(
+        ActivateBreakGlassRequest request = new ActivateBreakGlassRequest(
                 "pac-1234",
                 "Paciente en estado de shock severo requiere consulta urgente de historial clinico."
         );
 
         Instant ahora = Instant.now();
         Instant exp = ahora.plus(24, ChronoUnit.HOURS);
-        AccesoBreakGlassResponse response = new AccesoBreakGlassResponse(
+        BreakGlassAccessResponse response = new BreakGlassAccessResponse(
                 "bg-uuid-1",
                 "prof-uuid-1",
                 "Dr. Roberto Gomez",
                 "pac-1234",
                 "Carlos Sanchez",
-                request.motivo(),
+                request.reason(),
                 exp,
                 ahora,
                 true
         );
 
-        when(breakGlassService.activarBreakGlass(eq(request), eq("u-prof-1"), anyString()))
+        when(breakGlassService.activateBreakGlass(eq(request), eq("u-prof-1"), anyString()))
                 .thenReturn(response);
 
         mockMvc.perform(post("/api/v1/clinical/break-glass")
@@ -101,10 +101,10 @@ class ClinicalBreakGlassControllerTest {
 
     @Test
     @DisplayName("POST /break-glass: 403 Forbidden para ROLE_PACIENTE")
-    void activarBreakGlass_paciente_403Forbidden() throws Exception {
+    void activateBreakGlass_patient_403Forbidden() throws Exception {
         mockAuth(tokenPaciente, "u-pac-1", "ROLE_PACIENTE");
 
-        ActivarBreakGlassRequest request = new ActivarBreakGlassRequest(
+        ActivateBreakGlassRequest request = new ActivateBreakGlassRequest(
                 "pac-1234",
                 "Paciente en estado de shock severo requiere consulta urgente de historial clinico."
         );
@@ -122,7 +122,7 @@ class ClinicalBreakGlassControllerTest {
     void activarBreakGlass_admin_403Forbidden() throws Exception {
         mockAuth(tokenAdmin, "u-admin-1", "ROLE_ADMINISTRADOR");
 
-        ActivarBreakGlassRequest request = new ActivarBreakGlassRequest(
+        ActivateBreakGlassRequest request = new ActivateBreakGlassRequest(
                 "pac-1234",
                 "Paciente en estado de shock severo requiere consulta urgente de historial clinico."
         );
@@ -138,7 +138,7 @@ class ClinicalBreakGlassControllerTest {
     @Test
     @DisplayName("POST /break-glass: 401 Unauthorized sin sesión")
     void activarBreakGlass_sinSesion_401Unauthorized() throws Exception {
-        ActivarBreakGlassRequest request = new ActivarBreakGlassRequest(
+        ActivateBreakGlassRequest request = new ActivateBreakGlassRequest(
                 "pac-1234",
                 "Paciente en estado de shock severo requiere consulta urgente de historial clinico."
         );
@@ -152,10 +152,10 @@ class ClinicalBreakGlassControllerTest {
 
     @Test
     @DisplayName("POST /break-glass: 400 Bad Request cuando el motivo es menor a 20 caracteres")
-    void activarBreakGlass_motivoCorto_400BadRequest() throws Exception {
+    void activateBreakGlass_shortReason_400BadRequest() throws Exception {
         mockAuth(tokenProfesional, "u-prof-1", "ROLE_PROFESIONAL");
 
-        ActivarBreakGlassRequest request = new ActivarBreakGlassRequest(
+        ActivateBreakGlassRequest request = new ActivateBreakGlassRequest(
                 "pac-1234",
                 "Muy corto"
         );
@@ -170,10 +170,10 @@ class ClinicalBreakGlassControllerTest {
 
     @Test
     @DisplayName("GET /break-glass/active: 200 OK para ROLE_PROFESIONAL")
-    void listarMisAccesosActivos_profesional_200Ok() throws Exception {
+    void listMyAccessesActive_professional_200Ok() throws Exception {
         mockAuth(tokenProfesional, "u-prof-1", "ROLE_PROFESIONAL");
 
-        AccesoBreakGlassResponse item = new AccesoBreakGlassResponse(
+        BreakGlassAccessResponse item = new BreakGlassAccessResponse(
                 "bg-1",
                 "prof-1",
                 "Dr. Roberto Gomez",
@@ -185,7 +185,7 @@ class ClinicalBreakGlassControllerTest {
                 true
         );
 
-        when(breakGlassService.listarMisAccesosActivos("u-prof-1")).thenReturn(List.of(item));
+        when(breakGlassService.listMyActiveAccesses("u-prof-1")).thenReturn(List.of(item));
 
         mockMvc.perform(get("/api/v1/clinical/break-glass/active")
                         .cookie(new Cookie("access_token", tokenProfesional)))
@@ -196,10 +196,10 @@ class ClinicalBreakGlassControllerTest {
 
     @Test
     @DisplayName("GET /break-glass/{publicId}: 200 OK para ROLE_PROFESIONAL")
-    void obtenerPorPublicId_profesional_200Ok() throws Exception {
+    void getByPublicId_professional_200Ok() throws Exception {
         mockAuth(tokenProfesional, "u-prof-1", "ROLE_PROFESIONAL");
 
-        AccesoBreakGlassResponse item = new AccesoBreakGlassResponse(
+        BreakGlassAccessResponse item = new BreakGlassAccessResponse(
                 "bg-99",
                 "prof-1",
                 "Dr. Roberto Gomez",
@@ -211,7 +211,7 @@ class ClinicalBreakGlassControllerTest {
                 true
         );
 
-        when(breakGlassService.obtenerPorPublicId("bg-99", "u-prof-1")).thenReturn(item);
+        when(breakGlassService.getByPublicId("bg-99", "u-prof-1")).thenReturn(item);
 
         mockMvc.perform(get("/api/v1/clinical/break-glass/bg-99")
                         .cookie(new Cookie("access_token", tokenProfesional)))

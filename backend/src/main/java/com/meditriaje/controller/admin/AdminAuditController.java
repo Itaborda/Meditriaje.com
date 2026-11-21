@@ -1,8 +1,8 @@
 package com.meditriaje.controller.admin;
 
-import com.meditriaje.dto.audit.RegistroAuditoriaResponse;
+import com.meditriaje.dto.audit.AuditRecordResponse;
 import com.meditriaje.dto.common.PaginatedResponse;
-import com.meditriaje.service.AuditoriaService;
+import com.meditriaje.service.AuditService;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -24,26 +24,26 @@ import java.util.Objects;
 @PreAuthorize("hasAuthority('ROLE_ADMINISTRADOR')")
 public class AdminAuditController {
 
-    private final AuditoriaService auditoriaService;
+    private final AuditService auditService;
 
-    public AdminAuditController(AuditoriaService auditoriaService) {
-        this.auditoriaService = Objects.requireNonNull(auditoriaService, "auditoriaService no puede ser nulo");
+    public AdminAuditController(AuditService auditService) {
+        this.auditService = Objects.requireNonNull(auditService, "auditoriaService no puede ser nulo");
     }
 
     /**
      * Consulta paginada y filtrada de eventos de la bitácora de auditoría.
      */
     @GetMapping
-    public ResponseEntity<PaginatedResponse<RegistroAuditoriaResponse>> consultarBitacora(
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta,
-            @RequestParam(required = false) String accion,
-            @RequestParam(required = false) String resultado,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
+    public ResponseEntity<PaginatedResponse<AuditRecordResponse>> queryAuditLog(
+            @RequestParam(value = "desde", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
+            @RequestParam(value = "hasta", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
+            @RequestParam(value = "accion", required = false) String action,
+            @RequestParam(value = "resultado", required = false) String result,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size
     ) {
-        PaginatedResponse<RegistroAuditoriaResponse> response =
-                auditoriaService.consultarBitacora(desde, hasta, accion, resultado, page, size);
+        PaginatedResponse<AuditRecordResponse> response =
+                auditService.queryAuditLog(fromDate, toDate, action, result, page, size);
         return ResponseEntity.ok(response);
     }
 }

@@ -1,37 +1,37 @@
 package com.meditriaje.service;
 
-import com.meditriaje.dto.emergency.AsignarEquipoRequest;
-import com.meditriaje.dto.emergency.EpisodioUrgenciaResponse;
-import com.meditriaje.dto.emergency.ItemColaUrgenciaResponse;
-import com.meditriaje.dto.emergency.ReconciliarIdentidadRequest;
-import com.meditriaje.dto.emergency.RegistrarAdmisionUrgenciaRequest;
-import com.meditriaje.dto.emergency.RegistrarValoracionTriajeRequest;
-import com.meditriaje.dto.emergency.ValoracionTriajeResponse;
-import com.meditriaje.exception.AccesoNoAutorizadoException;
-import com.meditriaje.exception.ConflictoOperacionException;
-import com.meditriaje.exception.DatosInvalidosException;
-import com.meditriaje.exception.RecursoNoEncontradoException;
-import com.meditriaje.model.AccionAuditable;
-import com.meditriaje.model.AsignacionAsistencial;
-import com.meditriaje.model.EpisodioAtencion;
-import com.meditriaje.model.EventoAuditoria;
-import com.meditriaje.model.IdentidadProvisional;
-import com.meditriaje.model.IngresoUrgencia;
-import com.meditriaje.model.Paciente;
-import com.meditriaje.model.Profesional;
-import com.meditriaje.model.ResultadoAuditoria;
-import com.meditriaje.model.Sede;
-import com.meditriaje.model.Usuario;
-import com.meditriaje.model.ValoracionTriaje;
-import com.meditriaje.repository.AsignacionAsistencialRepository;
-import com.meditriaje.repository.EpisodioAtencionRepository;
-import com.meditriaje.repository.IdentidadProvisionalRepository;
-import com.meditriaje.repository.IngresoUrgenciaRepository;
-import com.meditriaje.repository.PacienteRepository;
-import com.meditriaje.repository.ProfesionalRepository;
+import com.meditriaje.dto.emergency.AssignTeamRequest;
+import com.meditriaje.dto.emergency.EmergencyEpisodeResponse;
+import com.meditriaje.dto.emergency.EmergencyQueueItemResponse;
+import com.meditriaje.dto.emergency.ReconcileIdentityRequest;
+import com.meditriaje.dto.emergency.RegisterEmergencyAdmissionRequest;
+import com.meditriaje.dto.emergency.RegisterTriageAssessmentRequest;
+import com.meditriaje.dto.emergency.TriageAssessmentResponse;
+import com.meditriaje.exception.UnauthorizedAccessException;
+import com.meditriaje.exception.OperationConflictException;
+import com.meditriaje.exception.InvalidDataException;
+import com.meditriaje.exception.ResourceNotFoundException;
+import com.meditriaje.model.AuditableAction;
+import com.meditriaje.model.CareAssignment;
+import com.meditriaje.model.CareEpisode;
+import com.meditriaje.model.AuditEvent;
+import com.meditriaje.model.ProvisionalIdentity;
+import com.meditriaje.model.EmergencyAdmission;
+import com.meditriaje.model.Patient;
+import com.meditriaje.model.Professional;
+import com.meditriaje.model.AuditResult;
+import com.meditriaje.model.Site;
+import com.meditriaje.model.User;
+import com.meditriaje.model.TriageAssessment;
+import com.meditriaje.repository.CareAssignmentRepository;
+import com.meditriaje.repository.CareEpisodeRepository;
+import com.meditriaje.repository.ProvisionalIdentityRepository;
+import com.meditriaje.repository.EmergencyAdmissionRepository;
+import com.meditriaje.repository.PatientRepository;
+import com.meditriaje.repository.ProfessionalRepository;
 import com.meditriaje.repository.SiteRepository;
-import com.meditriaje.repository.UsuarioRepository;
-import com.meditriaje.repository.ValoracionTriajeRepository;
+import com.meditriaje.repository.UserRepository;
+import com.meditriaje.repository.TriageAssessmentRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.stereotype.Service;
@@ -58,73 +58,73 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class EmergencyService {
 
-    public static final ZoneId ZONE_BOGOTA = ZoneId.of("America/Bogota");
+    public static final ZoneId BOGOTA_ZONE = ZoneId.of("America/Bogota");
     private static final String ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     private static final SecureRandom RANDOM = new SecureRandom();
 
-    private final EpisodioAtencionRepository episodioRepository;
-    private final IngresoUrgenciaRepository ingresoRepository;
-    private final IdentidadProvisionalRepository identidadRepository;
-    private final ValoracionTriajeRepository valoracionRepository;
-    private final AsignacionAsistencialRepository asignacionRepository;
+    private final CareEpisodeRepository episodeRepository;
+    private final EmergencyAdmissionRepository admissionRepository;
+    private final ProvisionalIdentityRepository identityRepository;
+    private final TriageAssessmentRepository assessmentRepository;
+    private final CareAssignmentRepository careAssignmentRepository;
     private final SiteRepository siteRepository;
-    private final PacienteRepository pacienteRepository;
-    private final UsuarioRepository usuarioRepository;
-    private final ProfesionalRepository profesionalRepository;
-    private final AuditoriaService auditoriaService;
+    private final PatientRepository patientRepository;
+    private final UserRepository userRepository;
+    private final ProfessionalRepository professionalRepository;
+    private final AuditService auditService;
     private final Clock clock;
 
     public EmergencyService(
-            EpisodioAtencionRepository episodioRepository,
-            IngresoUrgenciaRepository ingresoRepository,
-            IdentidadProvisionalRepository identidadRepository,
-            ValoracionTriajeRepository valoracionRepository,
-            AsignacionAsistencialRepository asignacionRepository,
+            CareEpisodeRepository episodeRepository,
+            EmergencyAdmissionRepository admissionRepository,
+            ProvisionalIdentityRepository identityRepository,
+            TriageAssessmentRepository assessmentRepository,
+            CareAssignmentRepository careAssignmentRepository,
             SiteRepository siteRepository,
-            PacienteRepository pacienteRepository,
-            UsuarioRepository usuarioRepository,
-            ProfesionalRepository profesionalRepository,
-            AuditoriaService auditoriaService
+            PatientRepository patientRepository,
+            UserRepository userRepository,
+            ProfessionalRepository professionalRepository,
+            AuditService auditService
     ) {
         this(
-                episodioRepository,
-                ingresoRepository,
-                identidadRepository,
-                valoracionRepository,
-                asignacionRepository,
+                episodeRepository,
+                admissionRepository,
+                identityRepository,
+                assessmentRepository,
+                careAssignmentRepository,
                 siteRepository,
-                pacienteRepository,
-                usuarioRepository,
-                profesionalRepository,
-                auditoriaService,
-                Clock.system(ZONE_BOGOTA)
+                patientRepository,
+                userRepository,
+                professionalRepository,
+                auditService,
+                Clock.system(BOGOTA_ZONE)
         );
     }
 
     @Autowired
     public EmergencyService(
-            EpisodioAtencionRepository episodioRepository,
-            IngresoUrgenciaRepository ingresoRepository,
-            IdentidadProvisionalRepository identidadRepository,
-            ValoracionTriajeRepository valoracionRepository,
-            AsignacionAsistencialRepository asignacionRepository,
+            CareEpisodeRepository episodeRepository,
+            EmergencyAdmissionRepository admissionRepository,
+            ProvisionalIdentityRepository identityRepository,
+            TriageAssessmentRepository assessmentRepository,
+            CareAssignmentRepository careAssignmentRepository,
             SiteRepository siteRepository,
-            PacienteRepository pacienteRepository,
-            UsuarioRepository usuarioRepository,
-            ProfesionalRepository profesionalRepository,
-            AuditoriaService auditoriaService,
+            PatientRepository patientRepository,
+            UserRepository userRepository,
+            ProfessionalRepository professionalRepository,
+            AuditService auditService,
             Clock clock
     ) {
-        this.episodioRepository = Objects.requireNonNull(episodioRepository);
-        this.ingresoRepository = Objects.requireNonNull(ingresoRepository);
-        this.identidadRepository = Objects.requireNonNull(identidadRepository);
-        this.valoracionRepository = Objects.requireNonNull(valoracionRepository);
-        this.asignacionRepository = Objects.requireNonNull(asignacionRepository);
+        this.episodeRepository = Objects.requireNonNull(episodeRepository);
+        this.admissionRepository = Objects.requireNonNull(admissionRepository);
+        this.identityRepository = Objects.requireNonNull(identityRepository);
+        this.assessmentRepository = Objects.requireNonNull(assessmentRepository);
+        this.careAssignmentRepository = Objects.requireNonNull(careAssignmentRepository);
         this.siteRepository = Objects.requireNonNull(siteRepository);
-        this.pacienteRepository = Objects.requireNonNull(pacienteRepository);
-        this.usuarioRepository = Objects.requireNonNull(usuarioRepository);
-        this.profesionalRepository = Objects.requireNonNull(profesionalRepository);
-        this.auditoriaService = Objects.requireNonNull(auditoriaService);
+        this.patientRepository = Objects.requireNonNull(patientRepository);
+        this.userRepository = Objects.requireNonNull(userRepository);
+        this.professionalRepository = Objects.requireNonNull(professionalRepository);
+        this.auditService = Objects.requireNonNull(auditService);
         this.clock = Objects.requireNonNull(clock);
     }
 
@@ -133,31 +133,31 @@ public class EmergencyService {
      * Acepta pacientes identificados o indocumentados (NN con código provisional opaco).
      */
     @Transactional
-    public EpisodioUrgenciaResponse registrarAdmisionUrgencia(
-            RegistrarAdmisionUrgenciaRequest request,
+    public EmergencyEpisodeResponse registerEmergencyAdmission(
+            RegisterEmergencyAdmissionRequest request,
             String usuarioAutenticadoPublicId,
             String ipOrigen
     ) {
         Objects.requireNonNull(request, "request no puede ser nulo");
-        Usuario registrador = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario registrador no encontrado."));
+        User registrador = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario registrador no encontrado."));
 
         // Hospital único: el episodio se abre siempre en la única sede (la resuelve el servidor).
-        Sede sede = siteRepository.getSingleSite();
+        Site sede = siteRepository.getSingleSite();
 
         Long pacienteId = null;
-        boolean esProvisional = request.esIdentidadProvisional() || request.pacientePublicId() == null || request.pacientePublicId().isBlank();
+        boolean esProvisional = request.isProvisionalIdentity() || request.patientPublicId() == null || request.patientPublicId().isBlank();
 
         if (!esProvisional) {
-            Paciente paciente = pacienteRepository.buscarPorPublicId(request.pacientePublicId())
-                    .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado: " + request.pacientePublicId()));
+            Patient paciente = patientRepository.findByPublicId(request.patientPublicId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Paciente no encontrado: " + request.patientPublicId()));
             pacienteId = paciente.id();
         }
 
         String episodioPubId = UUID.randomUUID().toString();
         Instant ahora = Instant.now(clock);
 
-        EpisodioAtencion episodio = new EpisodioAtencion(
+        CareEpisode episodio = new CareEpisode(
                 null,
                 episodioPubId,
                 pacienteId,
@@ -166,93 +166,93 @@ public class EmergencyService {
                 "REGISTRADO",
                 ahora,
                 null,
-                request.motivoLlegada(),
+                request.arrivalReason(),
                 ahora,
                 ahora
         );
-        EpisodioAtencion guardado = episodioRepository.guardar(episodio);
+        CareEpisode guardado = episodeRepository.save(episodio);
 
         // Guardar detalle de ingreso presencial
-        IngresoUrgencia ingreso = new IngresoUrgencia(
+        EmergencyAdmission ingreso = new EmergencyAdmission(
                 null,
                 UUID.randomUUID().toString(),
                 guardado.id(),
-                request.medioLlegada(),
-                request.acompananteNombre(),
-                request.acompananteContacto(),
-                request.motivoLlegada(),
-                request.observaciones(),
+                request.arrivalMode(),
+                request.companionName(),
+                request.companionContact(),
+                request.arrivalReason(),
+                request.notes(),
                 registrador.id(),
                 ahora
         );
-        ingresoRepository.guardar(ingreso);
+        admissionRepository.save(ingreso);
 
         String codigoProvisional = null;
         if (esProvisional) {
-            codigoProvisional = generarCodigoProvisional();
-            IdentidadProvisional identidad = new IdentidadProvisional(
+            codigoProvisional = generateProvisionalCode();
+            ProvisionalIdentity identidad = new ProvisionalIdentity(
                     null,
                     UUID.randomUUID().toString(),
                     guardado.id(),
                     codigoProvisional,
-                    request.descripcionFisica(),
-                    request.edadAparente(),
-                    request.generoAparente(),
-                    request.condicionLlegada(),
+                    request.physicalDescription(),
+                    request.apparentAge(),
+                    request.apparentGender(),
+                    request.arrivalCondition(),
                     "PROVISIONAL",
                     null,
                     null,
                     null,
                     ahora
             );
-            identidadRepository.guardar(identidad);
+            identityRepository.save(identidad);
 
-            auditoriaService.auditar(new EventoAuditoria(
+            auditService.audit(new AuditEvent(
                     registrador.id(),
-                    AccionAuditable.IDENTIDAD_PROVISIONAL_REGISTRADA,
+                    AuditableAction.IDENTIDAD_PROVISIONAL_REGISTRADA,
                     "EPISODIO_ATENCION",
                     guardado.publicId(),
-                    ResultadoAuditoria.EXITO,
+                    AuditResult.EXITO,
                     ipOrigen
             ));
         }
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 registrador.id(),
-                AccionAuditable.INGRESO_URGENCIA_REGISTRADO,
+                AuditableAction.INGRESO_URGENCIA_REGISTRADO,
                 "EPISODIO_ATENCION",
                 guardado.publicId(),
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
-        return episodioRepository.buscarDetallePorPublicId(episodioPubId)
+        return episodeRepository.findDetailByPublicId(episodioPubId)
                 .orElseThrow(() -> new IllegalStateException("Error al recuperar episodio recién creado."));
     }
 
     /**
      * Consulta el detalle de un episodio de urgencias con comprobaciones de autorización (U02).
      */
-    public EpisodioUrgenciaResponse obtenerDetalleEpisodio(
+    public EmergencyEpisodeResponse getEpisodeDetail(
             String episodePublicId,
             String usuarioAutenticadoPublicId,
             Collection<? extends GrantedAuthority> authorities
     ) {
-        EpisodioUrgenciaResponse detalle = episodioRepository.buscarDetallePorPublicId(episodePublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Episodio de urgencias no encontrado: " + episodePublicId));
+        EmergencyEpisodeResponse detalle = episodeRepository.findDetailByPublicId(episodePublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Episodio de urgencias no encontrado: " + episodePublicId));
 
         Set<String> roles = authorities != null
                 ? authorities.stream().map(GrantedAuthority::getAuthority).collect(Collectors.toSet())
                 : Set.of();
 
         if (roles.contains("ROLE_PACIENTE")) {
-            Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                    .orElseThrow(() -> new RecursoNoEncontradoException("Usuario autenticado no encontrado."));
-            Paciente paciente = pacienteRepository.buscarPorUsuarioId(usuario.id())
-                    .orElseThrow(() -> new AccesoNoAutorizadoException("Usuario no registrado como paciente."));
+            User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Usuario autenticado no encontrado."));
+            Patient paciente = patientRepository.findByUserId(usuario.id())
+                    .orElseThrow(() -> new UnauthorizedAccessException("Usuario no registrado como paciente."));
 
-            if (!Objects.equals(detalle.pacientePublicId(), paciente.publicId())) {
-                throw new AccesoNoAutorizadoException("No tiene autorización para consultar episodios de otro paciente.");
+            if (!Objects.equals(detalle.patientPublicId(), paciente.publicId())) {
+                throw new UnauthorizedAccessException("No tiene autorización para consultar episodios de otro paciente.");
             }
         }
 
@@ -263,43 +263,43 @@ public class EmergencyService {
      * Reconcilia la identidad provisional de un paciente NN hacia su registro civil verificado (U03).
      */
     @Transactional
-    public EpisodioUrgenciaResponse reconciliarIdentidad(
+    public EmergencyEpisodeResponse reconcileIdentity(
             String episodePublicId,
-            ReconciliarIdentidadRequest request,
+            ReconcileIdentityRequest request,
             String usuarioAutenticadoPublicId,
             String ipOrigen
     ) {
         Objects.requireNonNull(request, "request no puede ser nulo");
-        Usuario confirmador = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario confirmador no encontrado."));
+        User confirmador = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario confirmador no encontrado."));
 
-        EpisodioAtencion episodio = episodioRepository.buscarPorPublicId(episodePublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Episodio no encontrado: " + episodePublicId));
+        CareEpisode episodio = episodeRepository.findByPublicId(episodePublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Episodio no encontrado: " + episodePublicId));
 
-        IdentidadProvisional identidad = identidadRepository.buscarPorEpisodioId(episodio.id())
-                .orElseThrow(() -> new DatosInvalidosException("El episodio no cuenta con una identidad provisional para reconciliar."));
+        ProvisionalIdentity identidad = identityRepository.findByEpisodeId(episodio.id())
+                .orElseThrow(() -> new InvalidDataException("El episodio no cuenta con una identidad provisional para reconciliar."));
 
-        if (!"PROVISIONAL".equals(identidad.estado())) {
-            throw new ConflictoOperacionException("La identidad provisional ya fue reconciliada o no está activa.");
+        if (!"PROVISIONAL".equals(identidad.status())) {
+            throw new OperationConflictException("La identidad provisional ya fue reconciliada o no está activa.");
         }
 
-        Paciente pacienteVerificado = pacienteRepository.buscarPorPublicId(request.pacientePublicId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente civil verificado no encontrado: " + request.pacientePublicId()));
+        Patient pacienteVerificado = patientRepository.findByPublicId(request.patientPublicId())
+                .orElseThrow(() -> new ResourceNotFoundException("Paciente civil verificado no encontrado: " + request.patientPublicId()));
 
         Instant ahora = Instant.now(clock);
-        identidadRepository.reconciliarIdentidad(identidad.id(), pacienteVerificado.id(), confirmador.id(), ahora);
-        episodioRepository.vincularPaciente(episodio.id(), pacienteVerificado.id());
+        identityRepository.reconcileIdentity(identidad.id(), pacienteVerificado.id(), confirmador.id(), ahora);
+        episodeRepository.linkPatient(episodio.id(), pacienteVerificado.id());
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 confirmador.id(),
-                AccionAuditable.IDENTIDAD_PROVISIONAL_RECONCILIADA,
+                AuditableAction.IDENTIDAD_PROVISIONAL_RECONCILIADA,
                 "IDENTIDAD_PROVISIONAL",
                 identidad.publicId(),
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
-        return episodioRepository.buscarDetallePorPublicId(episodePublicId)
+        return episodeRepository.findDetailByPublicId(episodePublicId)
                 .orElseThrow(() -> new IllegalStateException("Error al consultar episodio reconciliado."));
     }
 
@@ -307,9 +307,9 @@ public class EmergencyService {
      * Registra una valoración clínica presencial de triaje o reevaluación (U04).
      */
     @Transactional
-    public ValoracionTriajeResponse registrarValoracionTriaje(
+    public TriageAssessmentResponse recordTriageAssessment(
             String episodePublicId,
-            RegistrarValoracionTriajeRequest request,
+            RegisterTriageAssessmentRequest request,
             String usuarioAutenticadoPublicId,
             Collection<? extends GrantedAuthority> authorities,
             String ipOrigen
@@ -321,76 +321,76 @@ public class EmergencyService {
 
         // Solo personal de enfermería o profesionales asistenciales habilitados
         if (!roles.contains("ROLE_ENFERMERIA") && !roles.contains("ROLE_PROFESIONAL")) {
-            throw new AccesoNoAutorizadoException("Solo personal de enfermería o profesionales asistenciales pueden realizar valoraciones de triaje.");
+            throw new UnauthorizedAccessException("Solo personal de enfermería o profesionales asistenciales pueden realizar valoraciones de triaje.");
         }
 
-        Usuario evaluador = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Evaluador no encontrado."));
+        User evaluador = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Evaluador no encontrado."));
 
-        EpisodioAtencion episodio = episodioRepository.buscarPorPublicId(episodePublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Episodio no encontrado: " + episodePublicId));
+        CareEpisode episodio = episodeRepository.findByPublicId(episodePublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Episodio no encontrado: " + episodePublicId));
 
-        if ("EGRESADO".equals(episodio.estado()) || "CANCELADO".equals(episodio.estado())) {
-            throw new ConflictoOperacionException("No es posible registrar triaje en un episodio cerrado o egresado.");
+        if ("EGRESADO".equals(episodio.status()) || "CANCELADO".equals(episodio.status())) {
+            throw new OperationConflictException("No es posible registrar triaje en un episodio cerrado o egresado.");
         }
 
-        int siguienteVersion = valoracionRepository.obtenerSiguienteVersion(episodio.id());
+        int siguienteVersion = assessmentRepository.getNextVersion(episodio.id());
         String valoracionPubId = UUID.randomUUID().toString();
         Instant ahora = Instant.now(clock);
 
-        ValoracionTriaje valoracion = new ValoracionTriaje(
+        TriageAssessment valoracion = new TriageAssessment(
                 null,
                 valoracionPubId,
                 episodio.id(),
                 siguienteVersion,
-                request.nivel(),
-                request.motivoConsulta(),
-                request.hallazgosClinicos(),
-                request.presionArterial(),
-                request.frecuenciaCardiaca(),
-                request.frecuenciaRespiratoria(),
-                request.saturacionOxigeno(),
-                request.temperatura(),
-                request.escalaGlasgow(),
+                request.level(),
+                request.consultationReason(),
+                request.clinicalFindings(),
+                request.bloodPressure(),
+                request.heartRate(),
+                request.respiratoryRate(),
+                request.oxygenSaturation(),
+                request.temperature(),
+                request.glasgowScale(),
                 evaluador.id(),
-                request.esReevaluacion() || siguienteVersion > 1,
-                request.motivoReevaluacion(),
+                request.isReevaluation() || siguienteVersion > 1,
+                request.reevaluationReason(),
                 ahora
         );
-        valoracionRepository.guardar(valoracion);
+        assessmentRepository.save(valoracion);
 
         // Actualizar estado del episodio según la urgencia del nivel asignado
-        if ("I".equals(request.nivel()) || "II".equals(request.nivel())) {
-            episodioRepository.actualizarEstado(episodio.id(), "EN_ATENCION");
-        } else if ("REGISTRADO".equals(episodio.estado())) {
-            episodioRepository.actualizarEstado(episodio.id(), "EN_TRIAJE");
+        if ("I".equals(request.level()) || "II".equals(request.level())) {
+            episodeRepository.updateStatus(episodio.id(), "EN_ATENCION");
+        } else if ("REGISTRADO".equals(episodio.status())) {
+            episodeRepository.updateStatus(episodio.id(), "EN_TRIAJE");
         }
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 evaluador.id(),
-                AccionAuditable.VALORACION_TRIAJE_REGISTRADA,
+                AuditableAction.VALORACION_TRIAJE_REGISTRADA,
                 "VALORACION_TRIAJE",
                 valoracionPubId,
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
-        return new ValoracionTriajeResponse(
+        return new TriageAssessmentResponse(
                 valoracionPubId,
                 episodio.publicId(),
                 siguienteVersion,
-                request.nivel(),
-                request.motivoConsulta(),
-                request.hallazgosClinicos(),
-                request.presionArterial(),
-                request.frecuenciaCardiaca(),
-                request.frecuenciaRespiratoria(),
-                request.saturacionOxigeno(),
-                request.temperatura(),
-                request.escalaGlasgow(),
+                request.level(),
+                request.consultationReason(),
+                request.clinicalFindings(),
+                request.bloodPressure(),
+                request.heartRate(),
+                request.respiratoryRate(),
+                request.oxygenSaturation(),
+                request.temperature(),
+                request.glasgowScale(),
                 evaluador.email(),
-                request.esReevaluacion() || siguienteVersion > 1,
-                request.motivoReevaluacion(),
+                request.isReevaluation() || siguienteVersion > 1,
+                request.reevaluationReason(),
                 ahora
         );
     }
@@ -398,85 +398,85 @@ public class EmergencyService {
     /**
      * Consulta el historial inmutable de valoraciones de triaje de un episodio (U04).
      */
-    public List<ValoracionTriajeResponse> listarHistorialTriaje(
+    public List<TriageAssessmentResponse> listTriageHistory(
             String episodePublicId,
             String usuarioAutenticadoPublicId,
             Collection<? extends GrantedAuthority> authorities
     ) {
-        EpisodioAtencion episodio = episodioRepository.buscarPorPublicId(episodePublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Episodio no encontrado: " + episodePublicId));
+        CareEpisode episodio = episodeRepository.findByPublicId(episodePublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Episodio no encontrado: " + episodePublicId));
 
         Set<String> roles = authorities != null
                 ? authorities.stream().map(GrantedAuthority::getAuthority).collect(Collectors.toSet())
                 : Set.of();
 
         if (roles.contains("ROLE_ADMINISTRADOR")) {
-            throw new AccesoNoAutorizadoException("El personal administrativo no tiene acceso a notas clínicas de triaje.");
+            throw new UnauthorizedAccessException("El personal administrativo no tiene acceso a notas clínicas de triaje.");
         }
 
         if (roles.contains("ROLE_PACIENTE")) {
-            Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                    .orElseThrow(() -> new RecursoNoEncontradoException("Usuario autenticado no encontrado."));
-            Paciente paciente = pacienteRepository.buscarPorUsuarioId(usuario.id())
-                    .orElseThrow(() -> new AccesoNoAutorizadoException("Usuario no registrado como paciente."));
+            User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Usuario autenticado no encontrado."));
+            Patient paciente = patientRepository.findByUserId(usuario.id())
+                    .orElseThrow(() -> new UnauthorizedAccessException("Usuario no registrado como paciente."));
 
-            if (!Objects.equals(episodio.pacienteId(), paciente.id())) {
-                throw new AccesoNoAutorizadoException("No tiene autorización para consultar el triaje de otro paciente.");
+            if (!Objects.equals(episodio.patientId(), paciente.id())) {
+                throw new UnauthorizedAccessException("No tiene autorización para consultar el triaje de otro paciente.");
             }
         }
 
-        return valoracionRepository.listarPorEpisodioId(episodio.id());
+        return assessmentRepository.listByEpisodeId(episodio.id());
     }
 
     /**
      * Asigna un profesional asistencial (médico tratante o interconsultor) al episodio (U06).
      */
     @Transactional
-    public void asignarEquipoAsistencial(
+    public void assignCareTeam(
             String episodePublicId,
-            AsignarEquipoRequest request,
+            AssignTeamRequest request,
             String usuarioAutenticadoPublicId,
             String ipOrigen
     ) {
         Objects.requireNonNull(request, "request no puede ser nulo");
-        Usuario asignador = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario asignador no encontrado."));
+        User asignador = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario asignador no encontrado."));
 
-        EpisodioAtencion episodio = episodioRepository.buscarPorPublicId(episodePublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Episodio no encontrado: " + episodePublicId));
+        CareEpisode episodio = episodeRepository.findByPublicId(episodePublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Episodio no encontrado: " + episodePublicId));
 
-        Profesional profesional = profesionalRepository.buscarPorPublicId(request.profesionalPublicId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Profesional asistencial no encontrado: " + request.profesionalPublicId()));
+        Professional profesional = professionalRepository.findByPublicId(request.professionalPublicId())
+                .orElseThrow(() -> new ResourceNotFoundException("Profesional asistencial no encontrado: " + request.professionalPublicId()));
 
         // Inactivar asignación previa para la misma función si es médico tratante
-        if ("MEDICO_TRATANTE".equals(request.funcion())) {
-            asignacionRepository.inactivarAsignacionPreviaPorFuncion(episodio.id(), "MEDICO_TRATANTE");
+        if ("MEDICO_TRATANTE".equals(request.roleFunction())) {
+            careAssignmentRepository.inactivatePreviousAssignmentByRoleFunction(episodio.id(), "MEDICO_TRATANTE");
         }
 
-        AsignacionAsistencial asignacion = new AsignacionAsistencial(
+        CareAssignment asignacion = new CareAssignment(
                 null,
                 UUID.randomUUID().toString(),
                 episodio.id(),
                 profesional.id(),
-                request.funcion(),
+                request.roleFunction(),
                 asignador.id(),
                 Instant.now(clock),
                 null,
                 true,
                 Instant.now(clock)
         );
-        asignacionRepository.guardar(asignacion);
+        careAssignmentRepository.save(asignacion);
 
-        if (!"EN_ATENCION".equals(episodio.estado()) && !"OBSERVACION".equals(episodio.estado())) {
-            episodioRepository.actualizarEstado(episodio.id(), "EN_ATENCION");
+        if (!"EN_ATENCION".equals(episodio.status()) && !"OBSERVACION".equals(episodio.status())) {
+            episodeRepository.updateStatus(episodio.id(), "EN_ATENCION");
         }
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 asignador.id(),
-                AccionAuditable.ASIGNACION_ASISTENCIAL_REGISTRADA,
+                AuditableAction.ASIGNACION_ASISTENCIAL_REGISTRADA,
                 "EPISODIO_ATENCION",
                 episodio.publicId(),
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
     }
@@ -484,40 +484,40 @@ public class EmergencyService {
     /**
      * Consulta la cola priorizada de urgencias del hospital (U05).
      */
-    public List<ItemColaUrgenciaResponse> listarColaUrgencias(String estadoFiltro) {
+    public List<EmergencyQueueItemResponse> listEmergencyQueue(String estadoFiltro) {
         // Hospital único: sin filtro de sede la cola incluye todos los episodios del hospital.
-        return episodioRepository.listarColaUrgenciaPorSede(null, estadoFiltro);
+        return episodeRepository.listEmergencyQueueBySite(null, estadoFiltro);
     }
 
     /**
      * Cierra y egresa un episodio de urgencias (U06).
      */
     @Transactional
-    public void cerrarEpisodio(String episodePublicId, String usuarioAutenticadoPublicId, String ipOrigen) {
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado."));
+    public void closeEpisode(String episodePublicId, String usuarioAutenticadoPublicId, String ipOrigen) {
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
 
-        EpisodioAtencion episodio = episodioRepository.buscarPorPublicId(episodePublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Episodio no encontrado: " + episodePublicId));
+        CareEpisode episodio = episodeRepository.findByPublicId(episodePublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Episodio no encontrado: " + episodePublicId));
 
-        if ("EGRESADO".equals(episodio.estado()) || "CANCELADO".equals(episodio.estado())) {
-            throw new ConflictoOperacionException("El episodio ya se encuentra cerrado.");
+        if ("EGRESADO".equals(episodio.status()) || "CANCELADO".equals(episodio.status())) {
+            throw new OperationConflictException("El episodio ya se encuentra cerrado.");
         }
 
         Instant ahora = Instant.now(clock);
-        episodioRepository.cerrarEpisodio(episodio.id(), ahora);
+        episodeRepository.closeEpisode(episodio.id(), ahora);
 
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.EPISODIO_CERRADO,
+                AuditableAction.EPISODIO_CERRADO,
                 "EPISODIO_ATENCION",
                 episodio.publicId(),
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
     }
 
-    private String generarCodigoProvisional() {
+    private String generateProvisionalCode() {
         String fecha = LocalDate.now(clock).format(DateTimeFormatter.BASIC_ISO_DATE);
         StringBuilder sufijo = new StringBuilder();
         for (int i = 0; i < 4; i++) {

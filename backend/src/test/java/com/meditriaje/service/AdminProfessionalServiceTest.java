@@ -1,20 +1,20 @@
 package com.meditriaje.service;
 
-import com.meditriaje.dto.admin.ActualizarProfesionalRequest;
-import com.meditriaje.dto.admin.CrearProfesionalRequest;
-import com.meditriaje.dto.admin.CrearProfesionalResponse;
-import com.meditriaje.dto.admin.ProfesionalResponse;
+import com.meditriaje.dto.admin.UpdateProfessionalRequest;
+import com.meditriaje.dto.admin.CreateProfessionalRequest;
+import com.meditriaje.dto.admin.CreateProfessionalResponse;
+import com.meditriaje.dto.admin.ProfessionalResponse;
 import com.meditriaje.dto.common.PaginatedResponse;
-import com.meditriaje.exception.DatosInvalidosException;
-import com.meditriaje.exception.RecursoNoEncontradoException;
-import com.meditriaje.model.AccionAuditable;
-import com.meditriaje.model.Especialidad;
-import com.meditriaje.model.Profesional;
-import com.meditriaje.model.ResultadoAuditoria;
-import com.meditriaje.model.Usuario;
-import com.meditriaje.repository.EspecialidadRepository;
-import com.meditriaje.repository.ProfesionalRepository;
-import com.meditriaje.repository.UsuarioRepository;
+import com.meditriaje.exception.InvalidDataException;
+import com.meditriaje.exception.ResourceNotFoundException;
+import com.meditriaje.model.AuditableAction;
+import com.meditriaje.model.Specialty;
+import com.meditriaje.model.Professional;
+import com.meditriaje.model.AuditResult;
+import com.meditriaje.model.User;
+import com.meditriaje.repository.SpecialtyRepository;
+import com.meditriaje.repository.ProfessionalRepository;
+import com.meditriaje.repository.UserRepository;
 import com.meditriaje.service.email.EmailService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,16 +44,16 @@ import static org.mockito.Mockito.when;
 class AdminProfessionalServiceTest {
 
     @Mock
-    private ProfesionalRepository profesionalRepository;
+    private ProfessionalRepository professionalRepository;
 
     @Mock
-    private UsuarioRepository usuarioRepository;
+    private UserRepository userRepository;
 
     @Mock
-    private EspecialidadRepository especialidadRepository;
+    private SpecialtyRepository specialtyRepository;
 
     @Mock
-    private AuditoriaService auditoriaService;
+    private AuditService auditService;
 
     @Mock
     private PasswordEncoder passwordEncoder;
@@ -70,18 +70,18 @@ class AdminProfessionalServiceTest {
     @BeforeEach
     void setUp() {
         service = new AdminProfessionalService(
-                profesionalRepository,
-                usuarioRepository,
-                especialidadRepository,
-                auditoriaService,
+                professionalRepository,
+                userRepository,
+                specialtyRepository,
+                auditService,
                 passwordEncoder,
                 emailService
         );
     }
 
     private void mockAdmin() {
-        Usuario admin = new Usuario(ADMIN_ID, ADMIN_PUBLIC_ID, "admin@meditriaje.com", "hash", "ACTIVO", 0, null, Instant.now(), false);
-        when(usuarioRepository.buscarPorPublicId(ADMIN_PUBLIC_ID)).thenReturn(Optional.of(admin));
+        User admin = new User(ADMIN_ID, ADMIN_PUBLIC_ID, "admin@meditriaje.com", "hash", "ACTIVO", 0, null, Instant.now(), false);
+        when(userRepository.findByPublicId(ADMIN_PUBLIC_ID)).thenReturn(Optional.of(admin));
     }
 
     // =========================================================================
@@ -89,9 +89,9 @@ class AdminProfessionalServiceTest {
     // =========================================================================
 
     @Test
-    void altaProfesional_conDatosValidos_creaUsuarioYProfesionalConPasswordTemporalYAudita() {
+    void registerProfessional_withDataValid_createsUserAndProfessionalWithPasswordTemporaryAndAudits() {
         mockAdmin();
-        CrearProfesionalRequest req = new CrearProfesionalRequest(
+        CreateProfessionalRequest req = new CreateProfessionalRequest(
                 "RM-12345",
                 "Carlos",
                 "Perez",
@@ -99,57 +99,57 @@ class AdminProfessionalServiceTest {
                 "esp-med-int"
         );
 
-        Especialidad esp = new Especialidad(10L, "esp-med-int", "Medicina Interna", 20, "ACTIVO");
-        when(especialidadRepository.buscarPorPublicId("esp-med-int")).thenReturn(Optional.of(esp));
-        when(profesionalRepository.existePorDocumento(anyString(), anyString())).thenReturn(false);
-        when(usuarioRepository.existePorEmail("carlos.perez@hospital.com")).thenReturn(false);
-        when(profesionalRepository.existePorRegistroMedico("RM-12345")).thenReturn(false);
+        Specialty esp = new Specialty(10L, "esp-med-int", "Medicina Interna", 20, "ACTIVO");
+        when(specialtyRepository.findByPublicId("esp-med-int")).thenReturn(Optional.of(esp));
+        when(professionalRepository.existsByDocument(anyString(), anyString())).thenReturn(false);
+        when(userRepository.existsByEmail("carlos.perez@hospital.com")).thenReturn(false);
+        when(professionalRepository.existsByMedicalLicense("RM-12345")).thenReturn(false);
         when(passwordEncoder.encode(anyString())).thenReturn("argon2id_mock_hash");
-        when(usuarioRepository.crear(anyString(), eq("carlos.perez@hospital.com"), eq("argon2id_mock_hash"), eq(true))).thenReturn(101L);
-        when(usuarioRepository.buscarRolIdPorNombre("ROLE_PROFESIONAL")).thenReturn(Optional.of(2L));
-        when(profesionalRepository.crear(any())).thenReturn(201L);
+        when(userRepository.create(anyString(), eq("carlos.perez@hospital.com"), eq("argon2id_mock_hash"), eq(true))).thenReturn(101L);
+        when(userRepository.findRoleIdByName("ROLE_PROFESIONAL")).thenReturn(Optional.of(2L));
+        when(professionalRepository.create(any())).thenReturn(201L);
 
-        CrearProfesionalResponse resp = service.altaProfesional(req, ADMIN_PUBLIC_ID, IP_ORIGEN);
+        CreateProfessionalResponse resp = service.registerProfessional(req, ADMIN_PUBLIC_ID, IP_ORIGEN);
 
         assertThat(resp).isNotNull();
         assertThat(resp.publicId()).isNotBlank();
-        assertThat(resp.usuarioPublicId()).isNotBlank();
-        assertThat(resp.registroMedico()).isEqualTo("RM-12345");
-        assertThat(resp.nombres()).isEqualTo("Carlos");
-        assertThat(resp.apellidos()).isEqualTo("Perez");
+        assertThat(resp.userPublicId()).isNotBlank();
+        assertThat(resp.medicalLicense()).isEqualTo("RM-12345");
+        assertThat(resp.firstNames()).isEqualTo("Carlos");
+        assertThat(resp.lastNames()).isEqualTo("Perez");
         assertThat(resp.email()).isEqualTo("carlos.perez@hospital.com");
-        assertThat(resp.especialidadPublicId()).isEqualTo("esp-med-int");
-        assertThat(resp.especialidadNombre()).isEqualTo("Medicina Interna");
-        assertThat(resp.debeCambiarPassword()).isTrue();
+        assertThat(resp.specialtyPublicId()).isEqualTo("esp-med-int");
+        assertThat(resp.specialtyName()).isEqualTo("Medicina Interna");
+        assertThat(resp.mustChangePassword()).isTrue();
 
         // Validar que la contraseña temporal sea segura
-        assertThat(resp.passwordTemporal()).isNotBlank();
-        assertThat(resp.passwordTemporal().length()).isGreaterThanOrEqualTo(12);
-        assertThat(resp.passwordTemporal()).matches(".*[A-Z].*");
-        assertThat(resp.passwordTemporal()).matches(".*[a-z].*");
-        assertThat(resp.passwordTemporal()).matches(".*[0-9].*");
-        assertThat(resp.passwordTemporal()).matches(".*[!@#$%&*+\\-_=].*");
+        assertThat(resp.temporaryPassword()).isNotBlank();
+        assertThat(resp.temporaryPassword().length()).isGreaterThanOrEqualTo(12);
+        assertThat(resp.temporaryPassword()).matches(".*[A-Z].*");
+        assertThat(resp.temporaryPassword()).matches(".*[a-z].*");
+        assertThat(resp.temporaryPassword()).matches(".*[0-9].*");
+        assertThat(resp.temporaryPassword()).matches(".*[!@#$%&*+\\-_=].*");
 
-        verify(usuarioRepository).asignarRol(101L, 2L);
-        verify(auditoriaService).registrarEvento(
+        verify(userRepository).assignRole(101L, 2L);
+        verify(auditService).recordEvent(
                 eq(ADMIN_ID),
-                eq(AccionAuditable.CAMBIO_ADMINISTRATIVO),
+                eq(AuditableAction.CAMBIO_ADMINISTRATIVO),
                 eq("PROFESIONAL"),
                 eq(resp.publicId()),
-                eq(ResultadoAuditoria.EXITO),
+                eq(AuditResult.EXITO),
                 eq(IP_ORIGEN)
         );
-        verify(emailService).enviarCredencialesIniciales(
+        verify(emailService).sendInitialCredentials(
                 eq("carlos.perez@hospital.com"),
                 eq("Carlos Perez"),
                 eq("Profesional Asistencial (Medicina Interna)"),
-                eq(resp.passwordTemporal())
+                eq(resp.temporaryPassword())
         );
     }
 
     @Test
-    void altaProfesional_conNombresInvalidos_lanzaDatosInvalidosException() {
-        CrearProfesionalRequest req = new CrearProfesionalRequest(
+    void registerProfessional_withNamesInvalid_throwsInvalidDataException() {
+        CreateProfessionalRequest req = new CreateProfessionalRequest(
                 "RM-12345",
                 "Carlos123",
                 "Perez",
@@ -157,71 +157,71 @@ class AdminProfessionalServiceTest {
                 "esp-med-int"
         );
 
-        assertThatThrownBy(() -> service.altaProfesional(req, ADMIN_PUBLIC_ID, IP_ORIGEN))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> service.registerProfessional(req, ADMIN_PUBLIC_ID, IP_ORIGEN))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("solo puede contener letras, espacios, tildes y guiones");
     }
 
     @Test
-    void altaProfesional_especialidadInexistente_lanzaRecursoNoEncontradoException() {
-        CrearProfesionalRequest req = new CrearProfesionalRequest(
+    void registerProfessional_specialtyInexistente_throwsResourceNotFoundException() {
+        CreateProfessionalRequest req = new CreateProfessionalRequest(
                 "RM-12345",
                 "Carlos",
                 "Perez",
                 "carlos.perez@hospital.com",
                 "esp-no-existe"
         );
-        when(especialidadRepository.buscarPorPublicId("esp-no-existe")).thenReturn(Optional.empty());
+        when(specialtyRepository.findByPublicId("esp-no-existe")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.altaProfesional(req, ADMIN_PUBLIC_ID, IP_ORIGEN))
-                .isInstanceOf(RecursoNoEncontradoException.class)
+        assertThatThrownBy(() -> service.registerProfessional(req, ADMIN_PUBLIC_ID, IP_ORIGEN))
+                .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("Especialidad no encontrada");
 
-        verify(usuarioRepository, never()).crear(anyString(), anyString(), anyString(), anyBoolean());
+        verify(userRepository, never()).create(anyString(), anyString(), anyString(), anyBoolean());
     }
 
     @Test
-    void altaProfesional_especialidadInactiva_lanzaDatosInvalidosException() {
-        CrearProfesionalRequest req = new CrearProfesionalRequest(
+    void registerProfessional_specialtyInactive_throwsInvalidDataException() {
+        CreateProfessionalRequest req = new CreateProfessionalRequest(
                 "RM-12345",
                 "Carlos",
                 "Perez",
                 "carlos.perez@hospital.com",
                 "esp-inactiva"
         );
-        Especialidad espInactiva = new Especialidad(10L, "esp-inactiva", "Inactiva", 20, "INACTIVO");
-        when(especialidadRepository.buscarPorPublicId("esp-inactiva")).thenReturn(Optional.of(espInactiva));
+        Specialty espInactiva = new Specialty(10L, "esp-inactiva", "Inactiva", 20, "INACTIVO");
+        when(specialtyRepository.findByPublicId("esp-inactiva")).thenReturn(Optional.of(espInactiva));
 
-        assertThatThrownBy(() -> service.altaProfesional(req, ADMIN_PUBLIC_ID, IP_ORIGEN))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> service.registerProfessional(req, ADMIN_PUBLIC_ID, IP_ORIGEN))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("no se encuentra activa");
 
-        verify(usuarioRepository, never()).crear(anyString(), anyString(), anyString(), anyBoolean());
+        verify(userRepository, never()).create(anyString(), anyString(), anyString(), anyBoolean());
     }
 
     @Test
-    void altaProfesional_emailDuplicado_lanzaDatosInvalidosException() {
-        CrearProfesionalRequest req = new CrearProfesionalRequest(
+    void registerProfessional_emailDuplicate_throwsInvalidDataException() {
+        CreateProfessionalRequest req = new CreateProfessionalRequest(
                 "RM-12345",
                 "Carlos",
                 "Perez",
                 "carlos.perez@hospital.com",
                 "esp-activa"
         );
-        Especialidad esp = new Especialidad(10L, "esp-activa", "Medicina", 20, "ACTIVO");
-        when(especialidadRepository.buscarPorPublicId("esp-activa")).thenReturn(Optional.of(esp));
-        when(usuarioRepository.existePorEmail("carlos.perez@hospital.com")).thenReturn(true);
+        Specialty esp = new Specialty(10L, "esp-activa", "Medicina", 20, "ACTIVO");
+        when(specialtyRepository.findByPublicId("esp-activa")).thenReturn(Optional.of(esp));
+        when(userRepository.existsByEmail("carlos.perez@hospital.com")).thenReturn(true);
 
-        assertThatThrownBy(() -> service.altaProfesional(req, ADMIN_PUBLIC_ID, IP_ORIGEN))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> service.registerProfessional(req, ADMIN_PUBLIC_ID, IP_ORIGEN))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("El correo electronico ya se encuentra registrado");
 
-        verify(usuarioRepository, never()).crear(anyString(), anyString(), anyString(), anyBoolean());
+        verify(userRepository, never()).create(anyString(), anyString(), anyString(), anyBoolean());
     }
 
     @Test
-    void altaProfesional_tipoDocumentoInvalido_lanzaDatosInvalidosException() {
-        CrearProfesionalRequest req = new CrearProfesionalRequest(
+    void registerProfessional_typeDocumentInvalid_throwsInvalidDataException() {
+        CreateProfessionalRequest req = new CreateProfessionalRequest(
                 "TI",
                 "1020304050",
                 "RM-12345",
@@ -232,14 +232,14 @@ class AdminProfessionalServiceTest {
                 "esp-activa"
         );
 
-        assertThatThrownBy(() -> service.altaProfesional(req, ADMIN_PUBLIC_ID, IP_ORIGEN))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> service.registerProfessional(req, ADMIN_PUBLIC_ID, IP_ORIGEN))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("Tipo de documento no valido para profesionales en Colombia. Permitidos: CC, CE.");
     }
 
     @Test
-    void altaProfesional_numeroDocumentoInvalido_lanzaDatosInvalidosException() {
-        CrearProfesionalRequest req = new CrearProfesionalRequest(
+    void registerProfessional_numberDocumentInvalid_throwsInvalidDataException() {
+        CreateProfessionalRequest req = new CreateProfessionalRequest(
                 "CC",
                 "123", // Menos de 6 dígitos
                 "RM-12345",
@@ -250,14 +250,14 @@ class AdminProfessionalServiceTest {
                 "esp-activa"
         );
 
-        assertThatThrownBy(() -> service.altaProfesional(req, ADMIN_PUBLIC_ID, IP_ORIGEN))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> service.registerProfessional(req, ADMIN_PUBLIC_ID, IP_ORIGEN))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("La Cedula de Ciudadania (CC) debe contener entre 6 y 10 digitos numericos.");
     }
 
     @Test
-    void altaProfesional_documentoDuplicado_lanzaDatosInvalidosException() {
-        CrearProfesionalRequest req = new CrearProfesionalRequest(
+    void registerProfessional_documentDuplicate_throwsInvalidDataException() {
+        CreateProfessionalRequest req = new CreateProfessionalRequest(
                 "CC",
                 "1020304050",
                 "RM-12345",
@@ -267,16 +267,16 @@ class AdminProfessionalServiceTest {
                 "3001234567",
                 "esp-activa"
         );
-        when(profesionalRepository.existePorDocumento("CC", "1020304050")).thenReturn(true);
+        when(professionalRepository.existsByDocument("CC", "1020304050")).thenReturn(true);
 
-        assertThatThrownBy(() -> service.altaProfesional(req, ADMIN_PUBLIC_ID, IP_ORIGEN))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> service.registerProfessional(req, ADMIN_PUBLIC_ID, IP_ORIGEN))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("Ya existe un profesional registrado con el documento ingresado.");
     }
 
     @Test
-    void altaProfesional_telefonoInvalido_lanzaDatosInvalidosException() {
-        CrearProfesionalRequest req = new CrearProfesionalRequest(
+    void registerProfessional_phoneInvalid_throwsInvalidDataException() {
+        CreateProfessionalRequest req = new CreateProfessionalRequest(
                 "CC",
                 "1020304050",
                 "RM-12345",
@@ -286,16 +286,16 @@ class AdminProfessionalServiceTest {
                 "1234567", // No es celular de 10 dígitos iniciando en 3
                 "esp-activa"
         );
-        when(profesionalRepository.existePorDocumento("CC", "1020304050")).thenReturn(false);
+        when(professionalRepository.existsByDocument("CC", "1020304050")).thenReturn(false);
 
-        assertThatThrownBy(() -> service.altaProfesional(req, ADMIN_PUBLIC_ID, IP_ORIGEN))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> service.registerProfessional(req, ADMIN_PUBLIC_ID, IP_ORIGEN))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("El telefono debe ser un celular colombiano valido de 10 digitos");
     }
 
     @Test
-    void altaProfesional_registroMedicoCorto_lanzaDatosInvalidosException() {
-        CrearProfesionalRequest req = new CrearProfesionalRequest(
+    void registerProfessional_recordPhysicianShort_throwsInvalidDataException() {
+        CreateProfessionalRequest req = new CreateProfessionalRequest(
                 "CC",
                 "1020304050",
                 "RM", // < 4 caracteres
@@ -305,36 +305,36 @@ class AdminProfessionalServiceTest {
                 "3001234567",
                 "esp-activa"
         );
-        Especialidad esp = new Especialidad(10L, "esp-activa", "Medicina", 20, "ACTIVO");
-        when(profesionalRepository.existePorDocumento("CC", "1020304050")).thenReturn(false);
-        when(especialidadRepository.buscarPorPublicId("esp-activa")).thenReturn(Optional.of(esp));
-        when(usuarioRepository.existePorEmail("carlos.perez@hospital.com")).thenReturn(false);
+        Specialty esp = new Specialty(10L, "esp-activa", "Medicina", 20, "ACTIVO");
+        when(professionalRepository.existsByDocument("CC", "1020304050")).thenReturn(false);
+        when(specialtyRepository.findByPublicId("esp-activa")).thenReturn(Optional.of(esp));
+        when(userRepository.existsByEmail("carlos.perez@hospital.com")).thenReturn(false);
 
-        assertThatThrownBy(() -> service.altaProfesional(req, ADMIN_PUBLIC_ID, IP_ORIGEN))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> service.registerProfessional(req, ADMIN_PUBLIC_ID, IP_ORIGEN))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("El registro medico / ReTHUS debe tener al menos 4 caracteres.");
     }
 
     @Test
-    void altaProfesional_registroMedicoDuplicado_lanzaDatosInvalidosException() {
-        CrearProfesionalRequest req = new CrearProfesionalRequest(
+    void registerProfessional_duplicateMedicalLicense_throwsInvalidDataException() {
+        CreateProfessionalRequest req = new CreateProfessionalRequest(
                 "RM-12345",
                 "Carlos",
                 "Perez",
                 "carlos.perez@hospital.com",
                 "esp-activa"
         );
-        Especialidad esp = new Especialidad(10L, "esp-activa", "Medicina", 20, "ACTIVO");
-        when(profesionalRepository.existePorDocumento(anyString(), anyString())).thenReturn(false);
-        when(especialidadRepository.buscarPorPublicId("esp-activa")).thenReturn(Optional.of(esp));
-        when(usuarioRepository.existePorEmail("carlos.perez@hospital.com")).thenReturn(false);
-        when(profesionalRepository.existePorRegistroMedico("RM-12345")).thenReturn(true);
+        Specialty esp = new Specialty(10L, "esp-activa", "Medicina", 20, "ACTIVO");
+        when(professionalRepository.existsByDocument(anyString(), anyString())).thenReturn(false);
+        when(specialtyRepository.findByPublicId("esp-activa")).thenReturn(Optional.of(esp));
+        when(userRepository.existsByEmail("carlos.perez@hospital.com")).thenReturn(false);
+        when(professionalRepository.existsByMedicalLicense("RM-12345")).thenReturn(true);
 
-        assertThatThrownBy(() -> service.altaProfesional(req, ADMIN_PUBLIC_ID, IP_ORIGEN))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> service.registerProfessional(req, ADMIN_PUBLIC_ID, IP_ORIGEN))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("El registro medico ya se encuentra registrado");
 
-        verify(usuarioRepository, never()).crear(anyString(), anyString(), anyString(), anyBoolean());
+        verify(userRepository, never()).create(anyString(), anyString(), anyString(), anyBoolean());
     }
 
     // =========================================================================
@@ -342,54 +342,54 @@ class AdminProfessionalServiceTest {
     // =========================================================================
 
     @Test
-    void actualizarProfesional_conDatosValidos_actualizaYAudita() {
+    void updateProfessional_withDataValid_updatesAndAudits() {
         mockAdmin();
         String profPublicId = "prof-uuid-1";
-        ActualizarProfesionalRequest req = new ActualizarProfesionalRequest("Carlos Alberto", "Perez Gomez", "esp-ped");
+        UpdateProfessionalRequest req = new UpdateProfessionalRequest("Carlos Alberto", "Perez Gomez", "esp-ped");
 
-        Profesional existente = new Profesional(50L, 101L, profPublicId, 10L, "RM-12345", "Carlos", "Perez", Instant.now(), null);
-        Especialidad nuevaEsp = new Especialidad(20L, "esp-ped", "Pediatría", 30, "ACTIVO");
-        Usuario usuario = new Usuario(101L, "user-uuid-1", "carlos@hospital.com", "hash", "ACTIVO", 0, null, Instant.now(), false);
+        Professional existente = new Professional(50L, 101L, profPublicId, 10L, "RM-12345", "Carlos", "Perez", Instant.now(), null);
+        Specialty nuevaEsp = new Specialty(20L, "esp-ped", "Pediatría", 30, "ACTIVO");
+        User usuario = new User(101L, "user-uuid-1", "carlos@hospital.com", "hash", "ACTIVO", 0, null, Instant.now(), false);
 
-        when(profesionalRepository.buscarPorPublicId(profPublicId)).thenReturn(Optional.of(existente));
-        when(especialidadRepository.buscarPorPublicId("esp-ped")).thenReturn(Optional.of(nuevaEsp));
-        when(usuarioRepository.buscarPorId(101L)).thenReturn(Optional.of(usuario));
+        when(professionalRepository.findByPublicId(profPublicId)).thenReturn(Optional.of(existente));
+        when(specialtyRepository.findByPublicId("esp-ped")).thenReturn(Optional.of(nuevaEsp));
+        when(userRepository.findById(101L)).thenReturn(Optional.of(usuario));
 
-        ProfesionalResponse resp = service.actualizarProfesional(profPublicId, req, ADMIN_PUBLIC_ID, IP_ORIGEN);
+        ProfessionalResponse resp = service.updateProfessional(profPublicId, req, ADMIN_PUBLIC_ID, IP_ORIGEN);
 
-        assertThat(resp.nombres()).isEqualTo("Carlos Alberto");
-        assertThat(resp.apellidos()).isEqualTo("Perez Gomez");
-        assertThat(resp.especialidadPublicId()).isEqualTo("esp-ped");
-        assertThat(resp.especialidadNombre()).isEqualTo("Pediatría");
+        assertThat(resp.firstNames()).isEqualTo("Carlos Alberto");
+        assertThat(resp.lastNames()).isEqualTo("Perez Gomez");
+        assertThat(resp.specialtyPublicId()).isEqualTo("esp-ped");
+        assertThat(resp.specialtyName()).isEqualTo("Pediatría");
 
-        ArgumentCaptor<Profesional> captor = ArgumentCaptor.forClass(Profesional.class);
-        verify(profesionalRepository).actualizar(captor.capture());
-        assertThat(captor.getValue().nombres()).isEqualTo("Carlos Alberto");
-        assertThat(captor.getValue().apellidos()).isEqualTo("Perez Gomez");
-        assertThat(captor.getValue().especialidadId()).isEqualTo(20L);
+        ArgumentCaptor<Professional> captor = ArgumentCaptor.forClass(Professional.class);
+        verify(professionalRepository).update(captor.capture());
+        assertThat(captor.getValue().firstNames()).isEqualTo("Carlos Alberto");
+        assertThat(captor.getValue().lastNames()).isEqualTo("Perez Gomez");
+        assertThat(captor.getValue().specialtyId()).isEqualTo(20L);
 
-        verify(auditoriaService).registrarEvento(
+        verify(auditService).recordEvent(
                 eq(ADMIN_ID),
-                eq(AccionAuditable.CAMBIO_ADMINISTRATIVO),
+                eq(AuditableAction.CAMBIO_ADMINISTRATIVO),
                 eq("PROFESIONAL"),
                 eq(profPublicId),
-                eq(ResultadoAuditoria.EXITO),
+                eq(AuditResult.EXITO),
                 eq(IP_ORIGEN)
         );
     }
 
     @Test
-    void actualizarProfesional_especialidadInactiva_lanzaDatosInvalidosException() {
+    void updateProfessional_specialtyInactive_throwsInvalidDataException() {
         String profPublicId = "prof-uuid-1";
-        ActualizarProfesionalRequest req = new ActualizarProfesionalRequest("Carlos", "Perez", "esp-inactiva");
-        Profesional existente = new Profesional(50L, 101L, profPublicId, 10L, "RM-12345", "Carlos", "Perez", Instant.now(), null);
-        Especialidad espInactiva = new Especialidad(20L, "esp-inactiva", "Inactiva", 30, "INACTIVO");
+        UpdateProfessionalRequest req = new UpdateProfessionalRequest("Carlos", "Perez", "esp-inactiva");
+        Professional existente = new Professional(50L, 101L, profPublicId, 10L, "RM-12345", "Carlos", "Perez", Instant.now(), null);
+        Specialty espInactiva = new Specialty(20L, "esp-inactiva", "Inactiva", 30, "INACTIVO");
 
-        when(profesionalRepository.buscarPorPublicId(profPublicId)).thenReturn(Optional.of(existente));
-        when(especialidadRepository.buscarPorPublicId("esp-inactiva")).thenReturn(Optional.of(espInactiva));
+        when(professionalRepository.findByPublicId(profPublicId)).thenReturn(Optional.of(existente));
+        when(specialtyRepository.findByPublicId("esp-inactiva")).thenReturn(Optional.of(espInactiva));
 
-        assertThatThrownBy(() -> service.actualizarProfesional(profPublicId, req, ADMIN_PUBLIC_ID, IP_ORIGEN))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> service.updateProfessional(profPublicId, req, ADMIN_PUBLIC_ID, IP_ORIGEN))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("no se encuentra activa");
     }
 
@@ -398,35 +398,35 @@ class AdminProfessionalServiceTest {
     // =========================================================================
 
     @Test
-    void cambiarEstado_aInactivo_actualizaUsuarioYAudita() {
+    void changeStatus_toInactive_updatesUserAndAudits() {
         mockAdmin();
         String profPublicId = "prof-uuid-1";
-        Profesional existente = new Profesional(50L, 101L, profPublicId, 10L, "RM-12345", "Carlos", "Perez", Instant.now(), null);
-        Usuario usuario = new Usuario(101L, "user-uuid-1", "carlos@hospital.com", "hash", "ACTIVO", 0, null, Instant.now(), false);
-        Especialidad esp = new Especialidad(10L, "esp-med", "Medicina", 20, "ACTIVO");
+        Professional existente = new Professional(50L, 101L, profPublicId, 10L, "RM-12345", "Carlos", "Perez", Instant.now(), null);
+        User usuario = new User(101L, "user-uuid-1", "carlos@hospital.com", "hash", "ACTIVO", 0, null, Instant.now(), false);
+        Specialty esp = new Specialty(10L, "esp-med", "Medicina", 20, "ACTIVO");
 
-        when(profesionalRepository.buscarPorPublicId(profPublicId)).thenReturn(Optional.of(existente));
-        when(usuarioRepository.buscarPorId(101L)).thenReturn(Optional.of(usuario));
-        when(especialidadRepository.buscarPorId(10L)).thenReturn(Optional.of(esp));
+        when(professionalRepository.findByPublicId(profPublicId)).thenReturn(Optional.of(existente));
+        when(userRepository.findById(101L)).thenReturn(Optional.of(usuario));
+        when(specialtyRepository.findById(10L)).thenReturn(Optional.of(esp));
 
-        ProfesionalResponse resp = service.cambiarEstado(profPublicId, "INACTIVO", ADMIN_PUBLIC_ID, IP_ORIGEN);
+        ProfessionalResponse resp = service.changeStatus(profPublicId, "INACTIVO", ADMIN_PUBLIC_ID, IP_ORIGEN);
 
-        assertThat(resp.estado()).isEqualTo("INACTIVO");
-        verify(usuarioRepository).actualizarEstado(101L, "INACTIVO");
-        verify(auditoriaService).registrarEvento(
+        assertThat(resp.status()).isEqualTo("INACTIVO");
+        verify(userRepository).updateStatus(101L, "INACTIVO");
+        verify(auditService).recordEvent(
                 eq(ADMIN_ID),
-                eq(AccionAuditable.CAMBIO_ADMINISTRATIVO),
+                eq(AuditableAction.CAMBIO_ADMINISTRATIVO),
                 eq("PROFESIONAL"),
                 eq(profPublicId),
-                eq(ResultadoAuditoria.EXITO),
+                eq(AuditResult.EXITO),
                 eq(IP_ORIGEN)
         );
     }
 
     @Test
-    void cambiarEstado_estadoInvalido_lanzaDatosInvalidosException() {
-        assertThatThrownBy(() -> service.cambiarEstado("prof-uuid-1", "ESTADO_RARO", ADMIN_PUBLIC_ID, IP_ORIGEN))
-                .isInstanceOf(DatosInvalidosException.class)
+    void changeStatus_statusInvalid_throwsInvalidDataException() {
+        assertThatThrownBy(() -> service.changeStatus("prof-uuid-1", "ESTADO_RARO", ADMIN_PUBLIC_ID, IP_ORIGEN))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("Estado invalido");
     }
 
@@ -435,98 +435,98 @@ class AdminProfessionalServiceTest {
     // =========================================================================
 
     @Test
-    void obtenerPorPublicId_existente_retornaProfesionalResponse() {
+    void getByPublicId_existing_returnsProfessionalResponse() {
         String profPublicId = "prof-uuid-1";
-        Profesional existente = new Profesional(50L, 101L, profPublicId, 10L, "RM-12345", "Carlos", "Perez", Instant.now(), null);
-        Usuario usuario = new Usuario(101L, "user-uuid-1", "carlos@hospital.com", "hash", "ACTIVO", 0, null, Instant.now(), true);
-        Especialidad esp = new Especialidad(10L, "esp-med", "Medicina", 20, "ACTIVO");
+        Professional existente = new Professional(50L, 101L, profPublicId, 10L, "RM-12345", "Carlos", "Perez", Instant.now(), null);
+        User usuario = new User(101L, "user-uuid-1", "carlos@hospital.com", "hash", "ACTIVO", 0, null, Instant.now(), true);
+        Specialty esp = new Specialty(10L, "esp-med", "Medicina", 20, "ACTIVO");
 
-        when(profesionalRepository.buscarPorPublicId(profPublicId)).thenReturn(Optional.of(existente));
-        when(usuarioRepository.buscarPorId(101L)).thenReturn(Optional.of(usuario));
-        when(especialidadRepository.buscarPorId(10L)).thenReturn(Optional.of(esp));
+        when(professionalRepository.findByPublicId(profPublicId)).thenReturn(Optional.of(existente));
+        when(userRepository.findById(101L)).thenReturn(Optional.of(usuario));
+        when(specialtyRepository.findById(10L)).thenReturn(Optional.of(esp));
 
-        ProfesionalResponse resp = service.obtenerPorPublicId(profPublicId);
+        ProfessionalResponse resp = service.getByPublicId(profPublicId);
 
         assertThat(resp.publicId()).isEqualTo(profPublicId);
-        assertThat(resp.usuarioPublicId()).isEqualTo("user-uuid-1");
-        assertThat(resp.registroMedico()).isEqualTo("RM-12345");
+        assertThat(resp.userPublicId()).isEqualTo("user-uuid-1");
+        assertThat(resp.medicalLicense()).isEqualTo("RM-12345");
         assertThat(resp.email()).isEqualTo("carlos@hospital.com");
-        assertThat(resp.debeCambiarPassword()).isTrue();
+        assertThat(resp.mustChangePassword()).isTrue();
     }
 
     @Test
-    void listar_conFiltros_retornaPaginaCorrecta() {
-        ProfesionalResponse item = new ProfesionalResponse(
+    void list_withFilters_returnsPageCorrect() {
+        ProfessionalResponse item = new ProfessionalResponse(
                 "prof-1", "user-1", "RM-1", "Juan", "Gomez", "juan@test.com", "esp-1", "Pediatría", "ACTIVO", false, Instant.now()
         );
-        when(profesionalRepository.listar(0, 10, "esp-1", "ACTIVO")).thenReturn(List.of(item));
-        when(profesionalRepository.contar("esp-1", "ACTIVO")).thenReturn(1);
+        when(professionalRepository.list(0, 10, "esp-1", "ACTIVO")).thenReturn(List.of(item));
+        when(professionalRepository.count("esp-1", "ACTIVO")).thenReturn(1);
 
-        PaginatedResponse<ProfesionalResponse> resp = service.listar(0, 10, "esp-1", "ACTIVO");
+        PaginatedResponse<ProfessionalResponse> resp = service.list(0, 10, "esp-1", "ACTIVO");
 
         assertThat(resp.content()).hasSize(1);
         assertThat(resp.totalElements()).isEqualTo(1L);
-        assertThat(resp.content().get(0).registroMedico()).isEqualTo("RM-1");
+        assertThat(resp.content().get(0).medicalLicense()).isEqualTo("RM-1");
     }
 
     @Test
-    void actualizarProfesional_profesionalInexistente_lanzaRecursoNoEncontradoException() {
-        ActualizarProfesionalRequest req = new ActualizarProfesionalRequest("Carlos", "Perez", "esp-1");
-        when(profesionalRepository.buscarPorPublicId("prof-no-existe")).thenReturn(Optional.empty());
+    void updateProfessional_professionalInexistente_throwsResourceNotFoundException() {
+        UpdateProfessionalRequest req = new UpdateProfessionalRequest("Carlos", "Perez", "esp-1");
+        when(professionalRepository.findByPublicId("prof-no-existe")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.actualizarProfesional("prof-no-existe", req, ADMIN_PUBLIC_ID, IP_ORIGEN))
-                .isInstanceOf(RecursoNoEncontradoException.class)
+        assertThatThrownBy(() -> service.updateProfessional("prof-no-existe", req, ADMIN_PUBLIC_ID, IP_ORIGEN))
+                .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("Profesional no encontrado");
     }
 
     @Test
-    void cambiarEstado_aActivo_actualizaUsuarioYAudita() {
+    void changeStatus_toActive_updatesUserAndAudits() {
         mockAdmin();
         String profPublicId = "prof-uuid-1";
-        Profesional existente = new Profesional(50L, 101L, profPublicId, 10L, "RM-12345", "Carlos", "Perez", Instant.now(), null);
-        Usuario usuario = new Usuario(101L, "user-uuid-1", "carlos@hospital.com", "hash", "INACTIVO", 0, null, Instant.now(), false);
-        Especialidad esp = new Especialidad(10L, "esp-med", "Medicina", 20, "ACTIVO");
+        Professional existente = new Professional(50L, 101L, profPublicId, 10L, "RM-12345", "Carlos", "Perez", Instant.now(), null);
+        User usuario = new User(101L, "user-uuid-1", "carlos@hospital.com", "hash", "INACTIVO", 0, null, Instant.now(), false);
+        Specialty esp = new Specialty(10L, "esp-med", "Medicina", 20, "ACTIVO");
 
-        when(profesionalRepository.buscarPorPublicId(profPublicId)).thenReturn(Optional.of(existente));
-        when(usuarioRepository.buscarPorId(101L)).thenReturn(Optional.of(usuario));
-        when(especialidadRepository.buscarPorId(10L)).thenReturn(Optional.of(esp));
+        when(professionalRepository.findByPublicId(profPublicId)).thenReturn(Optional.of(existente));
+        when(userRepository.findById(101L)).thenReturn(Optional.of(usuario));
+        when(specialtyRepository.findById(10L)).thenReturn(Optional.of(esp));
 
-        ProfesionalResponse resp = service.cambiarEstado(profPublicId, "ACTIVO", ADMIN_PUBLIC_ID, IP_ORIGEN);
+        ProfessionalResponse resp = service.changeStatus(profPublicId, "ACTIVO", ADMIN_PUBLIC_ID, IP_ORIGEN);
 
-        assertThat(resp.estado()).isEqualTo("ACTIVO");
-        verify(usuarioRepository).actualizarEstado(101L, "ACTIVO");
-        verify(auditoriaService).registrarEvento(
+        assertThat(resp.status()).isEqualTo("ACTIVO");
+        verify(userRepository).updateStatus(101L, "ACTIVO");
+        verify(auditService).recordEvent(
                 eq(ADMIN_ID),
-                eq(AccionAuditable.CAMBIO_ADMINISTRATIVO),
+                eq(AuditableAction.CAMBIO_ADMINISTRATIVO),
                 eq("PROFESIONAL"),
                 eq(profPublicId),
-                eq(ResultadoAuditoria.EXITO),
+                eq(AuditResult.EXITO),
                 eq(IP_ORIGEN)
         );
     }
 
     @Test
-    void cambiarEstado_profesionalInexistente_lanzaRecursoNoEncontradoException() {
-        when(profesionalRepository.buscarPorPublicId("prof-no-existe")).thenReturn(Optional.empty());
+    void changeStatus_professionalInexistente_throwsResourceNotFoundException() {
+        when(professionalRepository.findByPublicId("prof-no-existe")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.cambiarEstado("prof-no-existe", "ACTIVO", ADMIN_PUBLIC_ID, IP_ORIGEN))
-                .isInstanceOf(RecursoNoEncontradoException.class)
+        assertThatThrownBy(() -> service.changeStatus("prof-no-existe", "ACTIVO", ADMIN_PUBLIC_ID, IP_ORIGEN))
+                .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("Profesional no encontrado");
     }
 
     @Test
-    void obtenerPorPublicId_inexistente_lanzaRecursoNoEncontradoException() {
-        when(profesionalRepository.buscarPorPublicId("prof-no-existe")).thenReturn(Optional.empty());
+    void getByPublicId_notFound_throwsResourceNotFoundException() {
+        when(professionalRepository.findByPublicId("prof-no-existe")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.obtenerPorPublicId("prof-no-existe"))
-                .isInstanceOf(RecursoNoEncontradoException.class)
+        assertThatThrownBy(() -> service.getByPublicId("prof-no-existe"))
+                .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("Profesional no encontrado");
     }
 
     @Test
-    void listar_estadoInvalido_lanzaDatosInvalidosException() {
-        assertThatThrownBy(() -> service.listar(0, 10, null, "ESTADO_DESCONOCIDO"))
-                .isInstanceOf(DatosInvalidosException.class)
+    void list_statusInvalid_throwsInvalidDataException() {
+        assertThatThrownBy(() -> service.list(0, 10, null, "ESTADO_DESCONOCIDO"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("Estado invalido");
     }
 }

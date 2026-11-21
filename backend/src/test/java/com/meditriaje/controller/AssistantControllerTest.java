@@ -3,9 +3,9 @@ package com.meditriaje.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.meditriaje.config.CorsConfig;
 import com.meditriaje.config.SecurityConfig;
-import com.meditriaje.dto.assistant.PreguntaAsistenteRequest;
-import com.meditriaje.dto.assistant.RespuestaAsistenteResponse;
-import com.meditriaje.dto.assistant.SugerenciaAccionDto;
+import com.meditriaje.dto.assistant.AssistantQuestionRequest;
+import com.meditriaje.dto.assistant.AssistantAnswerResponse;
+import com.meditriaje.dto.assistant.ActionSuggestionDto;
 import com.meditriaje.exception.GlobalExceptionHandler;
 import com.meditriaje.security.JwtService;
 import com.meditriaje.service.AssistantService;
@@ -46,17 +46,17 @@ class AssistantControllerTest {
 
     @Test
     @DisplayName("POST /chat con orientación válida retorna 200 OK y contenido guiado")
-    void chat_conPreguntaValida_retorna200Ok() throws Exception {
-        PreguntaAsistenteRequest req = new PreguntaAsistenteRequest("¿Cómo agendo una cita médica?");
-        RespuestaAsistenteResponse resp = new RespuestaAsistenteResponse(
+    void chat_withQuestionValid_returns200Ok() throws Exception {
+        AssistantQuestionRequest req = new AssistantQuestionRequest("¿Cómo agendo una cita médica?");
+        AssistantAnswerResponse resp = new AssistantAnswerResponse(
                 "Para agendar una cita médica en MediTriaje 2.0, ingresa a la sección Agendar Cita.",
                 false,
                 "CITAS",
-                List.of(new SugerenciaAccionDto("Agendar Cita", "#/patient/book", "calendar")),
-                AssistantService.AVISO_LEGAL
+                List.of(new ActionSuggestionDto("Agendar Cita", "#/patient/book", "calendar")),
+                AssistantService.LEGAL_NOTICE
         );
 
-        when(assistantService.procesarConsulta(any(PreguntaAsistenteRequest.class))).thenReturn(resp);
+        when(assistantService.processQuery(any(AssistantQuestionRequest.class))).thenReturn(resp);
 
         mockMvc.perform(post("/api/v1/assistant/chat")
                         .header("X-Requested-With", "XMLHttpRequest")
@@ -67,22 +67,22 @@ class AssistantControllerTest {
                 .andExpect(jsonPath("$.categoria").value("CITAS"))
                 .andExpect(jsonPath("$.respuesta").value("Para agendar una cita médica en MediTriaje 2.0, ingresa a la sección Agendar Cita."))
                 .andExpect(jsonPath("$.sugerencias[0].etiqueta").value("Agendar Cita"))
-                .andExpect(jsonPath("$.avisoLegal").value(AssistantService.AVISO_LEGAL));
+                .andExpect(jsonPath("$.avisoLegal").value(AssistantService.LEGAL_NOTICE));
     }
 
     @Test
     @DisplayName("POST /chat con alarma médica retorna 200 OK con alerta de emergencia y llamada al 123")
-    void chat_conSintomaAlarma_retorna200OkConEmergencia() throws Exception {
-        PreguntaAsistenteRequest req = new PreguntaAsistenteRequest("Tengo un fuerte dolor de pecho y me falta el aire");
-        RespuestaAsistenteResponse resp = new RespuestaAsistenteResponse(
+    void chat_withSymptomAlarm_returns200OkWithEmergency() throws Exception {
+        AssistantQuestionRequest req = new AssistantQuestionRequest("Tengo un fuerte dolor de pecho y me falta el aire");
+        AssistantAnswerResponse resp = new AssistantAnswerResponse(
                 "⚠️ ALERTA DE EMERGENCIA MÉDICA: Por favor comunícate de inmediato al 123.",
                 true,
                 "EMERGENCIA",
-                List.of(new SugerenciaAccionDto("Llamar al 123", "tel:123", "phone")),
-                AssistantService.AVISO_LEGAL
+                List.of(new ActionSuggestionDto("Llamar al 123", "tel:123", "phone")),
+                AssistantService.LEGAL_NOTICE
         );
 
-        when(assistantService.procesarConsulta(any(PreguntaAsistenteRequest.class))).thenReturn(resp);
+        when(assistantService.processQuery(any(AssistantQuestionRequest.class))).thenReturn(resp);
 
         mockMvc.perform(post("/api/v1/assistant/chat")
                         .header("X-Requested-With", "XMLHttpRequest")
@@ -96,8 +96,8 @@ class AssistantControllerTest {
 
     @Test
     @DisplayName("POST /chat sin mensaje o mensaje en blanco retorna 400 Bad Request")
-    void chat_conMensajeBlanco_retorna400BadRequest() throws Exception {
-        PreguntaAsistenteRequest req = new PreguntaAsistenteRequest("   ");
+    void chat_withMessageBlank_returns400BadRequest() throws Exception {
+        AssistantQuestionRequest req = new AssistantQuestionRequest("   ");
 
         mockMvc.perform(post("/api/v1/assistant/chat")
                         .header("X-Requested-With", "XMLHttpRequest")
@@ -109,17 +109,17 @@ class AssistantControllerTest {
 
     @Test
     @DisplayName("POST /chat sin autenticación previa es permitido (acceso universal de orientación)")
-    void chat_sinSesion_esPermitido() throws Exception {
-        PreguntaAsistenteRequest req = new PreguntaAsistenteRequest("¿Qué es el triaje?");
-        RespuestaAsistenteResponse resp = new RespuestaAsistenteResponse(
+    void chat_withoutSession_isAllowed() throws Exception {
+        AssistantQuestionRequest req = new AssistantQuestionRequest("¿Qué es el triaje?");
+        AssistantAnswerResponse resp = new AssistantAnswerResponse(
                 "El triaje clasifica la urgencia clínica.",
                 false,
                 "TRIAJE",
                 List.of(),
-                AssistantService.AVISO_LEGAL
+                AssistantService.LEGAL_NOTICE
         );
 
-        when(assistantService.procesarConsulta(any(PreguntaAsistenteRequest.class))).thenReturn(resp);
+        when(assistantService.processQuery(any(AssistantQuestionRequest.class))).thenReturn(resp);
 
         mockMvc.perform(post("/api/v1/assistant/chat")
                         .header("X-Requested-With", "XMLHttpRequest")

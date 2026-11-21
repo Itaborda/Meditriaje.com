@@ -4,14 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.meditriaje.db.OracleTestDatabase;
-import com.meditriaje.dto.clinical.AtencionResponse;
-import com.meditriaje.dto.clinical.EnmiendaResponse;
-import com.meditriaje.dto.clinical.SignosVitalesDto;
-import com.meditriaje.dto.followup.SeguimientoResponse;
-import com.meditriaje.exception.ConflictoOperacionException;
-import com.meditriaje.model.Atencion;
-import com.meditriaje.model.SeguimientoPostAtencion;
-import com.meditriaje.model.SignoVital;
+import com.meditriaje.dto.clinical.ClinicalAttentionResponse;
+import com.meditriaje.dto.clinical.AmendmentResponse;
+import com.meditriaje.dto.clinical.VitalSignsDto;
+import com.meditriaje.dto.followup.FollowUpResponse;
+import com.meditriaje.exception.OperationConflictException;
+import com.meditriaje.model.ClinicalAttention;
+import com.meditriaje.model.PostAttentionFollowUp;
+import com.meditriaje.model.VitalSign;
 import com.meditriaje.repository.plsql.OracleErrorTranslator;
 import com.meditriaje.repository.plsql.PackageGateway;
 import java.math.BigDecimal;
@@ -40,8 +40,8 @@ class PkgClinicalIT {
 
     private static OracleContainer oracle;
     private static JdbcTemplate owner;
-    private static AtencionRepository atenciones;
-    private static SeguimientoRepository seguimientos;
+    private static ClinicalAttentionRepository atenciones;
+    private static FollowUpRepository seguimientos;
 
     @BeforeAll
     static void migrate() {
@@ -53,8 +53,8 @@ class PkgClinicalIT {
         DataSource appDs = OracleTestDatabase.dataSource(
                 oracle, OracleTestDatabase.APP_USER, OracleTestDatabase.APP_PASSWORD);
         PackageGateway gateway = new PackageGateway(appDs, OWNER, new OracleErrorTranslator());
-        atenciones = new AtencionRepository(gateway);
-        seguimientos = new SeguimientoRepository(gateway);
+        atenciones = new ClinicalAttentionRepository(gateway);
+        seguimientos = new FollowUpRepository(gateway);
     }
 
     @AfterAll
@@ -119,68 +119,68 @@ class PkgClinicalIT {
                 "SELECT ID FROM DIAGNOSTICO_CIE10 WHERE CODIGO = 'J00'", Long.class);
 
         String encounterPub = UUID.randomUUID().toString();
-        Long encounterId = atenciones.crear(new Atencion(null, encounterPub, appointmentId, patientId, professionalId, "ABIERTA"));
+        Long encounterId = atenciones.create(new ClinicalAttention(null, encounterPub, appointmentId, patientId, professionalId, "ABIERTA"));
 
         assertThat(encounterId).isPositive();
-        assertThat(atenciones.existePorCitaId(appointmentId)).isTrue();
-        assertThat(atenciones.existePorCitaId(-1L)).isFalse();
+        assertThat(atenciones.existsByAppointmentId(appointmentId)).isTrue();
+        assertThat(atenciones.existsByAppointmentId(-1L)).isFalse();
 
-        Atencion byPub = atenciones.buscarEntidadPorPublicId(encounterPub).orElseThrow();
+        ClinicalAttention byPub = atenciones.findEntityByPublicId(encounterPub).orElseThrow();
         assertThat(byPub.id()).isEqualTo(encounterId);
-        assertThat(byPub.diagnosticoPrincipalId()).isNull();
-        assertThat(atenciones.buscarEntidadPorId(encounterId)).contains(byPub);
-        assertThat(atenciones.buscarEntidadPorCitaId(appointmentId)).contains(byPub);
-        assertThat(atenciones.buscarEntidadPorPublicId("no-existe")).isEmpty();
+        assertThat(byPub.primaryDiagnosisId()).isNull();
+        assertThat(atenciones.findEntityById(encounterId)).contains(byPub);
+        assertThat(atenciones.findEntityByAppointmentId(appointmentId)).contains(byPub);
+        assertThat(atenciones.findEntityByPublicId("no-existe")).isEmpty();
 
         // Duplicar cita en ATENCION dispara ORA-00001 -> ConflictoOperacionException
-        assertThatThrownBy(() -> atenciones.crear(
-                        new Atencion(null, UUID.randomUUID().toString(), appointmentId, patientId, professionalId, "ABIERTA")))
-                .isInstanceOf(ConflictoOperacionException.class);
+        assertThatThrownBy(() -> atenciones.create(
+                        new ClinicalAttention(null, UUID.randomUUID().toString(), appointmentId, patientId, professionalId, "ABIERTA")))
+                .isInstanceOf(OperationConflictException.class);
 
         // Enmienda sobre atención ABIERTA dispara trigger -20005 -> ConflictoOperacionException
-        assertThatThrownBy(() -> atenciones.crearEnmienda(
+        assertThatThrownBy(() -> atenciones.createAmendment(
                         encounterId, professionalId, "Error", "No debe permitirse", Instant.now()))
-                .isInstanceOf(ConflictoOperacionException.class);
+                .isInstanceOf(OperationConflictException.class);
 
         // Signos vitales con campos nulos y no nulos
-        atenciones.guardarSignosVitales(new SignoVital(
+        atenciones.saveVitalSigns(new VitalSign(
                 encounterId, 120, 80, 74, null, new BigDecimal("36.8"), 98, new BigDecimal("72.50"), null));
-        SignosVitalesDto sv = atenciones.buscarSignosVitalesPorAtencionId(encounterId).orElseThrow();
-        assertThat(sv.presionSistolica()).isEqualTo(120);
-        assertThat(sv.frecuenciaRespiratoria()).isNull();
-        assertThat(sv.temperatura()).isEqualByComparingTo("36.8");
-        assertThat(sv.tallaCm()).isNull();
+        VitalSignsDto sv = atenciones.findVitalSignsByAttentionId(encounterId).orElseThrow();
+        assertThat(sv.systolicPressure()).isEqualTo(120);
+        assertThat(sv.respiratoryRate()).isNull();
+        assertThat(sv.temperature()).isEqualByComparingTo("36.8");
+        assertThat(sv.heightCm()).isNull();
 
         // Cerrar atención
         Instant closedAt = Instant.now();
-        atenciones.cerrarAtencion(encounterId, diagnosisId, "Rinorrea", "Paciente estable", "Hidratacion", closedAt);
+        atenciones.closeAttention(encounterId, diagnosisId, "Rinorrea", "Paciente estable", "Hidratacion", closedAt);
 
         // Re-cerrar falla con IllegalStateException (o_affected = 0)
-        assertThatThrownBy(() -> atenciones.cerrarAtencion(
+        assertThatThrownBy(() -> atenciones.closeAttention(
                         encounterId, diagnosisId, "x", "y", "z", Instant.now()))
                 .isInstanceOf(IllegalStateException.class);
 
         // Insertar signos vitales en atención CERRADA dispara trigger -20003 -> ConflictoOperacionException
-        assertThatThrownBy(() -> atenciones.guardarSignosVitales(
-                        new SignoVital(encounterId, 118, 78, 70, 16, new BigDecimal("36.5"), 99, null, null)))
-                .isInstanceOf(ConflictoOperacionException.class);
+        assertThatThrownBy(() -> atenciones.saveVitalSigns(
+                        new VitalSign(encounterId, 118, 78, 70, 16, new BigDecimal("36.5"), 99, null, null)))
+                .isInstanceOf(OperationConflictException.class);
 
         // Enmiendas sobre atención CERRADA en orden cronológico
         Instant t1 = closedAt.plusSeconds(10);
         Instant t2 = closedAt.plusSeconds(20);
-        Long enmienda1 = atenciones.crearEnmienda(encounterId, professionalId, "Aclaracion", "Sin fiebre", t1);
-        Long enmienda2 = atenciones.crearEnmienda(encounterId, professionalId, "Complemento", "Control en 48h", t2);
+        Long enmienda1 = atenciones.createAmendment(encounterId, professionalId, "Aclaracion", "Sin fiebre", t1);
+        Long enmienda2 = atenciones.createAmendment(encounterId, professionalId, "Complemento", "Control en 48h", t2);
         assertThat(enmienda1).isPositive();
         assertThat(enmienda2).isGreaterThan(enmienda1);
 
-        List<EnmiendaResponse> enmiendas = atenciones.buscarEnmiendasPorAtencionId(encounterId);
-        assertThat(enmiendas).extracting(EnmiendaResponse::motivo).containsExactly("Aclaracion", "Complemento");
+        List<AmendmentResponse> enmiendas = atenciones.findAmendmentsByAttentionId(encounterId);
+        assertThat(enmiendas).extracting(AmendmentResponse::reason).containsExactly("Aclaracion", "Complemento");
 
-        AtencionResponse detail = atenciones.buscarDetallePorPublicId(encounterPub).orElseThrow();
-        assertThat(detail.estado()).isEqualTo("CERRADA");
-        assertThat(detail.diagnosticoCodigo()).isEqualTo("J00");
-        assertThat(detail.signosVitales()).isNotNull();
-        assertThat(detail.enmiendas()).hasSize(2);
+        ClinicalAttentionResponse detail = atenciones.findDetailByPublicId(encounterPub).orElseThrow();
+        assertThat(detail.status()).isEqualTo("CERRADA");
+        assertThat(detail.diagnosisCode()).isEqualTo("J00");
+        assertThat(detail.vitalSigns()).isNotNull();
+        assertThat(detail.amendments()).hasSize(2);
     }
 
     @Test
@@ -195,21 +195,21 @@ class PkgClinicalIT {
         String pub1 = UUID.randomUUID().toString();
         String pub2 = UUID.randomUUID().toString();
         String pub3 = UUID.randomUUID().toString();
-        atenciones.crear(new Atencion(null, pub1, cita1, patientId, professionalId, "ABIERTA"));
-        atenciones.crear(new Atencion(null, pub2, cita2, patientId, professionalId, "ABIERTA"));
-        atenciones.crear(new Atencion(null, pub3, cita3, patientId, professionalId, "ABIERTA"));
+        atenciones.create(new ClinicalAttention(null, pub1, cita1, patientId, professionalId, "ABIERTA"));
+        atenciones.create(new ClinicalAttention(null, pub2, cita2, patientId, professionalId, "ABIERTA"));
+        atenciones.create(new ClinicalAttention(null, pub3, cita3, patientId, professionalId, "ABIERTA"));
 
-        assertThat(atenciones.existeAtencionPreviaEnVentana(
+        assertThat(atenciones.existsPreviousAttentionInWindow(
                 professionalId, patientId, Instant.now().minus(1, ChronoUnit.DAYS))).isTrue();
-        assertThat(atenciones.existeAtencionPreviaEnVentana(
+        assertThat(atenciones.existsPreviousAttentionInWindow(
                 professionalId, patientId, Instant.now().plus(1, ChronoUnit.DAYS))).isFalse();
 
-        assertThat(atenciones.contarHistoriaPaciente(patientId)).isEqualTo(3);
+        assertThat(atenciones.countPatientHistory(patientId)).isEqualTo(3);
 
-        List<AtencionResponse> page0 = atenciones.listarHistoriaPaciente(patientId, 0, 2);
-        List<AtencionResponse> page1 = atenciones.listarHistoriaPaciente(patientId, 1, 2);
-        assertThat(page0).extracting(AtencionResponse::publicId).containsExactly(pub3, pub2);
-        assertThat(page1).extracting(AtencionResponse::publicId).containsExactly(pub1);
+        List<ClinicalAttentionResponse> page0 = atenciones.listPatientHistory(patientId, 0, 2);
+        List<ClinicalAttentionResponse> page1 = atenciones.listPatientHistory(patientId, 1, 2);
+        assertThat(page0).extracting(ClinicalAttentionResponse::publicId).containsExactly(pub3, pub2);
+        assertThat(page1).extracting(ClinicalAttentionResponse::publicId).containsExactly(pub1);
     }
 
     @Test
@@ -217,64 +217,64 @@ class PkgClinicalIT {
         Long patientId = newPatient("303");
         Long professionalId = newProfessional("303");
         Long citaId = newAppointment(patientId, professionalId, 5);
-        Long encounterId = atenciones.crear(
-                new Atencion(null, UUID.randomUUID().toString(), citaId, patientId, professionalId, "ABIERTA"));
+        Long encounterId = atenciones.create(
+                new ClinicalAttention(null, UUID.randomUUID().toString(), citaId, patientId, professionalId, "ABIERTA"));
 
         Instant now = Instant.now();
         String pub1 = UUID.randomUUID().toString();
         String pub2 = UUID.randomUUID().toString();
         String pub3 = UUID.randomUUID().toString();
 
-        Long id1 = seguimientos.guardar(new SeguimientoPostAtencion(
+        Long id1 = seguimientos.save(new PostAttentionFollowUp(
                 null, pub1, encounterId, patientId, professionalId,
                 "CONTROL_MEDICO", "Control en 7 dias", LocalDate.now().plusDays(7),
                 null, null, null, now.minusSeconds(30), now.minusSeconds(30)));
-        Long id2 = seguimientos.guardar(new SeguimientoPostAtencion(
+        Long id2 = seguimientos.save(new PostAttentionFollowUp(
                 null, pub2, encounterId, patientId, professionalId,
                 "EVOLUCION_SINTOMAS", "Reportar fiebre", null,
                 "PENDIENTE", null, null, now.minusSeconds(20), now.minusSeconds(20)));
-        Long id3 = seguimientos.guardar(new SeguimientoPostAtencion(
+        Long id3 = seguimientos.save(new PostAttentionFollowUp(
                 null, pub3, encounterId, patientId, professionalId,
                 "ADHERENCIA_TRATAMIENTO", "Tomar dosis completa", null,
                 "PENDIENTE", null, null, now.minusSeconds(10), now.minusSeconds(10)));
 
         assertThat(id1).isPositive();
-        SeguimientoPostAtencion loaded1 = seguimientos.buscarEntidadPorId(id1).orElseThrow();
-        assertThat(loaded1.estado()).isEqualTo("PENDIENTE");
-        assertThat(seguimientos.buscarEntidadPorPublicId(pub1)).contains(loaded1);
-        assertThat(seguimientos.buscarEntidadPorPublicId("no-existe")).isEmpty();
+        PostAttentionFollowUp loaded1 = seguimientos.findEntityById(id1).orElseThrow();
+        assertThat(loaded1.status()).isEqualTo("PENDIENTE");
+        assertThat(seguimientos.findEntityByPublicId(pub1)).contains(loaded1);
+        assertThat(seguimientos.findEntityByPublicId("no-existe")).isEmpty();
 
-        SeguimientoResponse view2 = seguimientos.buscarPorPublicId(pub2).orElseThrow();
-        assertThat(view2.fechaSugeridaControl()).isNull();
-        assertThat(view2.pacienteNombre()).isEqualTo("Carlos Ruiz");
+        FollowUpResponse view2 = seguimientos.findByPublicId(pub2).orElseThrow();
+        assertThat(view2.suggestedControlDate()).isNull();
+        assertThat(view2.patientName()).isEqualTo("Carlos Ruiz");
 
         // Reporte paciente -> COMPLETADO; actualizarEstado -> CANCELADO
         Instant answeredAt = Instant.now();
-        seguimientos.registrarReportePaciente(id1, "Sin sintomas", answeredAt);
-        SeguimientoPostAtencion completed1 = seguimientos.buscarEntidadPorId(id1).orElseThrow();
-        assertThat(completed1.estado()).isEqualTo("COMPLETADO");
-        assertThat(completed1.reportePaciente()).isEqualTo("Sin sintomas");
-        assertThat(completed1.fechaRespuestaPaciente()).isNotNull();
+        seguimientos.recordPatientReport(id1, "Sin sintomas", answeredAt);
+        PostAttentionFollowUp completed1 = seguimientos.findEntityById(id1).orElseThrow();
+        assertThat(completed1.status()).isEqualTo("COMPLETADO");
+        assertThat(completed1.patientReport()).isEqualTo("Sin sintomas");
+        assertThat(completed1.patientRespondedAt()).isNotNull();
 
-        seguimientos.actualizarEstado(id3, "CANCELADO");
-        assertThat(seguimientos.buscarEntidadPorId(id3).orElseThrow().estado()).isEqualTo("CANCELADO");
+        seguimientos.updateStatus(id3, "CANCELADO");
+        assertThat(seguimientos.findEntityById(id3).orElseThrow().status()).isEqualTo("CANCELADO");
 
         // Listado por atención (orden de creación ascendente)
-        assertThat(seguimientos.listarPorAtencionId(encounterId))
-                .extracting(SeguimientoResponse::publicId)
+        assertThat(seguimientos.listByAttentionId(encounterId))
+                .extracting(FollowUpResponse::publicId)
                 .containsExactly(pub1, pub2, pub3);
 
         // Conteo y paginación por paciente con y sin filtro de estado
-        assertThat(seguimientos.contarPorPacienteId(patientId, null)).isEqualTo(3);
-        assertThat(seguimientos.contarPorPacienteId(patientId, " pendiente ")).isEqualTo(1);
-        assertThat(seguimientos.contarPorPacienteId(patientId, "COMPLETADO")).isEqualTo(1);
+        assertThat(seguimientos.countByPatientId(patientId, null)).isEqualTo(3);
+        assertThat(seguimientos.countByPatientId(patientId, " pendiente ")).isEqualTo(1);
+        assertThat(seguimientos.countByPatientId(patientId, "COMPLETADO")).isEqualTo(1);
 
-        List<SeguimientoResponse> allPage0 = seguimientos.listarPorPacienteId(patientId, " ", 0, 2);
-        List<SeguimientoResponse> allPage1 = seguimientos.listarPorPacienteId(patientId, null, 1, 2);
-        assertThat(allPage0).extracting(SeguimientoResponse::publicId).containsExactly(pub3, pub2);
-        assertThat(allPage1).extracting(SeguimientoResponse::publicId).containsExactly(pub1);
+        List<FollowUpResponse> allPage0 = seguimientos.listByPatientId(patientId, " ", 0, 2);
+        List<FollowUpResponse> allPage1 = seguimientos.listByPatientId(patientId, null, 1, 2);
+        assertThat(allPage0).extracting(FollowUpResponse::publicId).containsExactly(pub3, pub2);
+        assertThat(allPage1).extracting(FollowUpResponse::publicId).containsExactly(pub1);
 
-        List<SeguimientoResponse> pendingOnly = seguimientos.listarPorPacienteId(patientId, "pendiente", 0, 10);
-        assertThat(pendingOnly).extracting(SeguimientoResponse::publicId).containsExactly(pub2);
+        List<FollowUpResponse> pendingOnly = seguimientos.listByPatientId(patientId, "pendiente", 0, 10);
+        assertThat(pendingOnly).extracting(FollowUpResponse::publicId).containsExactly(pub2);
     }
 }

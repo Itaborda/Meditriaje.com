@@ -1,29 +1,29 @@
 package com.meditriaje.service;
 
 import com.meditriaje.dto.common.PaginatedResponse;
-import com.meditriaje.dto.prescription.CrearRecetaDetalleRequest;
-import com.meditriaje.dto.prescription.CrearRecetaRequest;
-import com.meditriaje.dto.prescription.MedicamentoResponse;
-import com.meditriaje.dto.prescription.RecetaResponse;
-import com.meditriaje.exception.AccesoNoAutorizadoException;
-import com.meditriaje.exception.DatosInvalidosException;
-import com.meditriaje.exception.RecursoNoEncontradoException;
-import com.meditriaje.model.AccionAuditable;
-import com.meditriaje.model.Atencion;
-import com.meditriaje.model.EventoAuditoria;
-import com.meditriaje.model.Medicamento;
-import com.meditriaje.model.Paciente;
-import com.meditriaje.model.Profesional;
-import com.meditriaje.model.Receta;
-import com.meditriaje.model.RecetaDetalle;
-import com.meditriaje.model.ResultadoAuditoria;
-import com.meditriaje.model.Usuario;
-import com.meditriaje.repository.AtencionRepository;
-import com.meditriaje.repository.MedicamentoRepository;
-import com.meditriaje.repository.PacienteRepository;
-import com.meditriaje.repository.ProfesionalRepository;
-import com.meditriaje.repository.RecetaRepository;
-import com.meditriaje.repository.UsuarioRepository;
+import com.meditriaje.dto.prescription.CreatePrescriptionDetailRequest;
+import com.meditriaje.dto.prescription.CreatePrescriptionRequest;
+import com.meditriaje.dto.prescription.MedicationResponse;
+import com.meditriaje.dto.prescription.PrescriptionResponse;
+import com.meditriaje.exception.UnauthorizedAccessException;
+import com.meditriaje.exception.InvalidDataException;
+import com.meditriaje.exception.ResourceNotFoundException;
+import com.meditriaje.model.AuditableAction;
+import com.meditriaje.model.ClinicalAttention;
+import com.meditriaje.model.AuditEvent;
+import com.meditriaje.model.Medication;
+import com.meditriaje.model.Patient;
+import com.meditriaje.model.Professional;
+import com.meditriaje.model.Prescription;
+import com.meditriaje.model.PrescriptionDetail;
+import com.meditriaje.model.AuditResult;
+import com.meditriaje.model.User;
+import com.meditriaje.repository.ClinicalAttentionRepository;
+import com.meditriaje.repository.MedicationRepository;
+import com.meditriaje.repository.PatientRepository;
+import com.meditriaje.repository.ProfessionalRepository;
+import com.meditriaje.repository.PrescriptionRepository;
+import com.meditriaje.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.stereotype.Service;
@@ -46,61 +46,61 @@ import java.util.stream.Collectors;
 @Service
 public class PrescriptionService {
 
-    public static final ZoneId ZONE_BOGOTA = ZoneId.of("America/Bogota");
+    public static final ZoneId BOGOTA_ZONE = ZoneId.of("America/Bogota");
 
-    private final UsuarioRepository usuarioRepository;
-    private final ProfesionalRepository profesionalRepository;
-    private final PacienteRepository pacienteRepository;
-    private final AtencionRepository atencionRepository;
-    private final MedicamentoRepository medicamentoRepository;
-    private final RecetaRepository recetaRepository;
-    private final AccesoClinicoService accesoClinicoService;
-    private final AuditoriaService auditoriaService;
+    private final UserRepository userRepository;
+    private final ProfessionalRepository professionalRepository;
+    private final PatientRepository patientRepository;
+    private final ClinicalAttentionRepository attentionRepository;
+    private final MedicationRepository medicationRepository;
+    private final PrescriptionRepository prescriptionRepository;
+    private final ClinicalAccessService clinicalAccessService;
+    private final AuditService auditService;
     private final Clock clock;
 
     @Autowired
     public PrescriptionService(
-            UsuarioRepository usuarioRepository,
-            ProfesionalRepository profesionalRepository,
-            PacienteRepository pacienteRepository,
-            AtencionRepository atencionRepository,
-            MedicamentoRepository medicamentoRepository,
-            RecetaRepository recetaRepository,
-            AccesoClinicoService accesoClinicoService,
-            AuditoriaService auditoriaService
+            UserRepository userRepository,
+            ProfessionalRepository professionalRepository,
+            PatientRepository patientRepository,
+            ClinicalAttentionRepository attentionRepository,
+            MedicationRepository medicationRepository,
+            PrescriptionRepository prescriptionRepository,
+            ClinicalAccessService clinicalAccessService,
+            AuditService auditService
     ) {
         this(
-                usuarioRepository,
-                profesionalRepository,
-                pacienteRepository,
-                atencionRepository,
-                medicamentoRepository,
-                recetaRepository,
-                accesoClinicoService,
-                auditoriaService,
-                Clock.system(ZONE_BOGOTA)
+                userRepository,
+                professionalRepository,
+                patientRepository,
+                attentionRepository,
+                medicationRepository,
+                prescriptionRepository,
+                clinicalAccessService,
+                auditService,
+                Clock.system(BOGOTA_ZONE)
         );
     }
 
     public PrescriptionService(
-            UsuarioRepository usuarioRepository,
-            ProfesionalRepository profesionalRepository,
-            PacienteRepository pacienteRepository,
-            AtencionRepository atencionRepository,
-            MedicamentoRepository medicamentoRepository,
-            RecetaRepository recetaRepository,
-            AccesoClinicoService accesoClinicoService,
-            AuditoriaService auditoriaService,
+            UserRepository userRepository,
+            ProfessionalRepository professionalRepository,
+            PatientRepository patientRepository,
+            ClinicalAttentionRepository attentionRepository,
+            MedicationRepository medicationRepository,
+            PrescriptionRepository prescriptionRepository,
+            ClinicalAccessService clinicalAccessService,
+            AuditService auditService,
             Clock clock
     ) {
-        this.usuarioRepository = Objects.requireNonNull(usuarioRepository, "usuarioRepository no puede ser nulo");
-        this.profesionalRepository = Objects.requireNonNull(profesionalRepository, "profesionalRepository no puede ser nulo");
-        this.pacienteRepository = Objects.requireNonNull(pacienteRepository, "pacienteRepository no puede ser nulo");
-        this.atencionRepository = Objects.requireNonNull(atencionRepository, "atencionRepository no puede ser nulo");
-        this.medicamentoRepository = Objects.requireNonNull(medicamentoRepository, "medicamentoRepository no puede ser nulo");
-        this.recetaRepository = Objects.requireNonNull(recetaRepository, "recetaRepository no puede ser nulo");
-        this.accesoClinicoService = Objects.requireNonNull(accesoClinicoService, "accesoClinicoService no puede ser nulo");
-        this.auditoriaService = Objects.requireNonNull(auditoriaService, "auditoriaService no puede ser nulo");
+        this.userRepository = Objects.requireNonNull(userRepository, "usuarioRepository no puede ser nulo");
+        this.professionalRepository = Objects.requireNonNull(professionalRepository, "profesionalRepository no puede ser nulo");
+        this.patientRepository = Objects.requireNonNull(patientRepository, "pacienteRepository no puede ser nulo");
+        this.attentionRepository = Objects.requireNonNull(attentionRepository, "atencionRepository no puede ser nulo");
+        this.medicationRepository = Objects.requireNonNull(medicationRepository, "medicamentoRepository no puede ser nulo");
+        this.prescriptionRepository = Objects.requireNonNull(prescriptionRepository, "recetaRepository no puede ser nulo");
+        this.clinicalAccessService = Objects.requireNonNull(clinicalAccessService, "accesoClinicoService no puede ser nulo");
+        this.auditService = Objects.requireNonNull(auditService, "auditoriaService no puede ser nulo");
         this.clock = Objects.requireNonNull(clock, "clock no puede ser nulo");
     }
 
@@ -114,91 +114,91 @@ public class PrescriptionService {
      * @return RecetaResponse con la receta y sus ítems consolidados
      */
     @Transactional
-    public RecetaResponse emitirReceta(CrearRecetaRequest request, String usuarioAutenticadoPublicId, String ipOrigen) {
+    public PrescriptionResponse issuePrescription(CreatePrescriptionRequest request, String usuarioAutenticadoPublicId, String ipOrigen) {
         Objects.requireNonNull(request, "request no puede ser nulo");
 
         // 1. Identificar profesional asistencial autenticado
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new AccesoNoAutorizadoException("Usuario no registrado como profesional asistencial."));
-        Profesional profesional = profesionalRepository.buscarPorUsuarioId(usuario.id())
-                .orElseThrow(() -> new AccesoNoAutorizadoException("Usuario no registrado como profesional asistencial."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new UnauthorizedAccessException("Usuario no registrado como profesional asistencial."));
+        Professional profesional = professionalRepository.findByUserId(usuario.id())
+                .orElseThrow(() -> new UnauthorizedAccessException("Usuario no registrado como profesional asistencial."));
 
         // 2. Buscar atención médica
-        Atencion atencion = atencionRepository.buscarEntidadPorPublicId(request.atencionPublicId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Atencion medica no encontrada."));
+        ClinicalAttention atencion = attentionRepository.findEntityByPublicId(request.attentionPublicId())
+                .orElseThrow(() -> new ResourceNotFoundException("Atencion medica no encontrada."));
 
         // 3. Autorización asistencial (ADR-007)
-        if (!atencion.profesionalId().equals(profesional.id())) {
-            accesoClinicoService.validarRelacionAsistencial(profesional.id(), atencion.pacienteId());
+        if (!atencion.professionalId().equals(profesional.id())) {
+            clinicalAccessService.validateCareRelationship(profesional.id(), atencion.patientId());
         }
 
         // 4. Validar medicamentos activos y preparar snapshot inmutable
-        if (request.detalles() == null || request.detalles().isEmpty()) {
-            throw new DatosInvalidosException("La receta debe contener al menos un medicamento prescrito.");
+        if (request.details() == null || request.details().isEmpty()) {
+            throw new InvalidDataException("La receta debe contener al menos un medicamento prescrito.");
         }
 
-        List<Medicamento> medicamentosValidados = new ArrayList<>();
-        for (CrearRecetaDetalleRequest detalleReq : request.detalles()) {
-            Medicamento med = medicamentoRepository.buscarPorPublicId(detalleReq.medicamentoPublicId())
-                    .orElseThrow(() -> new DatosInvalidosException("El medicamento no existe o no se encuentra activo: " + detalleReq.medicamentoPublicId()));
+        List<Medication> medicamentosValidados = new ArrayList<>();
+        for (CreatePrescriptionDetailRequest detalleReq : request.details()) {
+            Medication med = medicationRepository.findByPublicId(detalleReq.medicationPublicId())
+                    .orElseThrow(() -> new InvalidDataException("El medicamento no existe o no se encuentra activo: " + detalleReq.medicationPublicId()));
 
-            if (!med.estaActivo()) {
-                throw new DatosInvalidosException("El medicamento no existe o no se encuentra activo: " + detalleReq.medicamentoPublicId());
+            if (!med.isActive()) {
+                throw new InvalidDataException("El medicamento no existe o no se encuentra activo: " + detalleReq.medicationPublicId());
             }
             medicamentosValidados.add(med);
         }
 
         // 5. Persistencia atómica de la receta
         String recetaPublicId = UUID.randomUUID().toString();
-        int vigencia = request.vigenciaDias() != null ? request.vigenciaDias() : 30;
+        int vigencia = request.validityDays() != null ? request.validityDays() : 30;
 
-        Receta receta = new Receta(
+        Prescription receta = new Prescription(
                 null,
                 recetaPublicId,
                 atencion.id(),
-                atencion.pacienteId(),
+                atencion.patientId(),
                 profesional.id(),
                 vigencia,
                 clock.instant()
         );
 
-        Long recetaId = recetaRepository.crearReceta(receta);
+        Long recetaId = prescriptionRepository.createPrescription(receta);
 
-        List<RecetaDetalle> detalles = new ArrayList<>();
-        for (int i = 0; i < request.detalles().size(); i++) {
-            CrearRecetaDetalleRequest detalleReq = request.detalles().get(i);
-            Medicamento med = medicamentosValidados.get(i);
+        List<PrescriptionDetail> detalles = new ArrayList<>();
+        for (int i = 0; i < request.details().size(); i++) {
+            CreatePrescriptionDetailRequest detalleReq = request.details().get(i);
+            Medication med = medicamentosValidados.get(i);
 
-            detalles.add(new RecetaDetalle(
+            detalles.add(new PrescriptionDetail(
                     null,
                     recetaId,
                     med.id(),
-                    med.nombreComercial(),
-                    med.principioActivo(),
-                    med.presentacion(),
-                    med.concentracion(),
-                    detalleReq.dosis(),
-                    detalleReq.frecuencia(),
-                    detalleReq.duracionDias(),
-                    detalleReq.cantidad(),
-                    detalleReq.indicaciones()
+                    med.brandName(),
+                    med.activeIngredient(),
+                    med.presentation(),
+                    med.concentration(),
+                    detalleReq.dose(),
+                    detalleReq.frequency(),
+                    detalleReq.durationDays(),
+                    detalleReq.quantity(),
+                    detalleReq.instructions()
             ));
         }
 
-        recetaRepository.guardarDetalles(recetaId, detalles);
+        prescriptionRepository.saveDetails(recetaId, detalles);
 
         // 6. Auditoría inmutable obligatoria (ADR-011) — Cero datos clínicos ni medicamentos en logs
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.CREACION_RECETA,
+                AuditableAction.CREACION_RECETA,
                 "RECETA",
                 recetaPublicId,
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 
         // 7. Retornar receta consultada desde la BD
-        return recetaRepository.buscarPorPublicId(recetaPublicId)
+        return prescriptionRepository.findByPublicId(recetaPublicId)
                 .orElseThrow(() -> new IllegalStateException("Error al recuperar la receta medica recien emitida."));
     }
 
@@ -211,54 +211,54 @@ public class PrescriptionService {
      * @param authorities Autoridades/roles del usuario solicitante
      * @return RecetaResponse con el detalle inmutable de la receta
      */
-    public RecetaResponse obtenerPorPublicId(
+    public PrescriptionResponse getByPublicId(
             String publicId,
             String usuarioAutenticadoPublicId,
             Collection<? extends GrantedAuthority> authorities
     ) {
         if (publicId == null || publicId.isBlank()) {
-            throw new RecursoNoEncontradoException("Receta medica no encontrada.");
+            throw new ResourceNotFoundException("Receta medica no encontrada.");
         }
         if (usuarioAutenticadoPublicId == null || authorities == null || authorities.isEmpty()) {
-            throw new AccesoNoAutorizadoException("Usuario no autenticado o sin roles asignados.");
+            throw new UnauthorizedAccessException("Usuario no autenticado o sin roles asignados.");
         }
 
-        Receta receta = recetaRepository.buscarEntidadPorPublicId(publicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Receta medica no encontrada."));
+        Prescription receta = prescriptionRepository.findEntityByPublicId(publicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Receta medica no encontrada."));
 
         Set<String> roles = authorities.stream()
                 .map(GrantedAuthority::getAuthority)
                 .collect(Collectors.toSet());
 
         // Regla ADR-007: El administrador NUNCA accede a recetas ni contenido clínico
-        if (roles.contains(AccesoClinicoService.ROL_ADMIN)) {
-            throw new AccesoNoAutorizadoException("El personal administrativo no tiene acceso a recetas ni contenido clinico.");
+        if (roles.contains(ClinicalAccessService.ROLE_ADMIN)) {
+            throw new UnauthorizedAccessException("El personal administrativo no tiene acceso a recetas ni contenido clinico.");
         }
 
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario autenticado no encontrado."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario autenticado no encontrado."));
 
-        if (roles.contains(AccesoClinicoService.ROL_PACIENTE)) {
-            Paciente paciente = pacienteRepository.buscarPorUsuarioId(usuario.id())
-                    .orElseThrow(() -> new AccesoNoAutorizadoException("Usuario no registrado como paciente."));
+        if (roles.contains(ClinicalAccessService.ROLE_PATIENT)) {
+            Patient paciente = patientRepository.findByUserId(usuario.id())
+                    .orElseThrow(() -> new UnauthorizedAccessException("Usuario no registrado como paciente."));
 
-            if (!receta.pacienteId().equals(paciente.id())) {
-                throw new AccesoNoAutorizadoException("No tiene autorizacion para acceder a la receta de otro paciente.");
+            if (!receta.patientId().equals(paciente.id())) {
+                throw new UnauthorizedAccessException("No tiene autorizacion para acceder a la receta de otro paciente.");
             }
-        } else if (roles.contains(AccesoClinicoService.ROL_PROFESIONAL)) {
-            Profesional profesional = profesionalRepository.buscarPorUsuarioId(usuario.id())
-                    .orElseThrow(() -> new AccesoNoAutorizadoException("Usuario no registrado como profesional asistencial."));
+        } else if (roles.contains(ClinicalAccessService.ROLE_PROFESSIONAL)) {
+            Professional profesional = professionalRepository.findByUserId(usuario.id())
+                    .orElseThrow(() -> new UnauthorizedAccessException("Usuario no registrado como profesional asistencial."));
 
-            boolean esAutor = receta.profesionalId().equals(profesional.id());
+            boolean esAutor = receta.professionalId().equals(profesional.id());
             if (!esAutor) {
-                accesoClinicoService.validarRelacionAsistencial(profesional.id(), receta.pacienteId());
+                clinicalAccessService.validateCareRelationship(profesional.id(), receta.patientId());
             }
         } else {
-            throw new AccesoNoAutorizadoException("Rol no autorizado para consultar recetas medicas.");
+            throw new UnauthorizedAccessException("Rol no autorizado para consultar recetas medicas.");
         }
 
-        return recetaRepository.buscarPorPublicId(publicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Receta medica no encontrada."));
+        return prescriptionRepository.findByPublicId(publicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Receta medica no encontrada."));
     }
 
     /**
@@ -269,12 +269,12 @@ public class PrescriptionService {
      * @param size Cantidad de elementos por página
      * @return Respuesta paginada con los medicamentos coincidentes
      */
-    public PaginatedResponse<MedicamentoResponse> listarCatalogo(String query, int page, int size) {
+    public PaginatedResponse<MedicationResponse> listCatalog(String query, int page, int size) {
         int safePage = Math.max(0, page);
         int safeSize = Math.min(Math.max(1, size), 100);
 
-        List<MedicamentoResponse> content = medicamentoRepository.listarActivos(query, safePage, safeSize);
-        int total = medicamentoRepository.contarActivos(query);
+        List<MedicationResponse> content = medicationRepository.listActive(query, safePage, safeSize);
+        int total = medicationRepository.countActive(query);
 
         return PaginatedResponse.of(content, safePage, safeSize, total);
     }
@@ -289,34 +289,34 @@ public class PrescriptionService {
      * @param ipOrigen Dirección IP del cliente para fines de auditoría inmutable
      * @return PaginatedResponse con las recetas del paciente
      */
-    public PaginatedResponse<RecetaResponse> obtenerMisRecetas(
+    public PaginatedResponse<PrescriptionResponse> getMyPrescriptions(
             String usuarioAutenticadoPublicId,
             int page,
             int size,
             String ipOrigen
     ) {
         if (usuarioAutenticadoPublicId == null || usuarioAutenticadoPublicId.isBlank()) {
-            throw new AccesoNoAutorizadoException("Usuario no autenticado.");
+            throw new UnauthorizedAccessException("Usuario no autenticado.");
         }
 
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario autenticado no encontrado."));
-        Paciente paciente = pacienteRepository.buscarPorUsuarioId(usuario.id())
-                .orElseThrow(() -> new AccesoNoAutorizadoException("Usuario no registrado como paciente."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario autenticado no encontrado."));
+        Patient paciente = patientRepository.findByUserId(usuario.id())
+                .orElseThrow(() -> new UnauthorizedAccessException("Usuario no registrado como paciente."));
 
         int safePage = Math.max(0, page);
         int safeSize = Math.max(1, Math.min(size, 100));
 
-        List<RecetaResponse> content = recetaRepository.listarPorPacienteId(paciente.id(), safePage, safeSize);
-        int total = recetaRepository.contarPorPacienteId(paciente.id());
+        List<PrescriptionResponse> content = prescriptionRepository.listByPatientId(paciente.id(), safePage, safeSize);
+        int total = prescriptionRepository.countByPatientId(paciente.id());
 
         // Auditar consulta de recetas del paciente (ADR-011, sin datos clínicos ni fármacos)
-        auditoriaService.auditar(new EventoAuditoria(
+        auditService.audit(new AuditEvent(
                 usuario.id(),
-                AccionAuditable.CONSULTA_HISTORIA,
+                AuditableAction.CONSULTA_HISTORIA,
                 "RECETA",
                 paciente.publicId(),
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         ));
 

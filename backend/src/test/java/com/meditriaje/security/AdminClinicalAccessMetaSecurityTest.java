@@ -7,13 +7,13 @@ import com.meditriaje.controller.ClinicalAttentionController;
 import com.meditriaje.controller.ClinicalBreakGlassController;
 import com.meditriaje.controller.ClinicalPatientHistoryController;
 import com.meditriaje.controller.FollowUpController;
-import com.meditriaje.controller.PacienteController;
+import com.meditriaje.controller.PatientController;
 import com.meditriaje.controller.PatientAllergyController;
 import com.meditriaje.controller.PharmacyDispensationController;
 import com.meditriaje.controller.PrescriptionController;
 import com.meditriaje.controller.ProfessionalAgendaController;
-import com.meditriaje.controller.TriajeController;
-import com.meditriaje.exception.AccesoNoAutorizadoException;
+import com.meditriaje.controller.TriageController;
+import com.meditriaje.exception.UnauthorizedAccessException;
 import com.meditriaje.exception.GlobalExceptionHandler;
 import com.meditriaje.service.AllergyService;
 import com.meditriaje.service.AppointmentService;
@@ -22,9 +22,9 @@ import com.meditriaje.service.ClinicalAttentionService;
 import com.meditriaje.service.DispensationService;
 import com.meditriaje.service.EmergencyQrService;
 import com.meditriaje.service.FollowUpService;
-import com.meditriaje.service.PacienteService;
+import com.meditriaje.service.PatientService;
 import com.meditriaje.service.PrescriptionService;
-import com.meditriaje.service.TriajeService;
+import com.meditriaje.service.TriageService;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -67,12 +67,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         ClinicalPatientHistoryController.class,
         ClinicalAllergyController.class,
         PatientAllergyController.class,
-        PacienteController.class,
+        PatientController.class,
         PrescriptionController.class,
         FollowUpController.class,
         PharmacyDispensationController.class,
         ProfessionalAgendaController.class,
-        TriajeController.class
+        TriageController.class
 })
 @Import({SecurityConfig.class, CorsConfig.class, GlobalExceptionHandler.class})
 @ActiveProfiles("test")
@@ -94,7 +94,7 @@ class AdminClinicalAccessMetaSecurityTest {
     private AllergyService allergyService;
 
     @MockBean
-    private PacienteService pacienteService;
+    private PatientService pacienteService;
 
     @MockBean
     private PrescriptionService prescriptionService;
@@ -112,16 +112,16 @@ class AdminClinicalAccessMetaSecurityTest {
     private AppointmentService appointmentService;
 
     @MockBean
-    private TriajeService triajeService;
+    private TriageService triageService;
 
     private static final String TOKEN_ADMIN = "jwt.admin.meta";
     private static final String ADMIN_UUID = "usr-admin-uuid";
 
     @BeforeEach
     void setUp() {
-        when(jwtService.esValido(TOKEN_ADMIN)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_ADMIN)).thenReturn(ADMIN_UUID);
-        when(jwtService.extraerRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
+        when(jwtService.isValid(TOKEN_ADMIN)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_ADMIN)).thenReturn(ADMIN_UUID);
+        when(jwtService.extractRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
     }
 
     private Cookie adminCookie() {
@@ -130,19 +130,19 @@ class AdminClinicalAccessMetaSecurityTest {
 
     @Test
     @DisplayName("Meta-inspección: Ningún controlador clínico autoriza a ROLE_ADMINISTRADOR en @PreAuthorize")
-    void metaInspeccion_ningunControladorClinicoAutorizaAdmin() {
+    void metaInspeccion_ningunControladorClinicalAutorizaAdmin() {
         List<Class<?>> controladoresClinicos = List.of(
                 ClinicalAttentionController.class,
                 ClinicalBreakGlassController.class,
                 ClinicalPatientHistoryController.class,
                 ClinicalAllergyController.class,
                 PatientAllergyController.class,
-                PacienteController.class,
+                PatientController.class,
                 PrescriptionController.class,
                 FollowUpController.class,
                 PharmacyDispensationController.class,
                 ProfessionalAgendaController.class,
-                TriajeController.class
+                TriageController.class
         );
 
         for (Class<?> clazz : controladoresClinicos) {
@@ -168,7 +168,7 @@ class AdminClinicalAccessMetaSecurityTest {
 
     @Test
     @DisplayName("Atención médica: Admin recibe 403 en iniciar, cerrar y enmiendas")
-    void atencionMedica_adminRecibe403() throws Exception {
+    void attentionMedical_adminReceives403() throws Exception {
         mockMvc.perform(post("/api/v1/attentions")
                         .header("X-Requested-With", "XMLHttpRequest")
                         .cookie(adminCookie())
@@ -209,7 +209,7 @@ class AdminClinicalAccessMetaSecurityTest {
 
     @Test
     @DisplayName("Historia clínica y alergias profesionales: Admin recibe 403")
-    void historiaYAlergiasProfesionales_adminRecibe403() throws Exception {
+    void historyAndAllergiesProfessionals_adminReceives403() throws Exception {
         mockMvc.perform(get("/api/v1/clinical/patients/p-100/history")
                         .header("X-Requested-With", "XMLHttpRequest")
                         .cookie(adminCookie()))
@@ -230,7 +230,7 @@ class AdminClinicalAccessMetaSecurityTest {
 
     @Test
     @DisplayName("Portal personal del paciente (/patients/me/**): Admin recibe 403")
-    void portalPersonalPaciente_adminRecibe403() throws Exception {
+    void portalPersonalPatient_adminReceives403() throws Exception {
         mockMvc.perform(get("/api/v1/patients/me")
                         .cookie(adminCookie()))
                 .andExpect(status().isForbidden());
@@ -266,8 +266,8 @@ class AdminClinicalAccessMetaSecurityTest {
                         .content("{\"atencionPublicId\":\"atn-1\",\"detalles\":[{\"medicamentoPublicId\":\"m-1\",\"dosis\":\"500mg\",\"frecuencia\":\"8h\",\"duracionDias\":3,\"cantidad\":1,\"indicaciones\":\"Tomar con agua\"}]}"))
                 .andExpect(status().isForbidden());
 
-        when(prescriptionService.obtenerPorPublicId(eq("rx-1"), eq(ADMIN_UUID), any()))
-                .thenThrow(new AccesoNoAutorizadoException("El personal administrativo no tiene acceso a recetas ni contenido clinico."));
+        when(prescriptionService.getByPublicId(eq("rx-1"), eq(ADMIN_UUID), any()))
+                .thenThrow(new UnauthorizedAccessException("El personal administrativo no tiene acceso a recetas ni contenido clinico."));
 
         mockMvc.perform(get("/api/v1/prescriptions/rx-1")
                         .header("X-Requested-With", "XMLHttpRequest")
@@ -277,7 +277,7 @@ class AdminClinicalAccessMetaSecurityTest {
 
     @Test
     @DisplayName("Seguimiento y Farmacia: Admin recibe 403")
-    void seguimientoYFarmacia_adminRecibe403() throws Exception {
+    void followUpAndPharmacy_adminReceives403() throws Exception {
         mockMvc.perform(post("/api/v1/attentions/atn-1/follow-ups")
                         .header("X-Requested-With", "XMLHttpRequest")
                         .cookie(adminCookie())
@@ -299,7 +299,7 @@ class AdminClinicalAccessMetaSecurityTest {
 
     @Test
     @DisplayName("Agenda Médica y Triaje: Admin recibe 403")
-    void agendaMedicaYTriaje_adminRecibe403() throws Exception {
+    void agendaMedicalAndTriage_adminReceives403() throws Exception {
         mockMvc.perform(get("/api/v1/professionals/me/agenda")
                         .header("X-Requested-With", "XMLHttpRequest")
                         .cookie(adminCookie()))

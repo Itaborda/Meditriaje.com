@@ -1,13 +1,13 @@
 package com.meditriaje.demo;
 
-import com.meditriaje.repository.CitaRepository;
+import com.meditriaje.repository.AppointmentRepository;
 import com.meditriaje.repository.DemoSeedRepository;
-import com.meditriaje.repository.DisponibilidadSlotRepository;
-import com.meditriaje.repository.EspecialidadRepository;
-import com.meditriaje.repository.MedicamentoRepository;
-import com.meditriaje.repository.PacienteRepository;
-import com.meditriaje.repository.ProfesionalRepository;
-import com.meditriaje.repository.UsuarioRepository;
+import com.meditriaje.repository.AvailabilitySlotRepository;
+import com.meditriaje.repository.SpecialtyRepository;
+import com.meditriaje.repository.MedicationRepository;
+import com.meditriaje.repository.PatientRepository;
+import com.meditriaje.repository.ProfessionalRepository;
+import com.meditriaje.repository.UserRepository;
 import com.meditriaje.service.AdminCatalogService;
 import com.meditriaje.service.AdminProfessionalService;
 import com.meditriaje.service.AllergyService;
@@ -18,7 +18,7 @@ import com.meditriaje.service.DispensationService;
 import com.meditriaje.service.FollowUpService;
 import com.meditriaje.service.PrescriptionService;
 import com.meditriaje.service.SlotGeneratorService;
-import com.meditriaje.service.TriajeService;
+import com.meditriaje.service.TriageService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -50,25 +50,25 @@ class DemoDataSeederTest {
     private PasswordEncoder passwordEncoder;
 
     @Mock
-    private UsuarioRepository usuarioRepository;
+    private UserRepository userRepository;
 
     @Mock
-    private PacienteRepository pacienteRepository;
+    private PatientRepository patientRepository;
 
     @Mock
-    private ProfesionalRepository profesionalRepository;
+    private ProfessionalRepository professionalRepository;
 
     @Mock
-    private EspecialidadRepository especialidadRepository;
+    private SpecialtyRepository specialtyRepository;
 
     @Mock
-    private DisponibilidadSlotRepository slotRepository;
+    private AvailabilitySlotRepository slotRepository;
 
     @Mock
-    private CitaRepository citaRepository;
+    private AppointmentRepository appointmentRepository;
 
     @Mock
-    private MedicamentoRepository medicamentoRepository;
+    private MedicationRepository medicationRepository;
 
     @Mock
     private AdminCatalogService adminCatalogService;
@@ -83,7 +83,7 @@ class DemoDataSeederTest {
     private SlotGeneratorService slotGeneratorService;
 
     @Mock
-    private TriajeService triajeService;
+    private TriageService triageService;
 
     @Mock
     private AppointmentService appointmentService;
@@ -111,18 +111,18 @@ class DemoDataSeederTest {
                 environment,
                 demoSeedRepository,
                 passwordEncoder,
-                usuarioRepository,
-                pacienteRepository,
-                profesionalRepository,
-                especialidadRepository,
+                userRepository,
+                patientRepository,
+                professionalRepository,
+                specialtyRepository,
                 slotRepository,
-                citaRepository,
-                medicamentoRepository,
+                appointmentRepository,
+                medicationRepository,
                 adminCatalogService,
                 adminProfessionalService,
                 authService,
                 slotGeneratorService,
-                triajeService,
+                triageService,
                 appointmentService,
                 clinicalAttentionService,
                 prescriptionService,
@@ -134,7 +134,7 @@ class DemoDataSeederTest {
 
     @Test
     @DisplayName("Cuando DEMO_SEED es falso o no esta configurado, no ejecuta ninguna consulta ni siembra")
-    void inactivoPorDefecto() {
+    void inactiveByDefault() {
         when(environment.getProperty("DEMO_SEED")).thenReturn("false");
 
         assertThatCode(() -> seeder.run()).doesNotThrowAnyException();
@@ -144,7 +144,7 @@ class DemoDataSeederTest {
 
     @Test
     @DisplayName("Cuando DEMO_SEED=true pero DEMO_PASSWORD esta vacio o tiene menos de 12 caracteres, lanza excepcion")
-    void fallaSiPasswordDemoInvalida() {
+    void failsWhenDemoPasswordInvalid() {
         when(environment.getProperty("DEMO_SEED")).thenReturn("true");
         when(environment.getProperty("DEMO_PASSWORD")).thenReturn("corta123");
 
@@ -157,12 +157,12 @@ class DemoDataSeederTest {
 
     @Test
     @DisplayName("Cuando la base de datos contiene usuarios ajenos a @demo.meditriaje.test, aborta tajantemente por seguridad")
-    void abortaSiHayUsuariosNoDemo() {
+    void abortsWhenNonDemoUsersExist() {
         when(environment.getProperty("DEMO_SEED")).thenReturn("true");
         when(environment.getProperty("DEMO_PASSWORD")).thenReturn("PasswordSeguro2026!");
         when(environment.getProperty("DEMO_RESET")).thenReturn("false");
 
-        when(demoSeedRepository.contarUsuariosFueraDeDominio("@demo.meditriaje.test")).thenReturn(2);
+        when(demoSeedRepository.countUsersOutsideDomain("@demo.meditriaje.test")).thenReturn(2);
 
         assertThatThrownBy(() -> seeder.run())
                 .isInstanceOf(IllegalStateException.class)
@@ -172,16 +172,16 @@ class DemoDataSeederTest {
 
     @Test
     @DisplayName("Cuando los usuarios demo ya fueron sembrados (>=17), es idempotente y no vuelve a sembrar")
-    void idempotenteSiYaSembrado() {
+    void idempotentWhenAlreadySeeded() {
         when(environment.getProperty("DEMO_SEED")).thenReturn("true");
         when(environment.getProperty("DEMO_PASSWORD")).thenReturn("PasswordSeguro2026!");
         when(environment.getProperty("DEMO_RESET")).thenReturn("false");
 
-        when(demoSeedRepository.contarUsuariosFueraDeDominio("@demo.meditriaje.test")).thenReturn(0);
-        when(demoSeedRepository.contarUsuariosEnDominio("@demo.meditriaje.test")).thenReturn(17);
+        when(demoSeedRepository.countUsersOutsideDomain("@demo.meditriaje.test")).thenReturn(0);
+        when(demoSeedRepository.countUsersInDomain("@demo.meditriaje.test")).thenReturn(17);
 
         assertThatCode(() -> seeder.run()).doesNotThrowAnyException();
 
-        verify(authService, never()).registrarPaciente(any(), anyString());
+        verify(authService, never()).registerPatient(any(), anyString());
     }
 }

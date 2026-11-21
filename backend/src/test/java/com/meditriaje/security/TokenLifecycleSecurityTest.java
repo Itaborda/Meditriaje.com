@@ -2,19 +2,19 @@ package com.meditriaje.security;
 
 import com.meditriaje.dto.AuthSessionResponse;
 import com.meditriaje.dto.AuthTokens;
-import com.meditriaje.exception.TokenInvalidoException;
-import com.meditriaje.model.AccionAuditable;
+import com.meditriaje.exception.InvalidTokenException;
+import com.meditriaje.model.AuditableAction;
 import com.meditriaje.model.RefreshToken;
-import com.meditriaje.model.ResultadoAuditoria;
-import com.meditriaje.model.Usuario;
-import com.meditriaje.repository.CodigoVerificacionRepository;
-import com.meditriaje.repository.ConsentimientoRepository;
+import com.meditriaje.model.AuditResult;
+import com.meditriaje.model.User;
+import com.meditriaje.repository.VerificationCodeRepository;
+import com.meditriaje.repository.ConsentRepository;
 import com.meditriaje.repository.MfaBackupCodeRepository;
-import com.meditriaje.repository.PacienteRepository;
-import com.meditriaje.repository.ProfesionalRepository;
+import com.meditriaje.repository.PatientRepository;
+import com.meditriaje.repository.ProfessionalRepository;
 import com.meditriaje.repository.RefreshTokenRepository;
-import com.meditriaje.repository.UsuarioRepository;
-import com.meditriaje.service.AuditoriaService;
+import com.meditriaje.repository.UserRepository;
+import com.meditriaje.service.AuditService;
 import com.meditriaje.service.AuthService;
 import com.meditriaje.service.email.EmailService;
 import io.jsonwebtoken.Jwts;
@@ -60,21 +60,21 @@ class TokenLifecycleSecurityTest {
     private JwtService jwtService;
 
     @Mock
-    private UsuarioRepository usuarioRepository;
+    private UserRepository userRepository;
     @Mock
-    private PacienteRepository pacienteRepository;
+    private PatientRepository patientRepository;
     @Mock
-    private ProfesionalRepository profesionalRepository;
+    private ProfessionalRepository professionalRepository;
     @Mock
-    private ConsentimientoRepository consentimientoRepository;
+    private ConsentRepository consentRepository;
     @Mock
     private RefreshTokenRepository refreshTokenRepository;
     @Mock
-    private CodigoVerificacionRepository codigoVerificacionRepository;
+    private VerificationCodeRepository verificationCodeRepository;
     @Mock
     private MfaBackupCodeRepository mfaBackupCodeRepository;
     @Mock
-    private AuditoriaService auditoriaService;
+    private AuditService auditService;
     @Mock
     private PasswordEncoder passwordEncoder;
     @Mock
@@ -88,14 +88,14 @@ class TokenLifecycleSecurityTest {
     void setUp() {
         jwtService = new JwtService(SECRET_KEY_256, 15);
         authService = new AuthService(
-                usuarioRepository,
-                pacienteRepository,
-                profesionalRepository,
-                consentimientoRepository,
+                userRepository,
+                patientRepository,
+                professionalRepository,
+                consentRepository,
                 refreshTokenRepository,
-                codigoVerificacionRepository,
+                verificationCodeRepository,
                 mfaBackupCodeRepository,
-                auditoriaService,
+                auditService,
                 passwordEncoder,
                 jwtService,
                 totpService,
@@ -110,7 +110,7 @@ class TokenLifecycleSecurityTest {
 
     @Test
     @DisplayName("JWT: Token expirado es rechazado categóricamente por esValido()")
-    void accessToken_expirado_esRechazado() {
+    void accessToken_expired_isRejected() {
         SecretKey key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(SECRET_KEY_256));
         Instant pasado = Instant.now().minus(10, ChronoUnit.MINUTES);
 
@@ -123,13 +123,13 @@ class TokenLifecycleSecurityTest {
                 .signWith(key)
                 .compact();
 
-        assertThat(jwtService.esValido(expiredToken)).isFalse();
+        assertThat(jwtService.isValid(expiredToken)).isFalse();
     }
 
     @Test
     @DisplayName("JWT: Token con firma manipulada/alterada es rechazado por esValido()")
-    void accessToken_firmaManipulada_esRechazado() {
-        String tokenValido = jwtService.generarAccessToken("usr-uuid-1", "paciente@test.com", List.of("ROLE_PACIENTE"));
+    void accessToken_signatureTampered_isRejected() {
+        String tokenValido = jwtService.generateAccessToken("usr-uuid-1", "paciente@test.com", List.of("ROLE_PACIENTE"));
         String[] partes = tokenValido.split("\\.");
         assertThat(partes).hasSize(3);
 
@@ -137,13 +137,13 @@ class TokenLifecycleSecurityTest {
         String firmaAlterada = partes[2].substring(0, partes[2].length() - 2) + "ZZ";
         String tokenManipulado = partes[0] + "." + partes[1] + "." + firmaAlterada;
 
-        assertThat(jwtService.esValido(tokenManipulado)).isFalse();
+        assertThat(jwtService.isValid(tokenManipulado)).isFalse();
     }
 
     @Test
     @DisplayName("JWT: Token con payload manipulado (escalada de privilegios) es rechazado")
-    void accessToken_payloadManipulado_esRechazado() {
-        String tokenValido = jwtService.generarAccessToken("usr-uuid-1", "paciente@test.com", List.of("ROLE_PACIENTE"));
+    void accessToken_payloadTampered_isRejected() {
+        String tokenValido = jwtService.generateAccessToken("usr-uuid-1", "paciente@test.com", List.of("ROLE_PACIENTE"));
         String[] partes = tokenValido.split("\\.");
 
         // Decodificar el payload original
@@ -155,25 +155,25 @@ class TokenLifecycleSecurityTest {
 
         String tokenManipulado = partes[0] + "." + payloadBase64 + "." + partes[2];
 
-        assertThat(jwtService.esValido(tokenManipulado)).isFalse();
+        assertThat(jwtService.isValid(tokenManipulado)).isFalse();
     }
 
     @Test
     @DisplayName("JWT: Token firmado con una clave secreta distinta es rechazado")
-    void accessToken_claveSecretaDistinta_esRechazado() {
+    void accessToken_keySecretDifferent_isRejected() {
         JwtService foreignJwtService = new JwtService(ANOTHER_SECRET_KEY, 15);
-        String foreignToken = foreignJwtService.generarAccessToken("usr-uuid-1", "admin@test.com", List.of("ROLE_ADMINISTRADOR"));
+        String foreignToken = foreignJwtService.generateAccessToken("usr-uuid-1", "admin@test.com", List.of("ROLE_ADMINISTRADOR"));
 
-        assertThat(jwtService.esValido(foreignToken)).isFalse();
+        assertThat(jwtService.isValid(foreignToken)).isFalse();
     }
 
     @Test
     @DisplayName("JWT: Tokens nulos, vacíos o no-JWT retornan false de forma segura")
-    void accessToken_malformadoONulo_retornaFalse() {
-        assertThat(jwtService.esValido(null)).isFalse();
-        assertThat(jwtService.esValido("")).isFalse();
-        assertThat(jwtService.esValido("Bearer null")).isFalse();
-        assertThat(jwtService.esValido("token.con.dos.puntos.demas.invalido")).isFalse();
+    void accessToken_malformedOrNull_returnsFalse() {
+        assertThat(jwtService.isValid(null)).isFalse();
+        assertThat(jwtService.isValid("")).isFalse();
+        assertThat(jwtService.isValid("Bearer null")).isFalse();
+        assertThat(jwtService.isValid("token.con.dos.puntos.demas.invalido")).isFalse();
     }
 
     // =========================================================================
@@ -182,7 +182,7 @@ class TokenLifecycleSecurityTest {
 
     @Test
     @DisplayName("Refresh Token: Rotación exitosa invalida el token actual y emite uno nuevo")
-    void refreshToken_rotacionExitosa_emiteNuevoTokenYRevocaAnterior() {
+    void refreshToken_rotationExitosa_issuesNewTokenAndRevocaPrevious() {
         String rawToken = "raw-refresh-token-12345";
         String tokenHash = TokenHashUtil.hash(rawToken);
 
@@ -192,14 +192,14 @@ class TokenLifecycleSecurityTest {
                 false, Instant.now()
         );
 
-        Usuario usuario = new Usuario(
+        User usuario = new User(
                 10L, "usr-uuid-10", "usuario@test.com", "hash",
                 "ACTIVO", 0, null, Instant.now(), false, false, null, null
         );
 
-        when(refreshTokenRepository.buscarPorTokenHash(tokenHash)).thenReturn(Optional.of(tokenVigente));
-        when(usuarioRepository.buscarPorId(10L)).thenReturn(Optional.of(usuario));
-        when(usuarioRepository.obtenerRoles(10L)).thenReturn(List.of("ROLE_PACIENTE"));
+        when(refreshTokenRepository.findByTokenHash(tokenHash)).thenReturn(Optional.of(tokenVigente));
+        when(userRepository.findById(10L)).thenReturn(Optional.of(usuario));
+        when(userRepository.getRoles(10L)).thenReturn(List.of("ROLE_PACIENTE"));
 
         AuthTokens resultado = authService.refresh(rawToken, "192.168.1.1");
 
@@ -208,14 +208,14 @@ class TokenLifecycleSecurityTest {
         assertThat(resultado.rawRefreshToken()).isNotBlank().isNotEqualTo(rawToken);
 
         // Verifica que el token viejo haya sido revocado en BD
-        verify(refreshTokenRepository).revocar(1L);
+        verify(refreshTokenRepository).revoke(1L);
         // Verifica que el nuevo refresh token haya sido creado
-        verify(refreshTokenRepository).crear(eq(10L), anyString(), any(Instant.class));
+        verify(refreshTokenRepository).create(eq(10L), anyString(), any(Instant.class));
     }
 
     @Test
     @DisplayName("Refresh Token: Detección de reuso de token revocado revoca TODAS las sesiones del usuario (RFC 6749)")
-    void refreshToken_reusoDeTokenRevocado_revocaTodasLasSesionesDelUsuario() {
+    void refreshToken_reusoOfTokenRevoked_revocaAllTheSesionesOfUser() {
         String rawTokenReusado = "stolen-or-reused-refresh-token";
         String tokenHash = TokenHashUtil.hash(rawTokenReusado);
 
@@ -226,32 +226,32 @@ class TokenLifecycleSecurityTest {
                 true, Instant.now().minus(1, ChronoUnit.HOURS)
         );
 
-        when(refreshTokenRepository.buscarPorTokenHash(tokenHash)).thenReturn(Optional.of(tokenYaRevocado));
+        when(refreshTokenRepository.findByTokenHash(tokenHash)).thenReturn(Optional.of(tokenYaRevocado));
 
         assertThatThrownBy(() -> authService.refresh(rawTokenReusado, "203.0.113.195"))
-                .isInstanceOf(TokenInvalidoException.class)
+                .isInstanceOf(InvalidTokenException.class)
                 .hasMessageContaining("Sesion revocada por seguridad debido a deteccion de reuso");
 
         // CRÍTICO: Debe invalidar inmediatamente TODAS las sesiones activas del usuario víctima
-        verify(refreshTokenRepository).revocarTodosPorUsuario(20L);
+        verify(refreshTokenRepository).revokeAllByUser(20L);
 
         // Debe auditar como intento bloqueado
-        verify(auditoriaService).registrarEvento(
+        verify(auditService).recordEvent(
                 eq(20L),
-                eq(AccionAuditable.LOGIN_FALLIDO),
+                eq(AuditableAction.LOGIN_FALLIDO),
                 eq("REFRESH_TOKEN"),
                 eq("55"),
-                eq(ResultadoAuditoria.BLOQUEADO),
+                eq(AuditResult.BLOQUEADO),
                 eq("203.0.113.195")
         );
 
         // No debe emitirse ningún nuevo token
-        verify(refreshTokenRepository, never()).crear(anyLong(), anyString(), any());
+        verify(refreshTokenRepository, never()).create(anyLong(), anyString(), any());
     }
 
     @Test
     @DisplayName("Refresh Token: Token expirado es revocado y lanza TokenInvalidoException")
-    void refreshToken_expirado_esRevocadoYLanzaExcepcion() {
+    void refreshToken_expired_isRevokedAndLanzaExcepcion() {
         String rawToken = "expired-refresh-token";
         String tokenHash = TokenHashUtil.hash(rawToken);
 
@@ -261,32 +261,32 @@ class TokenLifecycleSecurityTest {
                 false, Instant.now().minus(8, ChronoUnit.DAYS)
         );
 
-        when(refreshTokenRepository.buscarPorTokenHash(tokenHash)).thenReturn(Optional.of(tokenExpirado));
+        when(refreshTokenRepository.findByTokenHash(tokenHash)).thenReturn(Optional.of(tokenExpirado));
 
         assertThatThrownBy(() -> authService.refresh(rawToken, "127.0.0.1"))
-                .isInstanceOf(TokenInvalidoException.class)
+                .isInstanceOf(InvalidTokenException.class)
                 .hasMessageContaining("El token de sesion ha expirado");
 
         // El token expirado debe ser revocado en BD para higiene de datos
-        verify(refreshTokenRepository).revocar(99L);
-        verify(refreshTokenRepository, never()).crear(anyLong(), anyString(), any());
+        verify(refreshTokenRepository).revoke(99L);
+        verify(refreshTokenRepository, never()).create(anyLong(), anyString(), any());
     }
 
     @Test
     @DisplayName("Refresh Token: Token inexistente o no proporcionado lanza TokenInvalidoException")
-    void refreshToken_inexistenteONulo_lanzaExcepcion() {
+    void refreshToken_notFoundOrNull_throwsException() {
         assertThatThrownBy(() -> authService.refresh(null, "127.0.0.1"))
-                .isInstanceOf(TokenInvalidoException.class)
+                .isInstanceOf(InvalidTokenException.class)
                 .hasMessageContaining("no proporcionado");
 
         assertThatThrownBy(() -> authService.refresh("   ", "127.0.0.1"))
-                .isInstanceOf(TokenInvalidoException.class)
+                .isInstanceOf(InvalidTokenException.class)
                 .hasMessageContaining("no proporcionado");
 
-        when(refreshTokenRepository.buscarPorTokenHash(anyString())).thenReturn(Optional.empty());
+        when(refreshTokenRepository.findByTokenHash(anyString())).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> authService.refresh("random-token-no-existe", "127.0.0.1"))
-                .isInstanceOf(TokenInvalidoException.class)
+                .isInstanceOf(InvalidTokenException.class)
                 .hasMessageContaining("Token de sesion invalido");
     }
 }

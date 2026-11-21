@@ -41,7 +41,7 @@ public class JwtService {
      * Genera un access token JWT con duración de 15 minutos.
      * El Subject corresponde al publicId (UUID) del usuario para nunca exponer el ID interno (ADR-003).
      */
-    public String generarAccessToken(String publicId, String email, List<String> roles) {
+    public String generateAccessToken(String publicId, String email, List<String> roles) {
         Instant now = Instant.now();
         Instant exp = now.plus(expirationMinutes, ChronoUnit.MINUTES);
 
@@ -59,7 +59,7 @@ public class JwtService {
      * Parsea y valida el token JWT. Retorna las Claims si es válido.
      * Lanza {@link JwtException} si el token ha expirado o su firma es inválida.
      */
-    public Claims extraerClaims(String token) {
+    public Claims extractClaims(String token) {
         return Jwts.parser()
                 .verifyWith(signingKey)
                 .build()
@@ -70,28 +70,28 @@ public class JwtService {
     /**
      * Retorna true si el token es válido, no ha expirado y no es un token temporal de desafío MFA.
      */
-    public boolean esValido(String token) {
+    public boolean isValid(String token) {
         try {
-            Claims claims = extraerClaims(token);
+            Claims claims = extractClaims(token);
             return !"mfa_challenge".equals(claims.get("type", String.class));
         } catch (JwtException | IllegalArgumentException e) {
             return false;
         }
     }
 
-    public String extraerPublicId(String token) {
-        return extraerClaims(token).getSubject();
+    public String extractPublicId(String token) {
+        return extractClaims(token).getSubject();
     }
 
     @SuppressWarnings("unchecked")
-    public List<String> extraerRoles(String token) {
-        return extraerClaims(token).get("roles", List.class);
+    public List<String> extractRoles(String token) {
+        return extractClaims(token).get("roles", List.class);
     }
 
     /**
      * Genera un token temporal de desafío MFA firmado con duración de 5 minutos (ADR-014, F2.1.4).
      */
-    public String generarMfaChallengeToken(String publicId, String email, List<String> roles) {
+    public String generateMfaChallengeToken(String publicId, String email, List<String> roles) {
         Instant now = Instant.now();
         Instant exp = now.plus(5, ChronoUnit.MINUTES);
 
@@ -109,9 +109,9 @@ public class JwtService {
     /**
      * Valida si el token corresponde a un desafío MFA vigente (ADR-014, F2.1.4).
      */
-    public boolean esMfaChallengeValido(String token) {
+    public boolean isValidMfaChallenge(String token) {
         try {
-            Claims claims = extraerClaims(token);
+            Claims claims = extractClaims(token);
             return "mfa_challenge".equals(claims.get("type", String.class));
         } catch (JwtException | IllegalArgumentException e) {
             return false;
@@ -121,9 +121,9 @@ public class JwtService {
     /**
      * Valida que el token corresponda a un access token operativo y no a un desafío MFA.
      */
-    public boolean esAccessToken(String token) {
+    public boolean isAccessToken(String token) {
         try {
-            Claims claims = extraerClaims(token);
+            Claims claims = extractClaims(token);
             return !"mfa_challenge".equals(claims.get("type", String.class));
         } catch (JwtException | IllegalArgumentException e) {
             return false;

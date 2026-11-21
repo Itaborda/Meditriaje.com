@@ -4,9 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.meditriaje.config.CorsConfig;
 import com.meditriaje.config.SecurityConfig;
 import com.meditriaje.controller.admin.AdminAppointmentController;
-import com.meditriaje.dto.admin.AdminCitaDetalleResponse;
+import com.meditriaje.dto.admin.AdminAppointmentDetailResponse;
 import com.meditriaje.dto.common.PaginatedResponse;
-import com.meditriaje.exception.DatosInvalidosException;
+import com.meditriaje.exception.InvalidDataException;
 import com.meditriaje.exception.GlobalExceptionHandler;
 import com.meditriaje.security.JwtService;
 import com.meditriaje.service.AdminAppointmentService;
@@ -58,28 +58,28 @@ class AdminAppointmentControllerTest {
 
     @BeforeEach
     void setUpTokens() {
-        when(jwtService.esValido(TOKEN_ADMIN)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_ADMIN)).thenReturn("admin-uuid-1");
-        when(jwtService.extraerRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
+        when(jwtService.isValid(TOKEN_ADMIN)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_ADMIN)).thenReturn("admin-uuid-1");
+        when(jwtService.extractRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
 
-        when(jwtService.esValido(TOKEN_PACIENTE)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_PACIENTE)).thenReturn("paciente-uuid-1");
-        when(jwtService.extraerRoles(TOKEN_PACIENTE)).thenReturn(List.of("ROLE_PACIENTE"));
+        when(jwtService.isValid(TOKEN_PACIENTE)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_PACIENTE)).thenReturn("paciente-uuid-1");
+        when(jwtService.extractRoles(TOKEN_PACIENTE)).thenReturn(List.of("ROLE_PACIENTE"));
 
-        when(jwtService.esValido(TOKEN_PROFESIONAL)).thenReturn(true);
-        when(jwtService.extraerRoles(TOKEN_PROFESIONAL)).thenReturn(List.of("ROLE_PROFESIONAL"));
+        when(jwtService.isValid(TOKEN_PROFESIONAL)).thenReturn(true);
+        when(jwtService.extractRoles(TOKEN_PROFESIONAL)).thenReturn(List.of("ROLE_PROFESIONAL"));
     }
 
     @Test
     @DisplayName("401 Unauthorized sin autenticación")
-    void listarCitas_sinAutenticacion_retorna401() throws Exception {
+    void listAppointments_withoutAuth_returns401() throws Exception {
         mockMvc.perform(get("/api/v1/admin/appointments"))
                 .andExpect(status().isUnauthorized());
     }
 
     @Test
     @DisplayName("403 Forbidden con rol PACIENTE")
-    void listarCitas_rolPaciente_retorna403() throws Exception {
+    void listAppointments_patientRole_returns403() throws Exception {
         mockMvc.perform(get("/api/v1/admin/appointments")
                         .cookie(new Cookie("access_token", TOKEN_PACIENTE)))
                 .andExpect(status().isForbidden());
@@ -87,7 +87,7 @@ class AdminAppointmentControllerTest {
 
     @Test
     @DisplayName("403 Forbidden con rol PROFESIONAL")
-    void listarCitas_rolProfesional_retorna403() throws Exception {
+    void listAppointments_professionalRole_returns403() throws Exception {
         mockMvc.perform(get("/api/v1/admin/appointments")
                         .cookie(new Cookie("access_token", TOKEN_PROFESIONAL)))
                 .andExpect(status().isForbidden());
@@ -95,8 +95,8 @@ class AdminAppointmentControllerTest {
 
     @Test
     @DisplayName("200 OK con rol ADMINISTRADOR y respuesta paginada")
-    void listarCitas_rolAdmin_retorna200() throws Exception {
-        AdminCitaDetalleResponse cita = new AdminCitaDetalleResponse(
+    void listAppointments_adminRole_returns200() throws Exception {
+        AdminAppointmentDetailResponse cita = new AdminAppointmentDetailResponse(
                 "cita-uuid-1",
                 "pac-uuid-1",
                 "Juan Pérez",
@@ -123,7 +123,7 @@ class AdminAppointmentControllerTest {
                 Instant.now()
         );
 
-        when(adminAppointmentService.listarCitas(any(), any(), any(), any(), any(), anyInt(), anyInt()))
+        when(adminAppointmentService.listAppointments(any(), any(), any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(PaginatedResponse.of(List.of(cita), 0, 50, 1L));
 
         mockMvc.perform(get("/api/v1/admin/appointments")
@@ -139,10 +139,10 @@ class AdminAppointmentControllerTest {
 
     @Test
     @DisplayName("200 OK exportar citas en CSV con headers correspondientes")
-    void exportarCitas_rolAdmin_retornaCsv() throws Exception {
+    void exportAppointments_adminRole_returnsCsv() throws Exception {
         byte[] csvBytes = "\uFEFFCódigo Cita;Fecha Cita\r\ncita-1;2026-10-06".getBytes(StandardCharsets.UTF_8);
 
-        when(adminAppointmentService.exportarCitasExcelCsv(any(), any(), any(), any(), any()))
+        when(adminAppointmentService.exportAppointmentsCsv(any(), any(), any(), any(), any()))
                 .thenReturn(csvBytes);
 
         mockMvc.perform(get("/api/v1/admin/appointments/export")

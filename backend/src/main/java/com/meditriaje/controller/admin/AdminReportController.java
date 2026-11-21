@@ -1,9 +1,9 @@
 package com.meditriaje.controller.admin;
 
-import com.meditriaje.dto.report.MetricasCitasDto;
-import com.meditriaje.dto.report.MetricasTriajeDto;
-import com.meditriaje.dto.report.ResumenOperativoResponse;
-import com.meditriaje.service.ReporteService;
+import com.meditriaje.dto.report.AppointmentMetricsDto;
+import com.meditriaje.dto.report.TriageMetricsDto;
+import com.meditriaje.dto.report.OperationalSummaryResponse;
+import com.meditriaje.service.ReportService;
 import com.meditriaje.util.IpUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -27,25 +27,25 @@ import java.util.Objects;
 @PreAuthorize("hasAuthority('ROLE_ADMINISTRADOR')")
 public class AdminReportController {
 
-    private final ReporteService reporteService;
+    private final ReportService reportService;
 
-    public AdminReportController(ReporteService reporteService) {
-        this.reporteService = Objects.requireNonNull(reporteService, "reporteService no puede ser nulo");
+    public AdminReportController(ReportService reportService) {
+        this.reportService = Objects.requireNonNull(reportService, "reporteService no puede ser nulo");
     }
 
     /**
      * Resumen operativo consolidado de la plataforma (citas, triaje, farmacia y break-glass).
      */
     @GetMapping("/operational")
-    public ResponseEntity<ResumenOperativoResponse> obtenerResumenOperativo(
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta,
+    public ResponseEntity<OperationalSummaryResponse> getOperationalSummary(
+            @RequestParam(value = "desde", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
+            @RequestParam(value = "hasta", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String adminPublicId = (String) authentication.getPrincipal();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
-        ResumenOperativoResponse response = reporteService.obtenerResumenOperativo(desde, hasta, adminPublicId, ipOrigen);
+        String sourceIp = IpUtil.extractIp(httpRequest);
+        OperationalSummaryResponse response = reportService.getOperationalSummary(fromDate, toDate, adminPublicId, sourceIp);
         return ResponseEntity.ok(response);
     }
 
@@ -53,15 +53,15 @@ public class AdminReportController {
      * Reporte analítico detallado de agendamiento y estado de citas.
      */
     @GetMapping("/appointments")
-    public ResponseEntity<MetricasCitasDto> obtenerReporteCitas(
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta,
+    public ResponseEntity<AppointmentMetricsDto> getAppointmentsReport(
+            @RequestParam(value = "desde", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
+            @RequestParam(value = "hasta", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String adminPublicId = (String) authentication.getPrincipal();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
-        MetricasCitasDto response = reporteService.obtenerReporteCitas(desde, hasta, adminPublicId, ipOrigen);
+        String sourceIp = IpUtil.extractIp(httpRequest);
+        AppointmentMetricsDto response = reportService.getAppointmentsReport(fromDate, toDate, adminPublicId, sourceIp);
         return ResponseEntity.ok(response);
     }
 
@@ -69,15 +69,15 @@ public class AdminReportController {
      * Reporte analítico de distribución de triaje y cortes de emergencia.
      */
     @GetMapping("/triage")
-    public ResponseEntity<MetricasTriajeDto> obtenerReporteTriaje(
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta,
+    public ResponseEntity<TriageMetricsDto> getTriageReport(
+            @RequestParam(value = "desde", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
+            @RequestParam(value = "hasta", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String adminPublicId = (String) authentication.getPrincipal();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
-        MetricasTriajeDto response = reporteService.obtenerReporteTriaje(desde, hasta, adminPublicId, ipOrigen);
+        String sourceIp = IpUtil.extractIp(httpRequest);
+        TriageMetricsDto response = reportService.getTriageReport(fromDate, toDate, adminPublicId, sourceIp);
         return ResponseEntity.ok(response);
     }
 }

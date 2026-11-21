@@ -3,12 +3,12 @@ package com.meditriaje.controller;
 import com.meditriaje.config.CorsConfig;
 import com.meditriaje.config.SecurityConfig;
 import com.meditriaje.controller.admin.AdminAuditController;
-import com.meditriaje.dto.audit.RegistroAuditoriaResponse;
+import com.meditriaje.dto.audit.AuditRecordResponse;
 import com.meditriaje.dto.common.PaginatedResponse;
-import com.meditriaje.exception.DatosInvalidosException;
+import com.meditriaje.exception.InvalidDataException;
 import com.meditriaje.exception.GlobalExceptionHandler;
 import com.meditriaje.security.JwtService;
-import com.meditriaje.service.AuditoriaService;
+import com.meditriaje.service.AuditService;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -41,7 +41,7 @@ class AdminAuditControllerTest {
     private MockMvc mockMvc;
 
     @MockBean
-    private AuditoriaService auditoriaService;
+    private AuditService auditoriaService;
 
     @MockBean
     private JwtService jwtService;
@@ -53,16 +53,16 @@ class AdminAuditControllerTest {
 
     @BeforeEach
     void setUpTokens() {
-        when(jwtService.esValido(TOKEN_ADMIN)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_ADMIN)).thenReturn(ADMIN_UUID);
-        when(jwtService.extraerRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
+        when(jwtService.isValid(TOKEN_ADMIN)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_ADMIN)).thenReturn(ADMIN_UUID);
+        when(jwtService.extractRoles(TOKEN_ADMIN)).thenReturn(List.of("ROLE_ADMINISTRADOR"));
 
-        when(jwtService.esValido(TOKEN_PACIENTE)).thenReturn(true);
-        when(jwtService.extraerPublicId(TOKEN_PACIENTE)).thenReturn("paciente-uuid-1");
-        when(jwtService.extraerRoles(TOKEN_PACIENTE)).thenReturn(List.of("ROLE_PACIENTE"));
+        when(jwtService.isValid(TOKEN_PACIENTE)).thenReturn(true);
+        when(jwtService.extractPublicId(TOKEN_PACIENTE)).thenReturn("paciente-uuid-1");
+        when(jwtService.extractRoles(TOKEN_PACIENTE)).thenReturn(List.of("ROLE_PACIENTE"));
 
-        when(jwtService.esValido(TOKEN_PROFESIONAL)).thenReturn(true);
-        when(jwtService.extraerRoles(TOKEN_PROFESIONAL)).thenReturn(List.of("ROLE_PROFESIONAL"));
+        when(jwtService.isValid(TOKEN_PROFESIONAL)).thenReturn(true);
+        when(jwtService.extractRoles(TOKEN_PROFESIONAL)).thenReturn(List.of("ROLE_PROFESIONAL"));
     }
 
     // =========================================================================
@@ -71,7 +71,7 @@ class AdminAuditControllerTest {
 
     @Test
     @DisplayName("GET /api/v1/admin/audit sin autenticación retorna 401 Unauthorized")
-    void consultarBitacora_sinAutenticacion_retorna401Unauthorized() throws Exception {
+    void queryAuditLog_withoutAuth_returns401Unauthorized() throws Exception {
         mockMvc.perform(get("/api/v1/admin/audit"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.codigo").value("NO_AUTENTICADO"));
@@ -79,7 +79,7 @@ class AdminAuditControllerTest {
 
     @Test
     @DisplayName("GET /api/v1/admin/audit con rol PACIENTE retorna 403 Forbidden")
-    void consultarBitacora_conRolPaciente_retorna403Forbidden() throws Exception {
+    void queryAuditLog_withPatientRole_returns403Forbidden() throws Exception {
         mockMvc.perform(get("/api/v1/admin/audit")
                         .cookie(new Cookie("access_token", TOKEN_PACIENTE)))
                 .andExpect(status().isForbidden())
@@ -88,7 +88,7 @@ class AdminAuditControllerTest {
 
     @Test
     @DisplayName("GET /api/v1/admin/audit con rol PROFESIONAL retorna 403 Forbidden")
-    void consultarBitacora_conRolProfesional_retorna403Forbidden() throws Exception {
+    void queryAuditLog_withProfessionalRole_returns403Forbidden() throws Exception {
         mockMvc.perform(get("/api/v1/admin/audit")
                         .cookie(new Cookie("access_token", TOKEN_PROFESIONAL)))
                 .andExpect(status().isForbidden())
@@ -101,8 +101,8 @@ class AdminAuditControllerTest {
 
     @Test
     @DisplayName("GET /api/v1/admin/audit con rol ADMIN retorna 200 OK y lista paginada")
-    void consultarBitacora_conRolAdmin_retorna200Ok() throws Exception {
-        RegistroAuditoriaResponse evento1 = new RegistroAuditoriaResponse(
+    void queryAuditLog_withAdminRole_returns200Ok() throws Exception {
+        AuditRecordResponse evento1 = new AuditRecordResponse(
                 101L,
                 "admin@meditriaje.com",
                 "LOGIN_EXITOSO",
@@ -112,10 +112,10 @@ class AdminAuditControllerTest {
                 "192.168.1.50",
                 Instant.parse("2026-10-04T12:00:00Z")
         );
-        PaginatedResponse<RegistroAuditoriaResponse> responsePaginada =
+        PaginatedResponse<AuditRecordResponse> responsePaginada =
                 PaginatedResponse.of(List.of(evento1), 0, 20, 1L);
 
-        when(auditoriaService.consultarBitacora(any(), any(), any(), any(), anyInt(), anyInt()))
+        when(auditoriaService.queryAuditLog(any(), any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(responsePaginada);
 
         mockMvc.perform(get("/api/v1/admin/audit")
@@ -134,11 +134,11 @@ class AdminAuditControllerTest {
 
     @Test
     @DisplayName("GET /api/v1/admin/audit con filtros de fecha y acción invoca servicio y retorna 200 OK")
-    void consultarBitacora_conFiltros_retorna200Ok() throws Exception {
-        PaginatedResponse<RegistroAuditoriaResponse> responsePaginada =
+    void queryAuditLog_withFilters_returns200Ok() throws Exception {
+        PaginatedResponse<AuditRecordResponse> responsePaginada =
                 PaginatedResponse.of(List.of(), 0, 10, 0L);
 
-        when(auditoriaService.consultarBitacora(
+        when(auditoriaService.queryAuditLog(
                 eq(LocalDate.of(2026, 10, 1)),
                 eq(LocalDate.of(2026, 10, 4)),
                 eq("RESERVA_CITA"),
@@ -162,15 +162,15 @@ class AdminAuditControllerTest {
 
     @Test
     @DisplayName("GET /api/v1/admin/audit con fechas invertidas retorna 400 Bad Request")
-    void consultarBitacora_conFechasInvertidas_retorna400BadRequest() throws Exception {
-        when(auditoriaService.consultarBitacora(
+    void queryAuditLog_withDatesInvertidas_returns400BadRequest() throws Exception {
+        when(auditoriaService.queryAuditLog(
                 eq(LocalDate.of(2026, 10, 10)),
                 eq(LocalDate.of(2026, 10, 1)),
                 any(),
                 any(),
                 anyInt(),
                 anyInt()
-        )).thenThrow(new DatosInvalidosException("La fecha desde no puede ser posterior a la fecha hasta."));
+        )).thenThrow(new InvalidDataException("La fecha desde no puede ser posterior a la fecha hasta."));
 
         mockMvc.perform(get("/api/v1/admin/audit")
                         .cookie(new Cookie("access_token", TOKEN_ADMIN))

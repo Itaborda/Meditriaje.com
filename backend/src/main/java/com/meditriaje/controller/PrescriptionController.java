@@ -1,7 +1,7 @@
 package com.meditriaje.controller;
 
-import com.meditriaje.dto.prescription.CrearRecetaRequest;
-import com.meditriaje.dto.prescription.RecetaResponse;
+import com.meditriaje.dto.prescription.CreatePrescriptionRequest;
+import com.meditriaje.dto.prescription.PrescriptionResponse;
 import com.meditriaje.service.PrescriptionService;
 import com.meditriaje.util.IpUtil;
 import jakarta.servlet.http.HttpServletRequest;
@@ -38,15 +38,15 @@ public class PrescriptionController {
      */
     @PostMapping
     @PreAuthorize("hasAuthority('ROLE_PROFESIONAL')")
-    public ResponseEntity<RecetaResponse> emitirReceta(
-            @Valid @RequestBody CrearRecetaRequest request,
+    public ResponseEntity<PrescriptionResponse> issuePrescription(
+            @Valid @RequestBody CreatePrescriptionRequest request,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String usuarioPublicId = authentication.getName();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
+        String sourceIp = IpUtil.extractIp(httpRequest);
 
-        RecetaResponse response = prescriptionService.emitirReceta(request, usuarioPublicId, ipOrigen);
+        PrescriptionResponse response = prescriptionService.issuePrescription(request, usuarioPublicId, sourceIp);
         URI location = URI.create("/api/v1/prescriptions/" + response.publicId());
 
         return ResponseEntity.created(location).body(response);
@@ -59,12 +59,12 @@ public class PrescriptionController {
      */
     @GetMapping("/{publicId}")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<RecetaResponse> obtenerReceta(
-            @PathVariable String publicId,
+    public ResponseEntity<PrescriptionResponse> getPrescription(
+            @PathVariable("publicId") String publicId,
             Authentication authentication
     ) {
         String usuarioPublicId = authentication.getName();
-        RecetaResponse response = prescriptionService.obtenerPorPublicId(
+        PrescriptionResponse response = prescriptionService.getByPublicId(
                 publicId,
                 usuarioPublicId,
                 authentication.getAuthorities()

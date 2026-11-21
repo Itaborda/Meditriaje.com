@@ -20,49 +20,49 @@ class JwtServiceTest {
     }
 
     @Test
-    void constructor_secretoCorto_lanzaExcepcion() {
+    void constructor_secretShort_throwsException() {
         assertThatThrownBy(() -> new JwtService("secreto-demasiado-corto", 15))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("al menos 256 bits");
     }
 
     @Test
-    void generarAccessToken_creaTokenValidoConSubjectYClaims() {
+    void generateAccessToken_createsTokenValidWithSubjectAndClaims() {
         String publicId = "d7c80521-4cb5-45dc-9081-4ebdf768f771";
         String email = "paciente@example.com";
         List<String> roles = List.of("ROLE_PACIENTE");
 
-        String token = jwtService.generarAccessToken(publicId, email, roles);
+        String token = jwtService.generateAccessToken(publicId, email, roles);
 
         assertThat(token).isNotBlank();
-        assertThat(jwtService.esValido(token)).isTrue();
-        assertThat(jwtService.extraerPublicId(token)).isEqualTo(publicId);
-        assertThat(jwtService.extraerRoles(token)).containsExactly("ROLE_PACIENTE");
+        assertThat(jwtService.isValid(token)).isTrue();
+        assertThat(jwtService.extractPublicId(token)).isEqualTo(publicId);
+        assertThat(jwtService.extractRoles(token)).containsExactly("ROLE_PACIENTE");
 
-        Claims claims = jwtService.extraerClaims(token);
+        Claims claims = jwtService.extractClaims(token);
         assertThat(claims.get("email", String.class)).isEqualTo(email);
         assertThat(claims.getExpiration()).isAfter(claims.getIssuedAt());
     }
 
     @Test
-    void esValido_tokenInvalidoOMalformado_retornaFalse() {
-        assertThat(jwtService.esValido("token.invalido.malformado")).isFalse();
-        assertThat(jwtService.esValido(null)).isFalse();
-        assertThat(jwtService.esValido("")).isFalse();
+    void isValid_tokenInvalidOrMalformed_returnsFalse() {
+        assertThat(jwtService.isValid("token.invalido.malformado")).isFalse();
+        assertThat(jwtService.isValid(null)).isFalse();
+        assertThat(jwtService.isValid("")).isFalse();
     }
 
     @Test
-    void generarMfaChallengeToken_creaChallengeValidoYRechazadoPorEsValido() {
+    void generateMfaChallengeToken_createsChallengeValidAndRechazadoByIsValid() {
         String publicId = "user-mfa-123";
         String email = "medico@example.com";
         List<String> roles = List.of("ROLE_PROFESIONAL");
 
-        String challengeToken = jwtService.generarMfaChallengeToken(publicId, email, roles);
+        String challengeToken = jwtService.generateMfaChallengeToken(publicId, email, roles);
 
         assertThat(challengeToken).isNotBlank();
-        assertThat(jwtService.esMfaChallengeValido(challengeToken)).isTrue();
-        assertThat(jwtService.esValido(challengeToken)).isFalse(); // No debe ser aceptado como access token de sesión
-        assertThat(jwtService.esAccessToken(challengeToken)).isFalse();
-        assertThat(jwtService.extraerPublicId(challengeToken)).isEqualTo(publicId);
+        assertThat(jwtService.isValidMfaChallenge(challengeToken)).isTrue();
+        assertThat(jwtService.isValid(challengeToken)).isFalse(); // No debe ser aceptado como access token de sesión
+        assertThat(jwtService.isAccessToken(challengeToken)).isFalse();
+        assertThat(jwtService.extractPublicId(challengeToken)).isEqualTo(publicId);
     }
 }

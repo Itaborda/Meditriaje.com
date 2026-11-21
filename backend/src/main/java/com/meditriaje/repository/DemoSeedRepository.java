@@ -38,21 +38,21 @@ public class DemoSeedRepository {
         this.gateway = Objects.requireNonNull(gateway, "gateway no puede ser nulo");
     }
 
-    public int contarUsuariosFueraDeDominio(String dominio) {
+    public int countUsersOutsideDomain(String dominio) {
         Number count = gateway.callFunction(
                 COUNT_USERS_OUTSIDE_DOMAIN,
                 new MapSqlParameterSource().addValue("p_domain", dominio, Types.VARCHAR));
         return count != null ? count.intValue() : 0;
     }
 
-    public int contarUsuariosEnDominio(String dominio) {
+    public int countUsersInDomain(String dominio) {
         Number count = gateway.callFunction(
                 COUNT_USERS_IN_DOMAIN,
                 new MapSqlParameterSource().addValue("p_domain", dominio, Types.VARCHAR));
         return count != null ? count.intValue() : 0;
     }
 
-    public void moverSlotAlPasadoParaDemo(String slotPublicId) {
+    public void moveSlotToPastForDemo(String slotPublicId) {
         gateway.execute(
                 SHIFT_SLOT_TO_PAST_FOR_DEMO,
                 new MapSqlParameterSource().addValue("p_slot_public_id", slotPublicId, Types.VARCHAR));

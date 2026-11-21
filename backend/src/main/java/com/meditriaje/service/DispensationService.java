@@ -1,27 +1,27 @@
 package com.meditriaje.service;
 
 import com.meditriaje.dto.common.PaginatedResponse;
-import com.meditriaje.dto.pharmacy.DetalleEntregaRequest;
-import com.meditriaje.dto.pharmacy.DispensacionResponse;
-import com.meditriaje.dto.pharmacy.RecetaDispensacionResponse;
-import com.meditriaje.dto.pharmacy.RegistrarDispensacionRequest;
-import com.meditriaje.exception.AccesoNoAutorizadoException;
-import com.meditriaje.exception.DatosInvalidosException;
-import com.meditriaje.exception.RecursoNoEncontradoException;
-import com.meditriaje.model.AccionAuditable;
-import com.meditriaje.model.Dispensacion;
-import com.meditriaje.model.DispensacionDetalle;
-import com.meditriaje.model.Paciente;
-import com.meditriaje.model.Receta;
-import com.meditriaje.model.ResultadoAuditoria;
-import com.meditriaje.model.Sede;
-import com.meditriaje.model.Usuario;
-import com.meditriaje.repository.DispensacionRepository;
-import com.meditriaje.repository.DispensacionRepository.ItemPrescritoInfo;
-import com.meditriaje.repository.PacienteRepository;
-import com.meditriaje.repository.RecetaRepository;
+import com.meditriaje.dto.pharmacy.DeliveryDetailRequest;
+import com.meditriaje.dto.pharmacy.DispensationResponse;
+import com.meditriaje.dto.pharmacy.PrescriptionDispensationResponse;
+import com.meditriaje.dto.pharmacy.RegisterDispensationRequest;
+import com.meditriaje.exception.UnauthorizedAccessException;
+import com.meditriaje.exception.InvalidDataException;
+import com.meditriaje.exception.ResourceNotFoundException;
+import com.meditriaje.model.AuditableAction;
+import com.meditriaje.model.Dispensation;
+import com.meditriaje.model.DispensationDetail;
+import com.meditriaje.model.Patient;
+import com.meditriaje.model.Prescription;
+import com.meditriaje.model.AuditResult;
+import com.meditriaje.model.Site;
+import com.meditriaje.model.User;
+import com.meditriaje.repository.DispensationRepository;
+import com.meditriaje.repository.DispensationRepository.PrescribedItemInfo;
+import com.meditriaje.repository.PatientRepository;
+import com.meditriaje.repository.PrescriptionRepository;
 import com.meditriaje.repository.SiteRepository;
-import com.meditriaje.repository.UsuarioRepository;
+import com.meditriaje.repository.UserRepository;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,29 +46,29 @@ import java.util.stream.Collectors;
 @Service
 public class DispensationService {
 
-    private final UsuarioRepository usuarioRepository;
+    private final UserRepository userRepository;
     private final SiteRepository siteRepository;
-    private final RecetaRepository recetaRepository;
-    private final PacienteRepository pacienteRepository;
-    private final DispensacionRepository dispensacionRepository;
-    private final AuditoriaService auditoriaService;
+    private final PrescriptionRepository prescriptionRepository;
+    private final PatientRepository patientRepository;
+    private final DispensationRepository dispensationRepository;
+    private final AuditService auditService;
     private final Clock clock;
 
     public DispensationService(
-            UsuarioRepository usuarioRepository,
+            UserRepository userRepository,
             SiteRepository siteRepository,
-            RecetaRepository recetaRepository,
-            PacienteRepository pacienteRepository,
-            DispensacionRepository dispensacionRepository,
-            AuditoriaService auditoriaService,
+            PrescriptionRepository prescriptionRepository,
+            PatientRepository patientRepository,
+            DispensationRepository dispensationRepository,
+            AuditService auditService,
             Clock clock
     ) {
-        this.usuarioRepository = Objects.requireNonNull(usuarioRepository, "usuarioRepository no puede ser nulo");
+        this.userRepository = Objects.requireNonNull(userRepository, "usuarioRepository no puede ser nulo");
         this.siteRepository = Objects.requireNonNull(siteRepository, "siteRepository no puede ser nulo");
-        this.recetaRepository = Objects.requireNonNull(recetaRepository, "recetaRepository no puede ser nulo");
-        this.pacienteRepository = Objects.requireNonNull(pacienteRepository, "pacienteRepository no puede ser nulo");
-        this.dispensacionRepository = Objects.requireNonNull(dispensacionRepository, "dispensacionRepository no puede ser nulo");
-        this.auditoriaService = Objects.requireNonNull(auditoriaService, "auditoriaService no puede ser nulo");
+        this.prescriptionRepository = Objects.requireNonNull(prescriptionRepository, "recetaRepository no puede ser nulo");
+        this.patientRepository = Objects.requireNonNull(patientRepository, "pacienteRepository no puede ser nulo");
+        this.dispensationRepository = Objects.requireNonNull(dispensationRepository, "dispensacionRepository no puede ser nulo");
+        this.auditService = Objects.requireNonNull(auditService, "auditoriaService no puede ser nulo");
         this.clock = Objects.requireNonNull(clock, "clock no puede ser nulo");
     }
 
@@ -82,120 +82,120 @@ public class DispensationService {
      * @return DispensacionResponse con detalles consolidados
      */
     @Transactional
-    public DispensacionResponse registrarDispensacion(
-            RegistrarDispensacionRequest request,
+    public DispensationResponse registerDispensation(
+            RegisterDispensationRequest request,
             String usuarioAutenticadoPublicId,
             Collection<? extends GrantedAuthority> authorities,
             String ipOrigen
     ) {
         Objects.requireNonNull(request, "request no puede ser nulo");
-        validarRolFarmaceutico(authorities);
+        validatePharmacistRole(authorities);
 
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario dispensador no encontrado."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario dispensador no encontrado."));
 
-        if (!"ACTIVO".equalsIgnoreCase(usuario.estado())) {
-            throw new AccesoNoAutorizadoException("El usuario dispensador se encuentra inactivo o bloqueado.");
+        if (!"ACTIVO".equalsIgnoreCase(usuario.status())) {
+            throw new UnauthorizedAccessException("El usuario dispensador se encuentra inactivo o bloqueado.");
         }
 
         // Hospital único: la dispensación se registra siempre en la única sede (la resuelve el servidor).
-        Sede sede = siteRepository.getSingleSite();
+        Site sede = siteRepository.getSingleSite();
 
-        Receta receta = recetaRepository.buscarEntidadPorPublicId(request.recetaPublicId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Receta médica no encontrada: " + request.recetaPublicId()));
+        Prescription receta = prescriptionRepository.findEntityByPublicId(request.prescriptionPublicId())
+                .orElseThrow(() -> new ResourceNotFoundException("Receta médica no encontrada: " + request.prescriptionPublicId()));
 
         // 1. Validación estricta de vigencia de la receta
         Instant fechaEmision = receta.createdAt() != null ? receta.createdAt() : Instant.now(clock);
-        Instant fechaVencimiento = fechaEmision.plus(receta.vigenciaDias(), ChronoUnit.DAYS);
+        Instant fechaVencimiento = fechaEmision.plus(receta.validityDays(), ChronoUnit.DAYS);
         Instant ahora = Instant.now(clock);
 
         if (ahora.isAfter(fechaVencimiento)) {
-            throw new DatosInvalidosException("La receta médica ha expirado (vigencia de " + receta.vigenciaDias()
+            throw new InvalidDataException("La receta médica ha expirado (vigencia de " + receta.validityDays()
                     + " días finalizada el " + fechaVencimiento + "). No es posible dispensar medicamentos.");
         }
 
         // 2. Validación de lista no vacía y sin duplicados
-        List<DetalleEntregaRequest> detallesRequest = request.detalles();
+        List<DeliveryDetailRequest> detallesRequest = request.details();
         if (detallesRequest == null || detallesRequest.isEmpty()) {
-            throw new DatosInvalidosException("Debe especificar al menos un medicamento para dispensar.");
+            throw new InvalidDataException("Debe especificar al menos un medicamento para dispensar.");
         }
 
         Set<String> medicamentosEnSolicitud = new HashSet<>();
-        for (DetalleEntregaRequest det : detallesRequest) {
-            if (!medicamentosEnSolicitud.add(det.medicamentoPublicId().trim())) {
-                throw new DatosInvalidosException("La solicitud contiene medicamentos duplicados: " + det.medicamentoPublicId());
+        for (DeliveryDetailRequest det : detallesRequest) {
+            if (!medicamentosEnSolicitud.add(det.medicationPublicId().trim())) {
+                throw new InvalidDataException("La solicitud contiene medicamentos duplicados: " + det.medicationPublicId());
             }
         }
 
         // 3. Validación de correspondencia con la receta y control matemático de saldos
-        List<ItemPrescritoInfo> itemsPrescritos = dispensacionRepository.buscarItemsPrescripcion(receta.id());
-        Map<String, ItemPrescritoInfo> itemsMap = itemsPrescritos.stream()
-                .collect(Collectors.toMap(ItemPrescritoInfo::medicamentoPublicId, Function.identity()));
+        List<PrescribedItemInfo> itemsPrescritos = dispensationRepository.findPrescriptionItems(receta.id());
+        Map<String, PrescribedItemInfo> itemsMap = itemsPrescritos.stream()
+                .collect(Collectors.toMap(PrescribedItemInfo::medicationPublicId, Function.identity()));
 
-        Map<Long, Integer> previosDispensados = dispensacionRepository.obtenerTotalesDispensadosPorRecetaId(receta.id());
+        Map<Long, Integer> previosDispensados = dispensationRepository.getDispensedTotalsByPrescriptionId(receta.id());
 
-        for (DetalleEntregaRequest det : detallesRequest) {
-            ItemPrescritoInfo item = itemsMap.get(det.medicamentoPublicId().trim());
+        for (DeliveryDetailRequest det : detallesRequest) {
+            PrescribedItemInfo item = itemsMap.get(det.medicationPublicId().trim());
             if (item == null) {
-                throw new DatosInvalidosException("El medicamento con ID " + det.medicamentoPublicId()
+                throw new InvalidDataException("El medicamento con ID " + det.medicationPublicId()
                         + " no forma parte de la receta médica especificada.");
             }
 
-            int yaDispensado = previosDispensados.getOrDefault(item.recetaDetalleId(), 0);
-            int saldoDisponible = item.cantidadPrescrita() - yaDispensado;
+            int yaDispensado = previosDispensados.getOrDefault(item.prescriptionDetailId(), 0);
+            int saldoDisponible = item.prescribedQuantity() - yaDispensado;
 
             if (saldoDisponible <= 0) {
-                throw new DatosInvalidosException("El medicamento '" + item.medicamentoNombre()
+                throw new InvalidDataException("El medicamento '" + item.medicationName()
                         + "' ya ha sido dispensado en su totalidad (saldo: 0).");
             }
 
-            if (det.cantidadEntregada() > saldoDisponible) {
-                throw new DatosInvalidosException("La cantidad a entregar (" + det.cantidadEntregada()
+            if (det.deliveredQuantity() > saldoDisponible) {
+                throw new InvalidDataException("La cantidad a entregar (" + det.deliveredQuantity()
                         + ") excede el saldo pendiente (" + saldoDisponible + ") para el medicamento '"
-                        + item.medicamentoNombre() + "'.");
+                        + item.medicationName() + "'.");
             }
         }
 
         // 4. Persistencia atómica de la cabecera y detalles de dispensación
         String dispensacionPublicId = UUID.randomUUID().toString();
-        Dispensacion dispensacion = new Dispensacion(
+        Dispensation dispensacion = new Dispensation(
                 null,
                 dispensacionPublicId,
                 receta.id(),
                 sede.id(),
                 usuario.id(),
-                request.observaciones() != null ? request.observaciones().trim() : null,
+                request.notes() != null ? request.notes().trim() : null,
                 ahora
         );
 
-        Long dispensacionId = dispensacionRepository.crearDispensacion(dispensacion);
+        Long dispensacionId = dispensationRepository.createDispensation(dispensacion);
 
-        List<DispensacionDetalle> detallesEntities = detallesRequest.stream().map(d -> {
-            ItemPrescritoInfo item = itemsMap.get(d.medicamentoPublicId().trim());
-            return new DispensacionDetalle(
+        List<DispensationDetail> detallesEntities = detallesRequest.stream().map(d -> {
+            PrescribedItemInfo item = itemsMap.get(d.medicationPublicId().trim());
+            return new DispensationDetail(
                     null,
                     dispensacionId,
-                    item.recetaDetalleId(),
-                    d.cantidadEntregada(),
-                    d.lote() != null ? d.lote().trim() : null,
-                    d.fechaVencimientoLote(),
+                    item.prescriptionDetailId(),
+                    d.deliveredQuantity(),
+                    d.batch() != null ? d.batch().trim() : null,
+                    d.batchExpirationDate(),
                     ahora
             );
         }).toList();
 
-        dispensacionRepository.guardarDetalles(dispensacionId, detallesEntities);
+        dispensationRepository.saveDetails(dispensacionId, detallesEntities);
 
         // 5. Auditoría inmutable obligatoria (ADR-011, ADR-016)
-        auditoriaService.registrarEvento(
+        auditService.recordEvent(
                 usuario.id(),
-                AccionAuditable.DISPENSACION_RECETA,
+                AuditableAction.DISPENSACION_RECETA,
                 "RECETA",
                 receta.publicId(),
-                ResultadoAuditoria.EXITO,
+                AuditResult.EXITO,
                 ipOrigen
         );
 
-        return dispensacionRepository.buscarPorPublicId(dispensacionPublicId)
+        return dispensationRepository.findByPublicId(dispensacionPublicId)
                 .orElseThrow(() -> new IllegalStateException("Error al recuperar la dispensación recién registrada."));
     }
 
@@ -206,13 +206,13 @@ public class DispensationService {
      * @param authorities    Roles del usuario solicitante
      * @return RecetaDispensacionResponse con saldos y entregas previas
      */
-    public RecetaDispensacionResponse consultarRecetaParaFarmacia(
+    public PrescriptionDispensationResponse getPrescriptionForPharmacy(
             String recetaPublicId,
             Collection<? extends GrantedAuthority> authorities
     ) {
-        validarRolFarmaceutico(authorities);
-        return dispensacionRepository.buscarRecetaDispensacionPorPublicId(recetaPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Receta médica no encontrada: " + recetaPublicId));
+        validatePharmacistRole(authorities);
+        return dispensationRepository.findPrescriptionDispensationByPublicId(recetaPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Receta médica no encontrada: " + recetaPublicId));
     }
 
     /**
@@ -224,18 +224,18 @@ public class DispensationService {
      * @param authorities Roles del solicitante
      * @return PaginatedResponse con recetas para dispensación
      */
-    public PaginatedResponse<RecetaDispensacionResponse> buscarRecetasParaFarmacia(
+    public PaginatedResponse<PrescriptionDispensationResponse> searchPrescriptionsForPharmacy(
             String query,
             int page,
             int size,
             Collection<? extends GrantedAuthority> authorities
     ) {
-        validarRolFarmaceutico(authorities);
+        validatePharmacistRole(authorities);
         int safePage = Math.max(0, page);
         int safeSize = Math.min(100, Math.max(1, size));
 
-        List<RecetaDispensacionResponse> content = dispensacionRepository.buscarRecetasDispensacion(query, safePage, safeSize);
-        int total = dispensacionRepository.contarRecetasDispensacion(query);
+        List<PrescriptionDispensationResponse> content = dispensationRepository.searchPrescriptionDispensations(query, safePage, safeSize);
+        int total = dispensationRepository.countPrescriptionDispensations(query);
 
         return PaginatedResponse.of(content, safePage, safeSize, total);
     }
@@ -247,25 +247,25 @@ public class DispensationService {
      * @param usuarioAutenticadoPublicId UUID del paciente autenticado
      * @return RecetaDispensacionResponse del paciente
      */
-    public RecetaDispensacionResponse consultarDispensacionPaciente(
+    public PrescriptionDispensationResponse getPatientDispensation(
             String recetaPublicId,
             String usuarioAutenticadoPublicId
     ) {
-        Usuario usuario = usuarioRepository.buscarPorPublicId(usuarioAutenticadoPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado."));
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
 
-        Paciente paciente = pacienteRepository.buscarPorUsuarioId(usuario.id())
-                .orElseThrow(() -> new AccesoNoAutorizadoException("Usuario no registrado como paciente en el sistema."));
+        Patient paciente = patientRepository.findByUserId(usuario.id())
+                .orElseThrow(() -> new UnauthorizedAccessException("Usuario no registrado como paciente en el sistema."));
 
-        Receta receta = recetaRepository.buscarEntidadPorPublicId(recetaPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Receta médica no encontrada: " + recetaPublicId));
+        Prescription receta = prescriptionRepository.findEntityByPublicId(recetaPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Receta médica no encontrada: " + recetaPublicId));
 
-        if (!receta.pacienteId().equals(paciente.id())) {
-            throw new AccesoNoAutorizadoException("No tiene autorización para consultar recetas médicas de otro paciente.");
+        if (!receta.patientId().equals(paciente.id())) {
+            throw new UnauthorizedAccessException("No tiene autorización para consultar recetas médicas de otro paciente.");
         }
 
-        return dispensacionRepository.buscarRecetaDispensacionPorPublicId(recetaPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Receta médica no encontrada: " + recetaPublicId));
+        return dispensationRepository.findPrescriptionDispensationByPublicId(recetaPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Receta médica no encontrada: " + recetaPublicId));
     }
 
     /**
@@ -274,21 +274,21 @@ public class DispensationService {
      * @param dispensacionPublicId UUID público de la dispensación
      * @return DispensacionResponse
      */
-    public DispensacionResponse consultarDispensacionPorPublicId(String dispensacionPublicId) {
-        return dispensacionRepository.buscarPorPublicId(dispensacionPublicId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Dispensación no encontrada: " + dispensacionPublicId));
+    public DispensationResponse getDispensationByPublicId(String dispensacionPublicId) {
+        return dispensationRepository.findByPublicId(dispensacionPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Dispensación no encontrada: " + dispensacionPublicId));
     }
 
-    private void validarRolFarmaceutico(Collection<? extends GrantedAuthority> authorities) {
+    private void validatePharmacistRole(Collection<? extends GrantedAuthority> authorities) {
         if (authorities == null) {
-            throw new AccesoNoAutorizadoException("Acceso restringido: credenciales de autorización ausentes.");
+            throw new UnauthorizedAccessException("Acceso restringido: credenciales de autorización ausentes.");
         }
 
         boolean esFarmaceutico = authorities.stream()
                 .anyMatch(a -> "ROLE_FARMACEUTICO".equals(a.getAuthority()));
 
         if (!esFarmaceutico) {
-            throw new AccesoNoAutorizadoException("Solo personal de farmacia autorizado (ROLE_FARMACEUTICO) puede acceder a esta operación.");
+            throw new UnauthorizedAccessException("Solo personal de farmacia autorizado (ROLE_FARMACEUTICO) puede acceder a esta operación.");
         }
     }
 }

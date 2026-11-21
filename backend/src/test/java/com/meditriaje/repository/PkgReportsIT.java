@@ -3,7 +3,7 @@ package com.meditriaje.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.meditriaje.db.OracleTestDatabase;
-import com.meditriaje.dto.report.DistribucionItemDto;
+import com.meditriaje.dto.report.DistributionItemDto;
 import com.meditriaje.repository.plsql.OracleErrorTranslator;
 import com.meditriaje.repository.plsql.PackageGateway;
 import java.sql.Timestamp;
@@ -37,7 +37,7 @@ class PkgReportsIT {
 
     private static OracleContainer oracle;
     private static JdbcTemplate owner;
-    private static ReporteRepository reportes;
+    private static ReportRepository reportes;
 
     @BeforeAll
     static void migrate() {
@@ -48,7 +48,7 @@ class PkgReportsIT {
         owner = new JdbcTemplate(ownerDs);
         DataSource appDs = OracleTestDatabase.dataSource(
                 oracle, OracleTestDatabase.APP_USER, OracleTestDatabase.APP_PASSWORD);
-        reportes = new ReporteRepository(new PackageGateway(appDs, OWNER, new OracleErrorTranslator()));
+        reportes = new ReportRepository(new PackageGateway(appDs, OWNER, new OracleErrorTranslator()));
     }
 
     @AfterAll
@@ -63,21 +63,21 @@ class PkgReportsIT {
     void emptyDatabaseReturnsZerosEmptyCollectionsAndZeroStatuses() {
         Instant now = Instant.now();
 
-        assertThat(reportes.contarCitasPorEstado(null, null)).isEmpty();
-        assertThat(reportes.obtenerCitasPorEspecialidad(null, null)).isEmpty();
-        assertThat(reportes.obtenerCitasPorSede(null, null)).isEmpty();
-        assertThat(reportes.contarTriajesPorNivel(null, null)).isEmpty();
-        assertThat(reportes.contarTriajesEmergencia(null, null)).isZero();
-        assertThat(reportes.obtenerTriajesPorRuta(null, null)).isEmpty();
-        assertThat(reportes.contarRecetasEmitidas(null, null)).isZero();
-        assertThat(reportes.contarUnidadesDispensadas(null, null)).isZero();
-        assertThat(reportes.contarRecetasPorEstadoDispensacion(null, null))
+        assertThat(reportes.countAppointmentsByStatus(null, null)).isEmpty();
+        assertThat(reportes.getAppointmentsBySpecialty(null, null)).isEmpty();
+        assertThat(reportes.getAppointmentsBySite(null, null)).isEmpty();
+        assertThat(reportes.countTriagesByLevel(null, null)).isEmpty();
+        assertThat(reportes.countEmergencyTriages(null, null)).isZero();
+        assertThat(reportes.getTriagesByRoute(null, null)).isEmpty();
+        assertThat(reportes.countIssuedPrescriptions(null, null)).isZero();
+        assertThat(reportes.countDispensedUnits(null, null)).isZero();
+        assertThat(reportes.countPrescriptionsByDispensationStatus(null, null))
                 .containsEntry("PENDIENTE", 0L)
                 .containsEntry("DISPENSADA_PARCIAL", 0L)
                 .containsEntry("DISPENSADA_TOTAL", 0L);
-        assertThat(reportes.contarActivacionesBreakGlass(null, null)).isZero();
-        assertThat(reportes.contarBreakGlassActivos(now)).isZero();
-        assertThat(reportes.obtenerBreakGlassPorEspecialidad(null, null)).isEmpty();
+        assertThat(reportes.countBreakGlassActivations(null, null)).isZero();
+        assertThat(reportes.countActiveBreakGlass(now)).isZero();
+        assertThat(reportes.getBreakGlassBySpecialty(null, null)).isEmpty();
     }
 
     @Test
@@ -228,52 +228,52 @@ class PkgReportsIT {
                 prof2Id, patId, motivo, Timestamp.from(tOld.plus(1, ChronoUnit.HOURS)), Timestamp.from(tOld));
 
         // 1. Verificar métricas sin ventana (todas las filas)
-        assertThat(reportes.contarCitasPorEstado(null, null))
+        assertThat(reportes.countAppointmentsByStatus(null, null))
                 .containsEntry("ATENDIDA", 2L)
                 .containsEntry("CANCELADA", 2L);
-        assertThat(reportes.obtenerCitasPorSede(null, null))
-                .containsExactly(new DistribucionItemDto(sedePublicId, sedeNombre, 4L, 100.0));
-        assertThat(reportes.contarTriajesEmergencia(null, null)).isEqualTo(1L);
-        assertThat(reportes.contarRecetasEmitidas(null, null)).isEqualTo(4L);
-        assertThat(reportes.contarUnidadesDispensadas(null, null)).isEqualTo(10L);
-        assertThat(reportes.contarRecetasPorEstadoDispensacion(null, null))
+        assertThat(reportes.getAppointmentsBySite(null, null))
+                .containsExactly(new DistributionItemDto(sedePublicId, sedeNombre, 4L, 100.0));
+        assertThat(reportes.countEmergencyTriages(null, null)).isEqualTo(1L);
+        assertThat(reportes.countIssuedPrescriptions(null, null)).isEqualTo(4L);
+        assertThat(reportes.countDispensedUnits(null, null)).isEqualTo(10L);
+        assertThat(reportes.countPrescriptionsByDispensationStatus(null, null))
                 .containsEntry("PENDIENTE", 2L)
                 .containsEntry("DISPENSADA_PARCIAL", 1L)
                 .containsEntry("DISPENSADA_TOTAL", 1L);
-        assertThat(reportes.contarActivacionesBreakGlass(null, null)).isEqualTo(3L);
-        assertThat(reportes.contarBreakGlassActivos(tBase)).isEqualTo(1L);
+        assertThat(reportes.countBreakGlassActivations(null, null)).isEqualTo(3L);
+        assertThat(reportes.countActiveBreakGlass(tBase)).isEqualTo(1L);
 
         // 2. Verificar métricas filtradas por ventana [windowFrom, windowTo]
-        assertThat(reportes.contarCitasPorEstado(windowFrom, windowTo))
+        assertThat(reportes.countAppointmentsByStatus(windowFrom, windowTo))
                 .containsEntry("ATENDIDA", 2L)
                 .containsEntry("CANCELADA", 1L);
 
-        List<DistribucionItemDto> citasEsp = reportes.obtenerCitasPorEspecialidad(windowFrom, windowTo);
+        List<DistributionItemDto> citasEsp = reportes.getAppointmentsBySpecialty(windowFrom, windowTo);
         assertThat(citasEsp).containsExactly(
-                new DistribucionItemDto("rep-esp-1", "Cardiologia Rep", 2L, 66.67),
-                new DistribucionItemDto("rep-esp-2", "Pediatria Rep", 1L, 33.33)
+                new DistributionItemDto("rep-esp-1", "Cardiologia Rep", 2L, 66.67),
+                new DistributionItemDto("rep-esp-2", "Pediatria Rep", 1L, 33.33)
         );
 
-        assertThat(reportes.contarTriajesPorNivel(windowFrom, windowTo))
+        assertThat(reportes.countTriagesByLevel(windowFrom, windowTo))
                 .containsEntry("I", 1L)
                 .containsEntry("III", 2L)
                 .doesNotContainKey("V");
-        assertThat(reportes.contarTriajesEmergencia(windowFrom, windowTo)).isEqualTo(1L);
-        assertThat(reportes.obtenerTriajesPorRuta(windowFrom, windowTo)).containsExactly(
-                new DistribucionItemDto("CITA_PRESENCIAL", "CITA_PRESENCIAL", 2L, 66.67),
-                new DistribucionItemDto("URGENCIAS", "URGENCIAS", 1L, 33.33)
+        assertThat(reportes.countEmergencyTriages(windowFrom, windowTo)).isEqualTo(1L);
+        assertThat(reportes.getTriagesByRoute(windowFrom, windowTo)).containsExactly(
+                new DistributionItemDto("CITA_PRESENCIAL", "CITA_PRESENCIAL", 2L, 66.67),
+                new DistributionItemDto("URGENCIAS", "URGENCIAS", 1L, 33.33)
         );
 
-        assertThat(reportes.contarRecetasEmitidas(windowFrom, windowTo)).isEqualTo(3L);
-        assertThat(reportes.contarUnidadesDispensadas(windowFrom, windowTo)).isEqualTo(4L);
-        assertThat(reportes.contarRecetasPorEstadoDispensacion(windowFrom, windowTo))
+        assertThat(reportes.countIssuedPrescriptions(windowFrom, windowTo)).isEqualTo(3L);
+        assertThat(reportes.countDispensedUnits(windowFrom, windowTo)).isEqualTo(4L);
+        assertThat(reportes.countPrescriptionsByDispensationStatus(windowFrom, windowTo))
                 .containsEntry("PENDIENTE", 1L)
                 .containsEntry("DISPENSADA_PARCIAL", 1L)
                 .containsEntry("DISPENSADA_TOTAL", 1L);
 
-        assertThat(reportes.contarActivacionesBreakGlass(windowFrom, windowTo)).isEqualTo(2L);
-        assertThat(reportes.obtenerBreakGlassPorEspecialidad(windowFrom, windowTo)).containsExactly(
-                new DistribucionItemDto("rep-esp-1", "Cardiologia Rep", 2L, 100.0)
+        assertThat(reportes.countBreakGlassActivations(windowFrom, windowTo)).isEqualTo(2L);
+        assertThat(reportes.getBreakGlassBySpecialty(windowFrom, windowTo)).containsExactly(
+                new DistributionItemDto("rep-esp-1", "Cardiologia Rep", 2L, 100.0)
         );
     }
 

@@ -1,25 +1,25 @@
 package com.meditriaje.security;
 
-import com.meditriaje.dto.clinical.AccesoBreakGlassResponse;
-import com.meditriaje.dto.clinical.ActivarBreakGlassRequest;
-import com.meditriaje.dto.emergency.ConsultarResumenRequest;
-import com.meditriaje.exception.AccesoNoAutorizadoException;
-import com.meditriaje.exception.CredencialesInvalidasException;
-import com.meditriaje.exception.DatosInvalidosException;
-import com.meditriaje.model.AccesoBreakGlass;
-import com.meditriaje.model.AccesoTemporalQr;
-import com.meditriaje.model.Paciente;
-import com.meditriaje.model.Profesional;
-import com.meditriaje.model.Usuario;
-import com.meditriaje.repository.AccesoTemporalQrRepository;
-import com.meditriaje.repository.AlergiaRepository;
-import com.meditriaje.repository.AtencionRepository;
+import com.meditriaje.dto.clinical.BreakGlassAccessResponse;
+import com.meditriaje.dto.clinical.ActivateBreakGlassRequest;
+import com.meditriaje.dto.emergency.ConsultSummaryRequest;
+import com.meditriaje.exception.UnauthorizedAccessException;
+import com.meditriaje.exception.InvalidCredentialsException;
+import com.meditriaje.exception.InvalidDataException;
+import com.meditriaje.model.BreakGlassAccess;
+import com.meditriaje.model.TemporaryQrAccess;
+import com.meditriaje.model.Patient;
+import com.meditriaje.model.Professional;
+import com.meditriaje.model.User;
+import com.meditriaje.repository.TemporaryQrAccessRepository;
+import com.meditriaje.repository.AllergyRepository;
+import com.meditriaje.repository.ClinicalAttentionRepository;
 import com.meditriaje.repository.BreakGlassRepository;
-import com.meditriaje.repository.PacienteRepository;
-import com.meditriaje.repository.ProfesionalRepository;
-import com.meditriaje.repository.RecetaRepository;
-import com.meditriaje.repository.UsuarioRepository;
-import com.meditriaje.service.AuditoriaService;
+import com.meditriaje.repository.PatientRepository;
+import com.meditriaje.repository.ProfessionalRepository;
+import com.meditriaje.repository.PrescriptionRepository;
+import com.meditriaje.repository.UserRepository;
+import com.meditriaje.service.AuditService;
 import com.meditriaje.service.BreakGlassService;
 import com.meditriaje.service.EmergencyQrService;
 import com.meditriaje.service.EmergencySummaryService;
@@ -62,23 +62,23 @@ class EmergencyQrAndBreakGlassSecurityTest {
     private final Clock clock = Clock.fixed(T0, BOGOTA);
 
     @Mock
-    private AccesoTemporalQrRepository accesoTemporalQrRepository;
+    private TemporaryQrAccessRepository temporaryQrAccessRepository;
     @Mock
-    private PacienteRepository pacienteRepository;
+    private PatientRepository patientRepository;
     @Mock
-    private UsuarioRepository usuarioRepository;
+    private UserRepository userRepository;
     @Mock
-    private ProfesionalRepository profesionalRepository;
+    private ProfessionalRepository professionalRepository;
     @Mock
-    private AlergiaRepository alergiaRepository;
+    private AllergyRepository allergyRepository;
     @Mock
-    private RecetaRepository recetaRepository;
+    private PrescriptionRepository prescriptionRepository;
     @Mock
-    private AtencionRepository atencionRepository;
+    private ClinicalAttentionRepository attentionRepository;
     @Mock
     private BreakGlassRepository breakGlassRepository;
     @Mock
-    private AuditoriaService auditoriaService;
+    private AuditService auditService;
     @Mock
     private PasswordEncoder passwordEncoder;
 
@@ -92,32 +92,32 @@ class EmergencyQrAndBreakGlassSecurityTest {
     @BeforeEach
     void setUp() {
         emergencyQrService = new EmergencyQrService(
-                accesoTemporalQrRepository,
-                pacienteRepository,
-                usuarioRepository,
-                auditoriaService,
+                temporaryQrAccessRepository,
+                patientRepository,
+                userRepository,
+                auditService,
                 passwordEncoder,
                 clock
         );
 
         emergencySummaryService = new EmergencySummaryService(
-                accesoTemporalQrRepository,
-                pacienteRepository,
-                usuarioRepository,
-                alergiaRepository,
-                recetaRepository,
-                atencionRepository,
-                auditoriaService,
+                temporaryQrAccessRepository,
+                patientRepository,
+                userRepository,
+                allergyRepository,
+                prescriptionRepository,
+                attentionRepository,
+                auditService,
                 passwordEncoder,
                 clock
         );
 
         breakGlassService = new BreakGlassService(
-                usuarioRepository,
-                profesionalRepository,
-                pacienteRepository,
+                userRepository,
+                professionalRepository,
+                patientRepository,
                 breakGlassRepository,
-                auditoriaService,
+                auditService,
                 clock
         );
     }
@@ -128,8 +128,8 @@ class EmergencyQrAndBreakGlassSecurityTest {
 
     @Test
     @DisplayName("QR: Token expirado (> 15 min) es rechazado con DatosInvalidosException")
-    void qr_tokenExpiradoTras15Minutos_esRechazado() {
-        AccesoTemporalQr expirado = new AccesoTemporalQr(
+    void qr_tokenExpiredAfter15Minutes_isRejected() {
+        TemporaryQrAccess expirado = new TemporaryQrAccess(
                 1L, "qr-1", 10L, TOKEN_HASH, null,
                 true, true, true, true,
                 3, 0, false,
@@ -138,20 +138,20 @@ class EmergencyQrAndBreakGlassSecurityTest {
                 T0.minus(16, ChronoUnit.MINUTES)
         );
 
-        when(accesoTemporalQrRepository.buscarPorTokenHash(TOKEN_HASH)).thenReturn(Optional.of(expirado));
+        when(temporaryQrAccessRepository.findByTokenHash(TOKEN_HASH)).thenReturn(Optional.of(expirado));
 
-        assertThatThrownBy(() -> emergencySummaryService.consultarResumenPorToken(
-                TOKEN_PLANO, new ConsultarResumenRequest(null), "10.0.0.1"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> emergencySummaryService.getSummaryByToken(
+                TOKEN_PLANO, new ConsultSummaryRequest(null), "10.0.0.1"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("El acceso QR ha expirado");
 
-        verify(accesoTemporalQrRepository, never()).registrarAcceso(anyLong(), any());
+        verify(temporaryQrAccessRepository, never()).recordAccess(anyLong(), any());
     }
 
     @Test
     @DisplayName("QR: Acceso bloqueado al superar el límite estricto de 3 lecturas (intentos >= 3)")
-    void qr_superacionLimite3Lecturas_esBloqueadoYRechazado() {
-        AccesoTemporalQr agotado = new AccesoTemporalQr(
+    void qr_exceedingLimit3Reads_isBlockedAndRejected() {
+        TemporaryQrAccess agotado = new TemporaryQrAccess(
                 2L, "qr-2", 10L, TOKEN_HASH, null,
                 true, true, true, true,
                 3, 3, false, // 3 de 3 lecturas consumidas
@@ -160,20 +160,20 @@ class EmergencyQrAndBreakGlassSecurityTest {
                 T0.minus(5, ChronoUnit.MINUTES)
         );
 
-        when(accesoTemporalQrRepository.buscarPorTokenHash(TOKEN_HASH)).thenReturn(Optional.of(agotado));
+        when(temporaryQrAccessRepository.findByTokenHash(TOKEN_HASH)).thenReturn(Optional.of(agotado));
 
-        assertThatThrownBy(() -> emergencySummaryService.consultarResumenPorToken(
-                TOKEN_PLANO, new ConsultarResumenRequest(null), "10.0.0.2"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> emergencySummaryService.getSummaryByToken(
+                TOKEN_PLANO, new ConsultSummaryRequest(null), "10.0.0.2"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("limite maximo de lecturas permitidas");
 
-        verify(accesoTemporalQrRepository, never()).registrarAcceso(anyLong(), any());
+        verify(temporaryQrAccessRepository, never()).recordAccess(anyLong(), any());
     }
 
     @Test
     @DisplayName("QR: PIN erróneo lanza CredencialesInvalidasException, incrementa fallos y no registra lectura exitosa")
-    void qr_pinErroneo_esRechazadoConCredencialesInvalidas() {
-        AccesoTemporalQr conPin = new AccesoTemporalQr(
+    void qr_pinWrong_isRejectedWithInvalidCredentials() {
+        TemporaryQrAccess conPin = new TemporaryQrAccess(
                 3L, "qr-3", 10L, TOKEN_HASH, "argon2id$hashedpin",
                 true, true, true, true,
                 3, 1, false,
@@ -182,23 +182,23 @@ class EmergencyQrAndBreakGlassSecurityTest {
                 T0.minus(5, ChronoUnit.MINUTES)
         );
 
-        when(accesoTemporalQrRepository.buscarPorTokenHash(TOKEN_HASH)).thenReturn(Optional.of(conPin));
+        when(temporaryQrAccessRepository.findByTokenHash(TOKEN_HASH)).thenReturn(Optional.of(conPin));
         when(passwordEncoder.matches("0000", "argon2id$hashedpin")).thenReturn(false);
 
-        assertThatThrownBy(() -> emergencySummaryService.consultarResumenPorToken(
-                TOKEN_PLANO, new ConsultarResumenRequest("0000"), "10.0.0.3"))
-                .isInstanceOf(CredencialesInvalidasException.class)
+        assertThatThrownBy(() -> emergencySummaryService.getSummaryByToken(
+                TOKEN_PLANO, new ConsultSummaryRequest("0000"), "10.0.0.3"))
+                .isInstanceOf(InvalidCredentialsException.class)
                 .hasMessageContaining("PIN de seguridad proporcionado es incorrecto");
 
-        verify(accesoTemporalQrRepository).registrarPinFallido(3L);
-        verify(accesoTemporalQrRepository, never()).registrarAcceso(anyLong(), any());
+        verify(temporaryQrAccessRepository).recordFailedPin(3L);
+        verify(temporaryQrAccessRepository, never()).recordAccess(anyLong(), any());
     }
 
     @Test
     @DisplayName("QR: Fuerza bruta de PIN — 3 intentos fallidos revocan el token y bloquean accesos subsiguientes")
-    void qr_fuerzaBrutaPin_tresIntentosRevocanToken() {
+    void qr_fuerzaBrutaPin_threeAttemptsRevocanToken() {
         // Intento 1: token con 0 fallos
-        AccesoTemporalQr conPinInicial = new AccesoTemporalQr(
+        TemporaryQrAccess conPinInicial = new TemporaryQrAccess(
                 3L, "qr-3", 10L, TOKEN_HASH, "argon2id$hashedpin",
                 true, true, true, true,
                 3, 0, false, 0,
@@ -207,17 +207,17 @@ class EmergencyQrAndBreakGlassSecurityTest {
                 T0.minus(5, ChronoUnit.MINUTES)
         );
 
-        when(accesoTemporalQrRepository.buscarPorTokenHash(TOKEN_HASH)).thenReturn(Optional.of(conPinInicial));
+        when(temporaryQrAccessRepository.findByTokenHash(TOKEN_HASH)).thenReturn(Optional.of(conPinInicial));
         when(passwordEncoder.matches("1111", "argon2id$hashedpin")).thenReturn(false);
 
-        assertThatThrownBy(() -> emergencySummaryService.consultarResumenPorToken(
-                TOKEN_PLANO, new ConsultarResumenRequest("1111"), "10.0.0.3"))
-                .isInstanceOf(CredencialesInvalidasException.class)
+        assertThatThrownBy(() -> emergencySummaryService.getSummaryByToken(
+                TOKEN_PLANO, new ConsultSummaryRequest("1111"), "10.0.0.3"))
+                .isInstanceOf(InvalidCredentialsException.class)
                 .hasMessageContaining("PIN de seguridad proporcionado es incorrecto");
-        verify(accesoTemporalQrRepository).registrarPinFallido(3L);
+        verify(temporaryQrAccessRepository).recordFailedPin(3L);
 
         // Intento 2: simula token con 1 fallo registrado
-        AccesoTemporalQr con1Fallo = new AccesoTemporalQr(
+        TemporaryQrAccess con1Fallo = new TemporaryQrAccess(
                 3L, "qr-3", 10L, TOKEN_HASH, "argon2id$hashedpin",
                 true, true, true, true,
                 3, 1, false, 1,
@@ -225,15 +225,15 @@ class EmergencyQrAndBreakGlassSecurityTest {
                 T0.minus(5, ChronoUnit.MINUTES),
                 T0.minus(5, ChronoUnit.MINUTES)
         );
-        when(accesoTemporalQrRepository.buscarPorTokenHash(TOKEN_HASH)).thenReturn(Optional.of(con1Fallo));
+        when(temporaryQrAccessRepository.findByTokenHash(TOKEN_HASH)).thenReturn(Optional.of(con1Fallo));
         when(passwordEncoder.matches("2222", "argon2id$hashedpin")).thenReturn(false);
 
-        assertThatThrownBy(() -> emergencySummaryService.consultarResumenPorToken(
-                TOKEN_PLANO, new ConsultarResumenRequest("2222"), "10.0.0.3"))
-                .isInstanceOf(CredencialesInvalidasException.class);
+        assertThatThrownBy(() -> emergencySummaryService.getSummaryByToken(
+                TOKEN_PLANO, new ConsultSummaryRequest("2222"), "10.0.0.3"))
+                .isInstanceOf(InvalidCredentialsException.class);
 
         // Intento 3: simula token con 2 fallos registrados -> alcanza 3er fallo y revoca
-        AccesoTemporalQr con2Fallos = new AccesoTemporalQr(
+        TemporaryQrAccess con2Fallos = new TemporaryQrAccess(
                 3L, "qr-3", 10L, TOKEN_HASH, "argon2id$hashedpin",
                 true, true, true, true,
                 3, 2, false, 2,
@@ -241,16 +241,16 @@ class EmergencyQrAndBreakGlassSecurityTest {
                 T0.minus(5, ChronoUnit.MINUTES),
                 T0.minus(5, ChronoUnit.MINUTES)
         );
-        when(accesoTemporalQrRepository.buscarPorTokenHash(TOKEN_HASH)).thenReturn(Optional.of(con2Fallos));
+        when(temporaryQrAccessRepository.findByTokenHash(TOKEN_HASH)).thenReturn(Optional.of(con2Fallos));
         when(passwordEncoder.matches("3333", "argon2id$hashedpin")).thenReturn(false);
 
-        assertThatThrownBy(() -> emergencySummaryService.consultarResumenPorToken(
-                TOKEN_PLANO, new ConsultarResumenRequest("3333"), "10.0.0.3"))
-                .isInstanceOf(CredencialesInvalidasException.class)
+        assertThatThrownBy(() -> emergencySummaryService.getSummaryByToken(
+                TOKEN_PLANO, new ConsultSummaryRequest("3333"), "10.0.0.3"))
+                .isInstanceOf(InvalidCredentialsException.class)
                 .hasMessageContaining("revocado por superar el limite de intentos fallidos");
 
         // Intento 4: el token ahora tiene 3 fallos (estado REVOCADO) y es rechazado directamente
-        AccesoTemporalQr bloqueado = new AccesoTemporalQr(
+        TemporaryQrAccess bloqueado = new TemporaryQrAccess(
                 3L, "qr-3", 10L, TOKEN_HASH, "argon2id$hashedpin",
                 true, true, true, true,
                 3, 3, true, 3,
@@ -258,21 +258,21 @@ class EmergencyQrAndBreakGlassSecurityTest {
                 T0.minus(5, ChronoUnit.MINUTES),
                 T0.minus(5, ChronoUnit.MINUTES)
         );
-        when(accesoTemporalQrRepository.buscarPorTokenHash(TOKEN_HASH)).thenReturn(Optional.of(bloqueado));
+        when(temporaryQrAccessRepository.findByTokenHash(TOKEN_HASH)).thenReturn(Optional.of(bloqueado));
 
-        assertThatThrownBy(() -> emergencySummaryService.consultarResumenPorToken(
-                TOKEN_PLANO, new ConsultarResumenRequest("9999"), "10.0.0.3"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> emergencySummaryService.getSummaryByToken(
+                TOKEN_PLANO, new ConsultSummaryRequest("9999"), "10.0.0.3"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("ha sido revocado");
 
         // Ningún intento registró lectura exitosa
-        verify(accesoTemporalQrRepository, never()).registrarAcceso(anyLong(), any());
+        verify(temporaryQrAccessRepository, never()).recordAccess(anyLong(), any());
     }
 
     @Test
     @DisplayName("QR: Token revocado por el paciente bloquea cualquier intento de consulta")
-    void qr_revocadoPorPaciente_bloqueaAcceso() {
-        AccesoTemporalQr revocado = new AccesoTemporalQr(
+    void qr_revokedByPatient_locksAccess() {
+        TemporaryQrAccess revocado = new TemporaryQrAccess(
                 4L, "qr-4", 10L, TOKEN_HASH, null,
                 true, true, true, true,
                 3, 0, true, // REVOCADO
@@ -281,33 +281,33 @@ class EmergencyQrAndBreakGlassSecurityTest {
                 T0.minus(5, ChronoUnit.MINUTES)
         );
 
-        when(accesoTemporalQrRepository.buscarPorTokenHash(TOKEN_HASH)).thenReturn(Optional.of(revocado));
+        when(temporaryQrAccessRepository.findByTokenHash(TOKEN_HASH)).thenReturn(Optional.of(revocado));
 
-        assertThatThrownBy(() -> emergencySummaryService.consultarResumenPorToken(
-                TOKEN_PLANO, new ConsultarResumenRequest(null), "10.0.0.4"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> emergencySummaryService.getSummaryByToken(
+                TOKEN_PLANO, new ConsultSummaryRequest(null), "10.0.0.4"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("ha sido revocado por el paciente");
     }
 
     @Test
     @DisplayName("QR: Paciente ajeno intentando revocar QR recibe 403 AccesoNoAutorizadoException")
-    void qr_pacienteAjenoRevocar_lanza403() {
-        Usuario usuarioAtacante = new Usuario(99L, "usr-atacante", "atacante@test.com", "hash", "ACTIVO", 0, null, T0, false, false, null, null);
-        Paciente pacienteAtacante = new Paciente(99L, 99L, "pac-atacante", "CC", "999", "Atacante", "Hacker", LocalDate.of(1995, 1, 1), "300", T0, T0);
-        AccesoTemporalQr qrVictima = new AccesoTemporalQr(
+    void qr_otherPatientRevoke_throws403() {
+        User usuarioAtacante = new User(99L, "usr-atacante", "atacante@test.com", "hash", "ACTIVO", 0, null, T0, false, false, null, null);
+        Patient pacienteAtacante = new Patient(99L, 99L, "pac-atacante", "CC", "999", "Atacante", "Hacker", LocalDate.of(1995, 1, 1), "300", T0, T0);
+        TemporaryQrAccess qrVictima = new TemporaryQrAccess(
                 5L, "qr-victima", 10L, "hash", null, true, true, true, true, 3, 0, false,
                 T0.plus(10, ChronoUnit.MINUTES), T0, T0
         );
 
-        when(usuarioRepository.buscarPorPublicId("usr-atacante")).thenReturn(Optional.of(usuarioAtacante));
-        when(pacienteRepository.buscarPorUsuarioId(99L)).thenReturn(Optional.of(pacienteAtacante));
-        when(accesoTemporalQrRepository.buscarPorPublicId("qr-victima")).thenReturn(Optional.of(qrVictima));
+        when(userRepository.findByPublicId("usr-atacante")).thenReturn(Optional.of(usuarioAtacante));
+        when(patientRepository.findByUserId(99L)).thenReturn(Optional.of(pacienteAtacante));
+        when(temporaryQrAccessRepository.findByPublicId("qr-victima")).thenReturn(Optional.of(qrVictima));
 
-        assertThatThrownBy(() -> emergencyQrService.revocarAccesoQr("qr-victima", "usr-atacante", "10.0.0.9"))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+        assertThatThrownBy(() -> emergencyQrService.revokeQrAccess("qr-victima", "usr-atacante", "10.0.0.9"))
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessageContaining("No tiene autorizacion para revocar un acceso QR ajeno");
 
-        verify(accesoTemporalQrRepository, never()).revocar(anyString(), anyLong());
+        verify(temporaryQrAccessRepository, never()).revoke(anyString(), anyLong());
     }
 
     // =========================================================================
@@ -316,66 +316,66 @@ class EmergencyQrAndBreakGlassSecurityTest {
 
     @Test
     @DisplayName("Break-Glass: Justificación con menos de 20 caracteres es rechazada con DatosInvalidosException")
-    void breakGlass_justificacionMenorA20Caracteres_esRechazada() {
-        ActivarBreakGlassRequest request = new ActivarBreakGlassRequest("pac-100", "Muy urgente!"); // < 20 caracteres
+    void breakGlass_justificacionUnder20Chars_isRejected() {
+        ActivateBreakGlassRequest request = new ActivateBreakGlassRequest("pac-100", "Muy urgente!"); // < 20 caracteres
 
-        Usuario usuarioMed = new Usuario(1L, "usr-med-1", "med@test.com", "hash", "ACTIVO", 0, null, T0, false, false, null, null);
-        Profesional prof = new Profesional(10L, 1L, "prof-1", 1L, "RM-1", "Dr. Juan", "Perez", T0, T0);
-        Paciente pac = new Paciente(100L, 2L, "pac-100", "CC", "123", "Paciente", "Critico", LocalDate.of(1980, 1, 1), "300", T0, T0);
+        User usuarioMed = new User(1L, "usr-med-1", "med@test.com", "hash", "ACTIVO", 0, null, T0, false, false, null, null);
+        Professional prof = new Professional(10L, 1L, "prof-1", 1L, "RM-1", "Dr. Juan", "Perez", T0, T0);
+        Patient pac = new Patient(100L, 2L, "pac-100", "CC", "123", "Paciente", "Critico", LocalDate.of(1980, 1, 1), "300", T0, T0);
 
-        when(usuarioRepository.buscarPorPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMed));
-        when(profesionalRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.of(prof));
-        when(pacienteRepository.buscarPorPublicId("pac-100")).thenReturn(Optional.of(pac));
+        when(userRepository.findByPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMed));
+        when(professionalRepository.findByUserId(1L)).thenReturn(Optional.of(prof));
+        when(patientRepository.findByPublicId("pac-100")).thenReturn(Optional.of(pac));
 
-        assertThatThrownBy(() -> breakGlassService.activarBreakGlass(request, "usr-med-1", "127.0.0.1"))
-                .isInstanceOf(DatosInvalidosException.class)
+        assertThatThrownBy(() -> breakGlassService.activateBreakGlass(request, "usr-med-1", "127.0.0.1"))
+                .isInstanceOf(InvalidDataException.class)
                 .hasMessageContaining("al menos 20 caracteres");
 
-        verify(breakGlassRepository, never()).registrarAcceso(any());
+        verify(breakGlassRepository, never()).recordAccess(any());
     }
 
     @Test
     @DisplayName("Break-Glass: Solicitud por usuario no profesional (ej. admin o paciente) es rechazada con 403")
-    void breakGlass_rolNoProfesional_esRechazado() {
-        ActivarBreakGlassRequest request = new ActivarBreakGlassRequest("pac-100", "Paciente inconsciente en sala de cirugia mayor.");
+    void breakGlass_nonProfessionalRole_isRejected() {
+        ActivateBreakGlassRequest request = new ActivateBreakGlassRequest("pac-100", "Paciente inconsciente en sala de cirugia mayor.");
 
-        Usuario adminUser = new Usuario(5L, "usr-admin", "admin@test.com", "hash", "ACTIVO", 0, null, T0, false, false, null, null);
-        when(usuarioRepository.buscarPorPublicId("usr-admin")).thenReturn(Optional.of(adminUser));
-        when(profesionalRepository.buscarPorUsuarioId(5L)).thenReturn(Optional.empty()); // No es profesional asistencial
+        User adminUser = new User(5L, "usr-admin", "admin@test.com", "hash", "ACTIVO", 0, null, T0, false, false, null, null);
+        when(userRepository.findByPublicId("usr-admin")).thenReturn(Optional.of(adminUser));
+        when(professionalRepository.findByUserId(5L)).thenReturn(Optional.empty()); // No es profesional asistencial
 
-        assertThatThrownBy(() -> breakGlassService.activarBreakGlass(request, "usr-admin", "127.0.0.1"))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+        assertThatThrownBy(() -> breakGlassService.activateBreakGlass(request, "usr-admin", "127.0.0.1"))
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessageContaining("Usuario no registrado como profesional asistencial");
 
-        verify(breakGlassRepository, never()).registrarAcceso(any());
+        verify(breakGlassRepository, never()).recordAccess(any());
     }
 
     @Test
     @DisplayName("Break-Glass: Acceso vencido tras 24 horas no figura en consultas activas")
-    void breakGlass_vencidoTras24Horas_noFiguraComoActivo() {
-        Usuario usuarioMed = new Usuario(1L, "usr-med-1", "med@test.com", "hash", "ACTIVO", 0, null, T0, false, false, null, null);
-        Profesional prof = new Profesional(10L, 1L, "prof-1", 1L, "RM-1", "Dr. Juan", "Perez", T0, T0);
+    void breakGlass_expiredAfter24Hours_notAppearsAsActive() {
+        User usuarioMed = new User(1L, "usr-med-1", "med@test.com", "hash", "ACTIVO", 0, null, T0, false, false, null, null);
+        Professional prof = new Professional(10L, 1L, "prof-1", 1L, "RM-1", "Dr. Juan", "Perez", T0, T0);
 
-        when(usuarioRepository.buscarPorPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMed));
-        when(profesionalRepository.buscarPorUsuarioId(1L)).thenReturn(Optional.of(prof));
+        when(userRepository.findByPublicId("usr-med-1")).thenReturn(Optional.of(usuarioMed));
+        when(professionalRepository.findByUserId(1L)).thenReturn(Optional.of(prof));
 
         // El repositorio filtra now > FECHA_EXPIRACION -> lista vacía
-        when(breakGlassRepository.listarActivosPorProfesional(10L, T0)).thenReturn(List.of());
+        when(breakGlassRepository.listActiveByProfessional(10L, T0)).thenReturn(List.of());
 
-        List<AccesoBreakGlassResponse> activos = breakGlassService.listarMisAccesosActivos("usr-med-1");
+        List<BreakGlassAccessResponse> activos = breakGlassService.listMyActiveAccesses("usr-med-1");
         assertThat(activos).isEmpty();
     }
 
     @Test
     @DisplayName("Break-Glass: Profesional intentando consultar detalle de autorización de otro colega recibe 403")
-    void breakGlass_consultaColegaAjeno_retorna403() {
-        Usuario usuarioMed2 = new Usuario(2L, "usr-med-2", "med2@test.com", "hash", "ACTIVO", 0, null, T0, false, false, null, null);
-        Profesional prof2 = new Profesional(20L, 2L, "prof-2", 1L, "RM-2", "Dra. Gomez", "Lopez", T0, T0);
+    void breakGlass_queryColleagueOther_returns403() {
+        User usuarioMed2 = new User(2L, "usr-med-2", "med2@test.com", "hash", "ACTIVO", 0, null, T0, false, false, null, null);
+        Professional prof2 = new Professional(20L, 2L, "prof-2", 1L, "RM-2", "Dra. Gomez", "Lopez", T0, T0);
 
-        when(usuarioRepository.buscarPorPublicId("usr-med-2")).thenReturn(Optional.of(usuarioMed2));
-        when(profesionalRepository.buscarPorUsuarioId(2L)).thenReturn(Optional.of(prof2));
+        when(userRepository.findByPublicId("usr-med-2")).thenReturn(Optional.of(usuarioMed2));
+        when(professionalRepository.findByUserId(2L)).thenReturn(Optional.of(prof2));
 
-        AccesoBreakGlassResponse accesoOtro = new AccesoBreakGlassResponse(
+        BreakGlassAccessResponse accesoOtro = new BreakGlassAccessResponse(
                 "bg-otro-uuid",
                 "prof-1", // Pertenece al prof 1, NO al prof 2
                 "Dr. Juan Perez",
@@ -386,10 +386,10 @@ class EmergencyQrAndBreakGlassSecurityTest {
                 T0,
                 true
         );
-        when(breakGlassRepository.buscarPorPublicId("bg-otro-uuid", T0)).thenReturn(Optional.of(accesoOtro));
+        when(breakGlassRepository.findByPublicId("bg-otro-uuid", T0)).thenReturn(Optional.of(accesoOtro));
 
-        assertThatThrownBy(() -> breakGlassService.obtenerPorPublicId("bg-otro-uuid", "usr-med-2"))
-                .isInstanceOf(AccesoNoAutorizadoException.class)
+        assertThatThrownBy(() -> breakGlassService.getByPublicId("bg-otro-uuid", "usr-med-2"))
+                .isInstanceOf(UnauthorizedAccessException.class)
                 .hasMessageContaining("No tiene autorizacion para consultar el acceso break-glass de otro profesional");
     }
 }

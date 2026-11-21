@@ -1,8 +1,8 @@
 package com.meditriaje.controller.admin;
 
-import com.meditriaje.dto.admin.ActualizarEspecialidadRequest;
-import com.meditriaje.dto.admin.CrearEspecialidadRequest;
-import com.meditriaje.dto.admin.EspecialidadResponse;
+import com.meditriaje.dto.admin.UpdateSpecialtyRequest;
+import com.meditriaje.dto.admin.CreateSpecialtyRequest;
+import com.meditriaje.dto.admin.SpecialtyResponse;
 import com.meditriaje.dto.common.PaginatedResponse;
 import com.meditriaje.service.AdminCatalogService;
 import com.meditriaje.util.IpUtil;
@@ -40,67 +40,67 @@ public class AdminSpecialtyController {
     }
 
     @PostMapping
-    public ResponseEntity<EspecialidadResponse> crear(
-            @Valid @RequestBody CrearEspecialidadRequest request,
+    public ResponseEntity<SpecialtyResponse> create(
+            @Valid @RequestBody CreateSpecialtyRequest request,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String adminPublicId = (String) authentication.getPrincipal();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
-        EspecialidadResponse response = catalogService.crearEspecialidad(request, adminPublicId, ipOrigen);
+        String sourceIp = IpUtil.extractIp(httpRequest);
+        SpecialtyResponse response = catalogService.createSpecialty(request, adminPublicId, sourceIp);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @GetMapping
-    public ResponseEntity<PaginatedResponse<EspecialidadResponse>> listar(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @RequestParam(required = false) String estado
+    public ResponseEntity<PaginatedResponse<SpecialtyResponse>> list(
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size,
+            @RequestParam(value = "estado", required = false) String status
     ) {
-        PaginatedResponse<EspecialidadResponse> response = catalogService.listarEspecialidades(page, size, estado);
+        PaginatedResponse<SpecialtyResponse> response = catalogService.listSpecialties(page, size, status);
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/{publicId}")
-    public ResponseEntity<EspecialidadResponse> obtener(@PathVariable String publicId) {
-        EspecialidadResponse response = catalogService.obtenerEspecialidad(publicId);
+    public ResponseEntity<SpecialtyResponse> getByPublicId(@PathVariable("publicId") String publicId) {
+        SpecialtyResponse response = catalogService.getSpecialty(publicId);
         return ResponseEntity.ok(response);
     }
 
     @PutMapping("/{publicId}")
-    public ResponseEntity<EspecialidadResponse> actualizar(
-            @PathVariable String publicId,
-            @Valid @RequestBody ActualizarEspecialidadRequest request,
+    public ResponseEntity<SpecialtyResponse> update(
+            @PathVariable("publicId") String publicId,
+            @Valid @RequestBody UpdateSpecialtyRequest request,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String adminPublicId = (String) authentication.getPrincipal();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
-        EspecialidadResponse response = catalogService.actualizarEspecialidad(publicId, request, adminPublicId, ipOrigen);
+        String sourceIp = IpUtil.extractIp(httpRequest);
+        SpecialtyResponse response = catalogService.updateSpecialty(publicId, request, adminPublicId, sourceIp);
         return ResponseEntity.ok(response);
     }
 
     @PatchMapping("/{publicId}/deactivate")
-    public ResponseEntity<EspecialidadResponse> desactivar(
-            @PathVariable String publicId,
+    public ResponseEntity<SpecialtyResponse> deactivate(
+            @PathVariable("publicId") String publicId,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String adminPublicId = (String) authentication.getPrincipal();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
-        EspecialidadResponse response = catalogService.desactivarEspecialidad(publicId, adminPublicId, ipOrigen);
+        String sourceIp = IpUtil.extractIp(httpRequest);
+        SpecialtyResponse response = catalogService.deactivateSpecialty(publicId, adminPublicId, sourceIp);
         return ResponseEntity.ok(response);
     }
 
     @PatchMapping("/{publicId}/activate")
-    public ResponseEntity<EspecialidadResponse> activar(
-            @PathVariable String publicId,
+    public ResponseEntity<SpecialtyResponse> activate(
+            @PathVariable("publicId") String publicId,
             Authentication authentication,
             HttpServletRequest httpRequest
     ) {
         String adminPublicId = (String) authentication.getPrincipal();
-        String ipOrigen = IpUtil.extraerIp(httpRequest);
-        EspecialidadResponse response = catalogService.activarEspecialidad(publicId, adminPublicId, ipOrigen);
+        String sourceIp = IpUtil.extractIp(httpRequest);
+        SpecialtyResponse response = catalogService.activateSpecialty(publicId, adminPublicId, sourceIp);
         return ResponseEntity.ok(response);
     }
 }

@@ -7,7 +7,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.meditriaje.model.Sede;
+import com.meditriaje.model.Site;
 import com.meditriaje.repository.plsql.PackageGateway;
 import com.meditriaje.repository.plsql.ProcedureSpec;
 import java.math.BigDecimal;
@@ -36,8 +36,8 @@ class SiteRepositoryTest {
     @Test
     @DisplayName("getSingleSite devuelve la fila del cursor o_site")
     void getSingleSiteReturnsTheCursorRow() {
-        Sede sede = new Sede(1L, 1L, "sede-pub", "Hospital Central", "Calle 16", "Valledupar", "ACTIVO");
-        when(gateway.<Sede>single(eq(SiteRepository.GET_SINGLE_SITE), any(SqlParameterSource.class), eq("o_site")))
+        Site sede = new Site(1L, 1L, "sede-pub", "Hospital Central", "Calle 16", "Valledupar", "ACTIVO");
+        when(gateway.<Site>single(eq(SiteRepository.GET_SINGLE_SITE), any(SqlParameterSource.class), eq("o_site")))
                 .thenReturn(Optional.of(sede));
 
         assertThat(repository.getSingleSite()).isSameAs(sede);
@@ -46,7 +46,7 @@ class SiteRepositoryTest {
     @Test
     @DisplayName("getSingleSite falla si el paquete no devolvió filas")
     void getSingleSiteFailsWithoutRows() {
-        when(gateway.<Sede>single(eq(SiteRepository.GET_SINGLE_SITE), any(SqlParameterSource.class), eq("o_site")))
+        when(gateway.<Site>single(eq(SiteRepository.GET_SINGLE_SITE), any(SqlParameterSource.class), eq("o_site")))
                 .thenReturn(Optional.empty());
 
         assertThatThrownBy(repository::getSingleSite).isInstanceOf(IllegalStateException.class);

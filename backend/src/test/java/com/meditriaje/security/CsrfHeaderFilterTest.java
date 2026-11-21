@@ -31,7 +31,7 @@ class CsrfHeaderFilterTest {
     }
 
     @Test
-    void doFilter_peticionGet_pasaSinRequerirCabecera() throws ServletException, IOException {
+    void doFilter_requestGet_pasaWithoutRequerirHeader() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/patients/me");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -42,7 +42,7 @@ class CsrfHeaderFilterTest {
     }
 
     @Test
-    void doFilter_peticionPostARutaExenta_pasaSinRequerirCabecera() throws ServletException, IOException {
+    void doFilter_requestPostToRouteExempt_pasaWithoutRequerirHeader() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/login");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -53,7 +53,7 @@ class CsrfHeaderFilterTest {
     }
 
     @Test
-    void doFilter_peticionPostARutaProtegidaSinCabecera_retorna403Forbidden() throws ServletException, IOException {
+    void doFilter_requestPostToRouteProtectedWithoutHeader_returns403Forbidden() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/appointments");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -65,7 +65,7 @@ class CsrfHeaderFilterTest {
     }
 
     @Test
-    void doFilter_peticionPostConCabeceraXRequestedWith_pasaFiltro() throws ServletException, IOException {
+    void doFilter_requestPostWithHeaderXRequestedWith_pasaFilter() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/appointments");
         request.addHeader("X-Requested-With", "XMLHttpRequest");
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -77,7 +77,7 @@ class CsrfHeaderFilterTest {
     }
 
     @Test
-    void doFilter_peticionPostConCabeceraXCsrfProtection_pasaFiltro() throws ServletException, IOException {
+    void doFilter_requestPostWithHeaderXCsrfProtection_pasaFilter() throws ServletException, IOException {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/appointments");
         request.addHeader("X-CSRF-Protection", "1");
         MockHttpServletResponse response = new MockHttpServletResponse();

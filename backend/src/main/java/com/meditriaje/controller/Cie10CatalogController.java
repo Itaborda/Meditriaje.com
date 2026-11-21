@@ -1,7 +1,7 @@
 package com.meditriaje.controller;
 
-import com.meditriaje.dto.clinical.DiagnosticoCie10Response;
-import com.meditriaje.repository.DiagnosticoCie10Repository;
+import com.meditriaje.dto.clinical.Cie10DiagnosisResponse;
+import com.meditriaje.repository.Cie10DiagnosisRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,18 +19,18 @@ import java.util.Objects;
 @RequestMapping("/api/v1/catalogs/icd10")
 public class Cie10CatalogController {
 
-    private final DiagnosticoCie10Repository diagnosticoCie10Repository;
+    private final Cie10DiagnosisRepository cie10DiagnosisRepository;
 
-    public Cie10CatalogController(DiagnosticoCie10Repository diagnosticoCie10Repository) {
-        this.diagnosticoCie10Repository = Objects.requireNonNull(diagnosticoCie10Repository, "DiagnosticoCie10Repository no puede ser nulo");
+    public Cie10CatalogController(Cie10DiagnosisRepository cie10DiagnosisRepository) {
+        this.cie10DiagnosisRepository = Objects.requireNonNull(cie10DiagnosisRepository, "DiagnosticoCie10Repository no puede ser nulo");
     }
 
     @GetMapping
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<List<DiagnosticoCie10Response>> listarDiagnosticos(
+    public ResponseEntity<List<Cie10DiagnosisResponse>> listDiagnoses(
             @RequestParam(name = "q", required = false) String query
     ) {
-        List<DiagnosticoCie10Response> resultados = diagnosticoCie10Repository.listarActivos(query);
+        List<Cie10DiagnosisResponse> resultados = cie10DiagnosisRepository.listActive(query);
         return ResponseEntity.ok(resultados);
     }
 }

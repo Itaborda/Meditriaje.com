@@ -3,8 +3,8 @@ package com.meditriaje.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.meditriaje.db.OracleTestDatabase;
-import com.meditriaje.dto.clinical.DiagnosticoCie10Response;
-import com.meditriaje.model.DiagnosticoCie10;
+import com.meditriaje.dto.clinical.Cie10DiagnosisResponse;
+import com.meditriaje.model.Cie10Diagnosis;
 import com.meditriaje.repository.plsql.OracleErrorTranslator;
 import com.meditriaje.repository.plsql.PackageGateway;
 import java.util.List;
@@ -25,7 +25,7 @@ class PkgCatalogsIT {
     private static final String OWNER = "MT_PKG_CATALOGS";
 
     private static OracleContainer oracle;
-    private static DiagnosticoCie10Repository repository;
+    private static Cie10DiagnosisRepository repository;
 
     @BeforeAll
     static void migrate() {
@@ -35,7 +35,7 @@ class PkgCatalogsIT {
         OracleTestDatabase.flyway(ownerDs).migrate();
         DataSource appDs = OracleTestDatabase.dataSource(
                 oracle, OracleTestDatabase.APP_USER, OracleTestDatabase.APP_PASSWORD);
-        repository = new DiagnosticoCie10Repository(
+        repository = new Cie10DiagnosisRepository(
                 new PackageGateway(appDs, OWNER, new OracleErrorTranslator()));
     }
 
@@ -48,34 +48,34 @@ class PkgCatalogsIT {
 
     @Test
     void getDiagnosisByCodeReturnsTheSeededRow() {
-        Optional<DiagnosticoCie10> diag = repository.buscarPorCodigo("j00");
+        Optional<Cie10Diagnosis> diag = repository.findByCode("j00");
 
         assertThat(diag).isPresent();
-        assertThat(diag.get().codigo()).isEqualTo("J00");
-        assertThat(diag.get().estado()).isEqualTo("ACTIVO");
+        assertThat(diag.get().code()).isEqualTo("J00");
+        assertThat(diag.get().status()).isEqualTo("ACTIVO");
     }
 
     @Test
     void getDiagnosisByIdRoundTripsTheCode() {
-        DiagnosticoCie10 byCode = repository.buscarPorCodigo("J02.9").orElseThrow();
+        Cie10Diagnosis byCode = repository.findByCode("J02.9").orElseThrow();
 
-        assertThat(repository.buscarPorId(byCode.id())).contains(byCode);
+        assertThat(repository.findById(byCode.id())).contains(byCode);
     }
 
     @Test
     void unknownCodeAndIdReturnEmpty() {
-        assertThat(repository.buscarPorCodigo("Z99.99")).isEmpty();
-        assertThat(repository.buscarPorId(-1L)).isEmpty();
+        assertThat(repository.findByCode("Z99.99")).isEmpty();
+        assertThat(repository.findById(-1L)).isEmpty();
     }
 
     @Test
     void listActiveDiagnosesFiltersAndOrdersByCode() {
-        List<DiagnosticoCie10Response> all = repository.listarActivos(null);
-        List<DiagnosticoCie10Response> filtered = repository.listarActivos("faringitis");
+        List<Cie10DiagnosisResponse> all = repository.listActive(null);
+        List<Cie10DiagnosisResponse> filtered = repository.listActive("faringitis");
 
         assertThat(all).isNotEmpty();
-        assertThat(all).extracting(DiagnosticoCie10Response::codigo).isSorted();
-        assertThat(filtered).extracting(DiagnosticoCie10Response::codigo).contains("J02.9");
+        assertThat(all).extracting(Cie10DiagnosisResponse::code).isSorted();
+        assertThat(filtered).extracting(Cie10DiagnosisResponse::code).contains("J02.9");
         assertThat(filtered.size()).isLessThan(all.size());
     }
 }

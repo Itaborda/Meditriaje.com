@@ -1,9 +1,9 @@
 package com.meditriaje.repository.plsql;
 
-import com.meditriaje.exception.AccesoNoAutorizadoException;
-import com.meditriaje.exception.ConflictoOperacionException;
-import com.meditriaje.exception.DatosInvalidosException;
-import com.meditriaje.exception.RecursoNoEncontradoException;
+import com.meditriaje.exception.UnauthorizedAccessException;
+import com.meditriaje.exception.OperationConflictException;
+import com.meditriaje.exception.InvalidDataException;
+import com.meditriaje.exception.ResourceNotFoundException;
 import java.sql.SQLException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -47,21 +47,21 @@ public class OracleErrorTranslator {
         }
         int errorCode = sql.getErrorCode();
         if (errorCode == UNIQUE_VIOLATION) {
-            return new ConflictoOperacionException("Ya existe un registro con esos datos.");
+            return new OperationConflictException("Ya existe un registro con esos datos.");
         }
         if (errorCode < APPLICATION_ERROR_FIRST || errorCode > APPLICATION_ERROR_LAST) {
             return failure;
         }
         String message = applicationMessage(sql.getMessage());
         return switch (errorCode / 100) {
-            case 200 -> new ConflictoOperacionException(
+            case 200 -> new OperationConflictException(
                     orDefault(message, "La operacion viola una regla de integridad."));
-            case 201 -> new RecursoNoEncontradoException(orDefault(message, "registro solicitado"));
-            case 202 -> new ConflictoOperacionException(
+            case 201 -> new ResourceNotFoundException(orDefault(message, "registro solicitado"));
+            case 202 -> new OperationConflictException(
                     orDefault(message, "La operacion entra en conflicto con el estado actual."));
-            case 203, 205 -> new DatosInvalidosException(
+            case 203, 205 -> new InvalidDataException(
                     orDefault(message, "La operacion incumple una regla de negocio."));
-            case 204 -> new AccesoNoAutorizadoException(
+            case 204 -> new UnauthorizedAccessException(
                     orDefault(message, "No tiene permisos para realizar esta operacion."));
             default -> failure;
         };

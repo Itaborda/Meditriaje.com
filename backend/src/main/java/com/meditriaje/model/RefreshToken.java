@@ -7,16 +7,16 @@ import java.time.Instant;
  */
 public record RefreshToken(
         Long id,
-        Long usuarioId,
+        Long userId,
         String tokenHash,
-        Instant expiracion,
-        boolean revocado,
+        Instant expiresAt,
+        boolean revoked,
         Instant createdAt
 ) {
     /**
      * Retorna verdadero si el token ha superado su fecha de expiración.
      */
-    public boolean estaExpirado() {
-        return Instant.now().isAfter(expiracion);
+    public boolean isExpired() {
+        return Instant.now().isAfter(expiresAt);
     }
 }

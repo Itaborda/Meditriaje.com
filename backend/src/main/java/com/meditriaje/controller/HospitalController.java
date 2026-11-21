@@ -26,7 +26,7 @@ public class HospitalController {
         this.hospitalService = Objects.requireNonNull(hospitalService, "hospitalService no puede ser nulo");
     }
 
-    private String obtenerIp(HttpServletRequest request) {
+    private String extractClientIp(HttpServletRequest request) {
         String xf = request.getHeader("X-Forwarded-For");
         return (xf != null && !xf.isBlank()) ? xf.split(",")[0].trim() : request.getRemoteAddr();
     }
@@ -36,14 +36,14 @@ public class HospitalController {
      */
     @PostMapping("/episodes/{episodeId}/beds/assign")
     @PreAuthorize("hasAnyRole('ROLE_ENFERMERIA', 'ROLE_PROFESIONAL')")
-    public ResponseEntity<CamaDetalleResponse> asignarCama(
-            @PathVariable String episodeId,
-            @Valid @RequestBody AsignarCamaRequest request,
+    public ResponseEntity<BedDetailResponse> assignBed(
+            @PathVariable("episodeId") String episodeId,
+            @Valid @RequestBody AssignBedRequest request,
             Authentication auth,
             HttpServletRequest httpRequest
     ) {
         String usuarioPubId = auth.getName();
-        CamaDetalleResponse resp = hospitalService.asignarCama(episodeId, request, usuarioPubId, obtenerIp(httpRequest));
+        BedDetailResponse resp = hospitalService.assignBed(episodeId, request, usuarioPubId, extractClientIp(httpRequest));
         return ResponseEntity.status(HttpStatus.CREATED).body(resp);
     }
 
@@ -52,14 +52,14 @@ public class HospitalController {
      */
     @PostMapping("/episodes/{episodeId}/beds/transfer")
     @PreAuthorize("hasAnyRole('ROLE_ENFERMERIA', 'ROLE_PROFESIONAL')")
-    public ResponseEntity<MovimientoResponse> trasladarPaciente(
-            @PathVariable String episodeId,
-            @Valid @RequestBody TrasladarPacienteRequest request,
+    public ResponseEntity<MovementResponse> transferPatient(
+            @PathVariable("episodeId") String episodeId,
+            @Valid @RequestBody TransferPatientRequest request,
             Authentication auth,
             HttpServletRequest httpRequest
     ) {
         String usuarioPubId = auth.getName();
-        MovimientoResponse resp = hospitalService.trasladarPaciente(episodeId, request, usuarioPubId, obtenerIp(httpRequest));
+        MovementResponse resp = hospitalService.transferPatient(episodeId, request, usuarioPubId, extractClientIp(httpRequest));
         return ResponseEntity.ok(resp);
     }
 
@@ -68,14 +68,14 @@ public class HospitalController {
      */
     @PatchMapping("/beds/{camaId}/status")
     @PreAuthorize("hasAnyRole('ROLE_ENFERMERIA', 'ROLE_PROFESIONAL', 'ROLE_ADMINISTRADOR')")
-    public ResponseEntity<Void> cambiarEstadoCama(
-            @PathVariable String camaId,
-            @RequestParam String nuevoEstado,
+    public ResponseEntity<Void> changeBedStatus(
+            @PathVariable("camaId") String bedId,
+            @RequestParam("nuevoEstado") String newStatus,
             Authentication auth,
             HttpServletRequest httpRequest
     ) {
         String usuarioPubId = auth.getName();
-        hospitalService.cambiarEstadoCama(camaId, nuevoEstado, usuarioPubId, obtenerIp(httpRequest));
+        hospitalService.changeBedStatus(bedId, newStatus, usuarioPubId, extractClientIp(httpRequest));
         return ResponseEntity.noContent().build();
     }
 
@@ -84,14 +84,14 @@ public class HospitalController {
      */
     @PostMapping("/episodes/{episodeId}/procedures")
     @PreAuthorize("hasRole('ROLE_PROFESIONAL')")
-    public ResponseEntity<ProcedimientoResponse> registrarProcedimiento(
-            @PathVariable String episodeId,
-            @Valid @RequestBody RegistrarProcedimientoRequest request,
+    public ResponseEntity<ProcedureResponse> registerProcedure(
+            @PathVariable("episodeId") String episodeId,
+            @Valid @RequestBody RegisterProcedureRequest request,
             Authentication auth,
             HttpServletRequest httpRequest
     ) {
         String usuarioPubId = auth.getName();
-        ProcedimientoResponse resp = hospitalService.registrarProcedimiento(episodeId, request, usuarioPubId, obtenerIp(httpRequest));
+        ProcedureResponse resp = hospitalService.registerProcedure(episodeId, request, usuarioPubId, extractClientIp(httpRequest));
         return ResponseEntity.status(HttpStatus.CREATED).body(resp);
     }
 
@@ -100,14 +100,14 @@ public class HospitalController {
      */
     @PatchMapping("/procedures/{procedimientoId}/status")
     @PreAuthorize("hasRole('ROLE_PROFESIONAL')")
-    public ResponseEntity<Void> actualizarEstadoProcedimiento(
-            @PathVariable String procedimientoId,
-            @Valid @RequestBody ActualizarEstadoProcedimientoRequest request,
+    public ResponseEntity<Void> updateProcedureStatus(
+            @PathVariable("procedimientoId") String procedureId,
+            @Valid @RequestBody UpdateProcedureStatusRequest request,
             Authentication auth,
             HttpServletRequest httpRequest
     ) {
         String usuarioPubId = auth.getName();
-        hospitalService.actualizarEstadoProcedimiento(procedimientoId, request, usuarioPubId, obtenerIp(httpRequest));
+        hospitalService.updateProcedureStatus(procedureId, request, usuarioPubId, extractClientIp(httpRequest));
         return ResponseEntity.noContent().build();
     }
 
@@ -116,14 +116,14 @@ public class HospitalController {
      */
     @PostMapping("/episodes/{episodeId}/discharge")
     @PreAuthorize("hasRole('ROLE_PROFESIONAL')")
-    public ResponseEntity<Void> registrarEgresoHospitalario(
-            @PathVariable String episodeId,
-            @Valid @RequestBody RegistrarEgresoRequest request,
+    public ResponseEntity<Void> registerHospitalDischarge(
+            @PathVariable("episodeId") String episodeId,
+            @Valid @RequestBody RegisterDischargeRequest request,
             Authentication auth,
             HttpServletRequest httpRequest
     ) {
         String usuarioPubId = auth.getName();
-        hospitalService.registrarEgresoHospitalario(episodeId, request, usuarioPubId, auth.getAuthorities(), obtenerIp(httpRequest));
+        hospitalService.registerHospitalDischarge(episodeId, request, usuarioPubId, auth.getAuthorities(), extractClientIp(httpRequest));
         return ResponseEntity.noContent().build();
     }
 
@@ -132,8 +132,8 @@ public class HospitalController {
      */
     @GetMapping("/census")
     @PreAuthorize("hasAnyRole('ROLE_ADMINISTRADOR', 'ROLE_ENFERMERIA', 'ROLE_PROFESIONAL')")
-    public ResponseEntity<CensoCamasResponse> obtenerCensoCamas() {
-        CensoCamasResponse resp = hospitalService.obtenerCensoCamas();
+    public ResponseEntity<BedCensusResponse> getBedCensus() {
+        BedCensusResponse resp = hospitalService.getBedCensus();
         return ResponseEntity.ok(resp);
     }
 
@@ -142,13 +142,13 @@ public class HospitalController {
      */
     @GetMapping("/beds")
     @PreAuthorize("hasAnyRole('ROLE_ADMINISTRADOR', 'ROLE_ENFERMERIA', 'ROLE_PROFESIONAL')")
-    public ResponseEntity<List<CamaDetalleResponse>> listarCamas(
+    public ResponseEntity<List<BedDetailResponse>> listBeds(
             Authentication authentication
     ) {
         boolean esSoloAdmin = authentication != null
                 && authentication.getAuthorities().stream().anyMatch(a -> "ROLE_ADMINISTRADOR".equals(a.getAuthority()))
                 && authentication.getAuthorities().stream().noneMatch(a -> "ROLE_PROFESIONAL".equals(a.getAuthority()) || "ROLE_ENFERMERIA".equals(a.getAuthority()));
-        List<CamaDetalleResponse> resp = hospitalService.listarCamasDetalle(esSoloAdmin);
+        List<BedDetailResponse> resp = hospitalService.listBedDetails(esSoloAdmin);
         return ResponseEntity.ok(resp);
     }
 
@@ -157,8 +157,8 @@ public class HospitalController {
      */
     @GetMapping("/episodes/{episodeId}/movements")
     @PreAuthorize("hasAnyRole('ROLE_ENFERMERIA', 'ROLE_PROFESIONAL')")
-    public ResponseEntity<List<MovimientoResponse>> listarMovimientos(@PathVariable String episodeId) {
-        List<MovimientoResponse> resp = hospitalService.listarMovimientosEpisodio(episodeId);
+    public ResponseEntity<List<MovementResponse>> listMovements(@PathVariable("episodeId") String episodeId) {
+        List<MovementResponse> resp = hospitalService.listEpisodeMovements(episodeId);
         return ResponseEntity.ok(resp);
     }
 
@@ -167,8 +167,8 @@ public class HospitalController {
      */
     @GetMapping("/episodes/{episodeId}/procedures")
     @PreAuthorize("hasAnyRole('ROLE_ENFERMERIA', 'ROLE_PROFESIONAL')")
-    public ResponseEntity<List<ProcedimientoResponse>> listarProcedimientos(@PathVariable String episodeId) {
-        List<ProcedimientoResponse> resp = hospitalService.listarProcedimientosEpisodio(episodeId);
+    public ResponseEntity<List<ProcedureResponse>> listProcedures(@PathVariable("episodeId") String episodeId) {
+        List<ProcedureResponse> resp = hospitalService.listEpisodeProcedures(episodeId);
         return ResponseEntity.ok(resp);
     }
 }

@@ -26,7 +26,7 @@ public class OperationalController {
         this.analyticsService = Objects.requireNonNull(analyticsService, "analyticsService no puede ser nulo");
     }
 
-    private String obtenerIp(HttpServletRequest request) {
+    private String extractClientIp(HttpServletRequest request) {
         String xf = request.getHeader("X-Forwarded-For");
         return (xf != null && !xf.isBlank()) ? xf.split(",")[0].trim() : request.getRemoteAddr();
     }
@@ -36,12 +36,12 @@ public class OperationalController {
      */
     @GetMapping("/dashboard")
     @PreAuthorize("hasAnyRole('ROLE_ADMINISTRADOR', 'ROLE_ENFERMERIA', 'ROLE_PROFESIONAL')")
-    public ResponseEntity<DashboardHospitalarioResponse> obtenerDashboard(
+    public ResponseEntity<HospitalDashboardResponse> getDashboard(
             Authentication auth,
             HttpServletRequest httpRequest
     ) {
         String usuarioPubId = auth != null ? auth.getName() : null;
-        DashboardHospitalarioResponse resp = analyticsService.obtenerDashboardHospitalario(usuarioPubId, obtenerIp(httpRequest));
+        HospitalDashboardResponse resp = analyticsService.getHospitalDashboard(usuarioPubId, extractClientIp(httpRequest));
         return ResponseEntity.ok(resp);
     }
 
@@ -50,10 +50,10 @@ public class OperationalController {
      */
     @GetMapping("/alerts")
     @PreAuthorize("hasAnyRole('ROLE_ADMINISTRADOR', 'ROLE_ENFERMERIA', 'ROLE_PROFESIONAL')")
-    public ResponseEntity<List<AlertaOperativaResponse>> listarAlertas(
-            @RequestParam(required = false) String estado
+    public ResponseEntity<List<OperationalAlertResponse>> listAlerts(
+            @RequestParam(value = "estado", required = false) String status
     ) {
-        return ResponseEntity.ok(analyticsService.listarAlertas(estado));
+        return ResponseEntity.ok(analyticsService.listAlerts(status));
     }
 
     /**
@@ -61,14 +61,14 @@ public class OperationalController {
      */
     @PostMapping("/alerts/{alertaPublicId}/acknowledge")
     @PreAuthorize("hasAnyRole('ROLE_ADMINISTRADOR', 'ROLE_ENFERMERIA', 'ROLE_PROFESIONAL')")
-    public ResponseEntity<Void> reconocerAlerta(
-            @PathVariable String alertaPublicId,
-            @Valid @RequestBody ReconocerAlertaRequest request,
+    public ResponseEntity<Void> acknowledgeAlert(
+            @PathVariable("alertaPublicId") String alertPublicId,
+            @Valid @RequestBody AcknowledgeAlertRequest request,
             Authentication auth,
             HttpServletRequest httpRequest
     ) {
         String usuarioPubId = auth.getName();
-        analyticsService.reconocerAlerta(alertaPublicId, request, usuarioPubId, obtenerIp(httpRequest));
+        analyticsService.acknowledgeAlert(alertPublicId, request, usuarioPubId, extractClientIp(httpRequest));
         return ResponseEntity.noContent().build();
     }
 
@@ -77,13 +77,13 @@ public class OperationalController {
      */
     @PostMapping("/episodes/{episodioPublicId}/tracking-qr")
     @PreAuthorize("hasAnyRole('ROLE_ADMINISTRADOR', 'ROLE_ENFERMERIA', 'ROLE_PROFESIONAL')")
-    public ResponseEntity<QrSeguimientoResponse> generarTrackingQr(
-            @PathVariable String episodioPublicId,
+    public ResponseEntity<TrackingQrResponse> generateTrackingQr(
+            @PathVariable("episodioPublicId") String episodePublicId,
             Authentication auth,
             HttpServletRequest httpRequest
     ) {
         String usuarioPubId = auth.getName();
-        QrSeguimientoResponse resp = analyticsService.generarQrSeguimiento(episodioPublicId, usuarioPubId, obtenerIp(httpRequest));
+        TrackingQrResponse resp = analyticsService.generateTrackingQr(episodePublicId, usuarioPubId, extractClientIp(httpRequest));
         return ResponseEntity.status(HttpStatus.CREATED).body(resp);
     }
 
@@ -91,11 +91,11 @@ public class OperationalController {
      * O03: Consulta segura de ubicación y estado de paciente por escaneo de QR (sin PHI diagnóstica).
      */
     @GetMapping("/tracking-qr/{token}")
-    public ResponseEntity<QrSeguimientoResponse> consultarTrackingQr(
-            @PathVariable String token,
+    public ResponseEntity<TrackingQrResponse> getTrackingQr(
+            @PathVariable("token") String token,
             HttpServletRequest httpRequest
     ) {
-        QrSeguimientoResponse resp = analyticsService.consultarPorTokenQr(token, obtenerIp(httpRequest));
+        TrackingQrResponse resp = analyticsService.getByQrToken(token, extractClientIp(httpRequest));
         return ResponseEntity.ok(resp);
     }
 }

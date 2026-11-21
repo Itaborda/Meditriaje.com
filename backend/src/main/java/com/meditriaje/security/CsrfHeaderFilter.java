@@ -27,8 +27,8 @@ import java.util.Set;
  */
 public class CsrfHeaderFilter extends OncePerRequestFilter {
 
-    private static final Set<String> METODOS_MUTANTES = Set.of("POST", "PUT", "DELETE", "PATCH");
-    private static final Set<String> RUTAS_EXENTAS = Set.of(
+    private static final Set<String> MUTATING_METHODS = Set.of("POST", "PUT", "DELETE", "PATCH");
+    private static final Set<String> EXEMPT_PATHS = Set.of(
             "/api/v1/ping",
             "/api/v1/auth/login",
             "/api/v1/auth/register"
@@ -49,9 +49,9 @@ public class CsrfHeaderFilter extends OncePerRequestFilter {
     ) throws ServletException, IOException {
         String method = request.getMethod().toUpperCase();
 
-        if (METODOS_MUTANTES.contains(method)) {
+        if (MUTATING_METHODS.contains(method)) {
             String path = request.getRequestURI();
-            if (!esRutaExenta(path)) {
+            if (!isExemptPath(path)) {
                 String csrfHeader = request.getHeader("X-Requested-With");
                 String altCsrfHeader = request.getHeader("X-CSRF-Protection");
 
@@ -75,13 +75,13 @@ public class CsrfHeaderFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
-    private boolean esRutaExenta(String path) {
+    private boolean isExemptPath(String path) {
         if (path == null) {
             return false;
         }
         if (path.startsWith("/api/v1/emergency-summary/")) {
             return true;
         }
-        return RUTAS_EXENTAS.stream().anyMatch(path::equalsIgnoreCase);
+        return EXEMPT_PATHS.stream().anyMatch(path::equalsIgnoreCase);
     }
 }

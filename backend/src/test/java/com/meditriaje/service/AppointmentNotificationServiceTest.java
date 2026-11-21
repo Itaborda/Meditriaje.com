@@ -1,15 +1,15 @@
 package com.meditriaje.service;
 
-import com.meditriaje.dto.appointment.CitaResponse;
-import com.meditriaje.model.Paciente;
-import com.meditriaje.model.RecordatorioCita;
-import com.meditriaje.model.Usuario;
-import com.meditriaje.repository.PacienteRepository;
-import com.meditriaje.repository.RecordatorioCitaRepository;
-import com.meditriaje.repository.UsuarioRepository;
+import com.meditriaje.dto.appointment.AppointmentResponse;
+import com.meditriaje.model.Patient;
+import com.meditriaje.model.AppointmentReminder;
+import com.meditriaje.model.User;
+import com.meditriaje.repository.PatientRepository;
+import com.meditriaje.repository.AppointmentReminderRepository;
+import com.meditriaje.repository.UserRepository;
 import com.meditriaje.service.email.EmailService;
 import com.meditriaje.service.email.EmailTemplateService;
-import com.meditriaje.service.email.ResultadoEnvio;
+import com.meditriaje.service.email.EmailSendResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -43,30 +43,30 @@ class AppointmentNotificationServiceTest {
     private EmailTemplateService templateService;
 
     @Mock
-    private RecordatorioCitaRepository recordatorioCitaRepository;
+    private AppointmentReminderRepository appointmentReminderRepository;
 
     @Mock
-    private PacienteRepository pacienteRepository;
+    private PatientRepository patientRepository;
 
     @Mock
-    private UsuarioRepository usuarioRepository;
+    private UserRepository userRepository;
 
     private AppointmentNotificationService notificationService;
 
-    private CitaResponse dummyCita;
+    private AppointmentResponse dummyCita;
 
     @BeforeEach
     void setUp() {
         notificationService = new AppointmentNotificationService(
                 emailService,
                 templateService,
-                recordatorioCitaRepository,
-                pacienteRepository,
-                usuarioRepository,
+                appointmentReminderRepository,
+                patientRepository,
+                userRepository,
                 "http://localhost:8080"
         );
 
-        dummyCita = new CitaResponse(
+        dummyCita = new AppointmentResponse(
                 "cita-uuid-123",
                 "slot-uuid-1",
                 "paciente-uuid-1",
@@ -90,108 +90,108 @@ class AppointmentNotificationServiceTest {
 
     @Test
     @DisplayName("enviarConfirmacionReserva exitoso despacha correo y registra ENVIADO en BD")
-    void enviarConfirmacionReserva_exitoso() {
-        when(templateService.renderizar(anyString(), anyMap())).thenReturn("<html>Confirmacion</html>");
-        when(emailService.enviarCorreoHtml(anyString(), anyString(), anyString())).thenReturn(ResultadoEnvio.exitoso());
+    void sendBookingConfirmation_success() {
+        when(templateService.render(anyString(), anyMap())).thenReturn("<html>Confirmacion</html>");
+        when(emailService.sendHtmlEmail(anyString(), anyString(), anyString())).thenReturn(EmailSendResult.succeeded());
 
-        notificationService.enviarConfirmacionReserva(10L, 20L, "carlos@example.com", dummyCita);
+        notificationService.sendBookingConfirmation(10L, 20L, "carlos@example.com", dummyCita);
 
-        verify(emailService).enviarCorreoHtml(
+        verify(emailService).sendHtmlEmail(
                 eq("carlos@example.com"),
                 eq("MediTriaje 2.0 — Confirmación de Cita Médica (Medicina General)"),
                 eq("<html>Confirmacion</html>")
         );
 
-        ArgumentCaptor<RecordatorioCita> captor = ArgumentCaptor.forClass(RecordatorioCita.class);
-        verify(recordatorioCitaRepository).guardar(captor.capture());
+        ArgumentCaptor<AppointmentReminder> captor = ArgumentCaptor.forClass(AppointmentReminder.class);
+        verify(appointmentReminderRepository).save(captor.capture());
 
-        RecordatorioCita guardado = captor.getValue();
-        assertThat(guardado.citaId()).isEqualTo(10L);
-        assertThat(guardado.pacienteId()).isEqualTo(20L);
-        assertThat(guardado.tipo()).isEqualTo("CONFIRMACION_RESERVA");
-        assertThat(guardado.destinatario()).isEqualTo("carlos@example.com");
-        assertThat(guardado.estadoEnvio()).isEqualTo("ENVIADO");
-        assertThat(guardado.errorMensaje()).isNull();
+        AppointmentReminder guardado = captor.getValue();
+        assertThat(guardado.appointmentId()).isEqualTo(10L);
+        assertThat(guardado.patientId()).isEqualTo(20L);
+        assertThat(guardado.type()).isEqualTo("CONFIRMACION_RESERVA");
+        assertThat(guardado.recipient()).isEqualTo("carlos@example.com");
+        assertThat(guardado.deliveryStatus()).isEqualTo("ENVIADO");
+        assertThat(guardado.errorMessage()).isNull();
     }
 
     @Test
     @DisplayName("enviarConfirmacionReserva ante fallo visible de transporte registra FALLIDO y mensaje de error")
-    void enviarConfirmacionReserva_falloTransporte_registraFallido() {
-        when(templateService.renderizar(anyString(), anyMap())).thenReturn("<html>Confirmacion</html>");
-        when(emailService.enviarCorreoHtml(anyString(), anyString(), anyString()))
-                .thenReturn(ResultadoEnvio.fallido("BREVO_400", "Sender domain not verified in Brevo"));
+    void sendBookingConfirmation_failureTransport_registraFailed() {
+        when(templateService.render(anyString(), anyMap())).thenReturn("<html>Confirmacion</html>");
+        when(emailService.sendHtmlEmail(anyString(), anyString(), anyString()))
+                .thenReturn(EmailSendResult.failed("BREVO_400", "Sender domain not verified in Brevo"));
 
-        notificationService.enviarConfirmacionReserva(10L, 20L, "carlos@example.com", dummyCita);
+        notificationService.sendBookingConfirmation(10L, 20L, "carlos@example.com", dummyCita);
 
-        ArgumentCaptor<RecordatorioCita> captor = ArgumentCaptor.forClass(RecordatorioCita.class);
-        verify(recordatorioCitaRepository).guardar(captor.capture());
+        ArgumentCaptor<AppointmentReminder> captor = ArgumentCaptor.forClass(AppointmentReminder.class);
+        verify(appointmentReminderRepository).save(captor.capture());
 
-        RecordatorioCita guardado = captor.getValue();
-        assertThat(guardado.estadoEnvio()).isEqualTo("FALLIDO");
-        assertThat(guardado.errorMensaje()).contains("Sender domain not verified in Brevo");
+        AppointmentReminder guardado = captor.getValue();
+        assertThat(guardado.deliveryStatus()).isEqualTo("FALLIDO");
+        assertThat(guardado.errorMessage()).contains("Sender domain not verified in Brevo");
     }
 
     @Test
     @DisplayName("enviarConfirmacionReserva ante excepción de transporte no lanza excepción y registra FALLIDO")
-    void enviarConfirmacionReserva_falloSmtp_tolerante() {
-        when(templateService.renderizar(anyString(), anyMap())).thenReturn("<html>Confirmacion</html>");
+    void sendBookingConfirmation_failureSmtp_tolerante() {
+        when(templateService.render(anyString(), anyMap())).thenReturn("<html>Confirmacion</html>");
         doThrow(new RuntimeException("Connection refused to mail.server.com:25"))
-                .when(emailService).enviarCorreoHtml(anyString(), anyString(), anyString());
+                .when(emailService).sendHtmlEmail(anyString(), anyString(), anyString());
 
-        assertThatCode(() -> notificationService.enviarConfirmacionReserva(10L, 20L, "carlos@example.com", dummyCita))
+        assertThatCode(() -> notificationService.sendBookingConfirmation(10L, 20L, "carlos@example.com", dummyCita))
                 .doesNotThrowAnyException();
 
-        ArgumentCaptor<RecordatorioCita> captor = ArgumentCaptor.forClass(RecordatorioCita.class);
-        verify(recordatorioCitaRepository).guardar(captor.capture());
+        ArgumentCaptor<AppointmentReminder> captor = ArgumentCaptor.forClass(AppointmentReminder.class);
+        verify(appointmentReminderRepository).save(captor.capture());
 
-        RecordatorioCita guardado = captor.getValue();
-        assertThat(guardado.estadoEnvio()).isEqualTo("FALLIDO");
-        assertThat(guardado.errorMensaje()).contains("Connection refused");
+        AppointmentReminder guardado = captor.getValue();
+        assertThat(guardado.deliveryStatus()).isEqualTo("FALLIDO");
+        assertThat(guardado.errorMessage()).contains("Connection refused");
     }
 
     @Test
     @DisplayName("enviarNotificacionCancelacion exitoso despacha correo y registra CANCELACION")
-    void enviarNotificacionCancelacion_exitoso() {
-        when(templateService.renderizar(anyString(), anyMap())).thenReturn("<html>Cancelacion</html>");
-        when(emailService.enviarCorreoHtml(anyString(), anyString(), anyString())).thenReturn(ResultadoEnvio.exitoso());
+    void sendCancellationNotification_success() {
+        when(templateService.render(anyString(), anyMap())).thenReturn("<html>Cancelacion</html>");
+        when(emailService.sendHtmlEmail(anyString(), anyString(), anyString())).thenReturn(EmailSendResult.succeeded());
 
-        notificationService.enviarNotificacionCancelacion(10L, 20L, "carlos@example.com", dummyCita, "Calamidad doméstica");
+        notificationService.sendCancellationNotification(10L, 20L, "carlos@example.com", dummyCita, "Calamidad doméstica");
 
-        verify(emailService).enviarCorreoHtml(
+        verify(emailService).sendHtmlEmail(
                 eq("carlos@example.com"),
                 eq("MediTriaje 2.0 — Cancelación de Cita Médica (Medicina General)"),
                 eq("<html>Cancelacion</html>")
         );
 
-        ArgumentCaptor<RecordatorioCita> captor = ArgumentCaptor.forClass(RecordatorioCita.class);
-        verify(recordatorioCitaRepository).guardar(captor.capture());
+        ArgumentCaptor<AppointmentReminder> captor = ArgumentCaptor.forClass(AppointmentReminder.class);
+        verify(appointmentReminderRepository).save(captor.capture());
 
-        RecordatorioCita guardado = captor.getValue();
-        assertThat(guardado.tipo()).isEqualTo("CANCELACION");
-        assertThat(guardado.estadoEnvio()).isEqualTo("ENVIADO");
+        AppointmentReminder guardado = captor.getValue();
+        assertThat(guardado.type()).isEqualTo("CANCELACION");
+        assertThat(guardado.deliveryStatus()).isEqualTo("ENVIADO");
     }
 
     @Test
     @DisplayName("enviarNotificacionCancelacion ante fallo SMTP no bloquea flujo")
-    void enviarNotificacionCancelacion_falloSmtp_tolerante() {
-        when(templateService.renderizar(anyString(), anyMap())).thenReturn("<html>Cancelacion</html>");
+    void sendCancellationNotification_failureSmtp_tolerante() {
+        when(templateService.render(anyString(), anyMap())).thenReturn("<html>Cancelacion</html>");
         doThrow(new RuntimeException("SMTP timeout"))
-                .when(emailService).enviarCorreoHtml(anyString(), anyString(), anyString());
+                .when(emailService).sendHtmlEmail(anyString(), anyString(), anyString());
 
-        assertThatCode(() -> notificationService.enviarNotificacionCancelacion(10L, 20L, "carlos@example.com", dummyCita, null))
+        assertThatCode(() -> notificationService.sendCancellationNotification(10L, 20L, "carlos@example.com", dummyCita, null))
                 .doesNotThrowAnyException();
 
-        ArgumentCaptor<RecordatorioCita> captor = ArgumentCaptor.forClass(RecordatorioCita.class);
-        verify(recordatorioCitaRepository).guardar(captor.capture());
-        assertThat(captor.getValue().estadoEnvio()).isEqualTo("FALLIDO");
+        ArgumentCaptor<AppointmentReminder> captor = ArgumentCaptor.forClass(AppointmentReminder.class);
+        verify(appointmentReminderRepository).save(captor.capture());
+        assertThat(captor.getValue().deliveryStatus()).isEqualTo("FALLIDO");
     }
 
     @Test
     @DisplayName("enviarResumenAtencionSeguimiento despacha correo al paciente")
-    void enviarResumenAtencionSeguimiento_exitoso() {
-        when(templateService.renderizar(anyString(), anyMap())).thenReturn("<html>Resumen</html>");
+    void sendFollowUpAttentionSummary_success() {
+        when(templateService.render(anyString(), anyMap())).thenReturn("<html>Resumen</html>");
 
-        notificationService.enviarResumenAtencionSeguimiento(
+        notificationService.sendFollowUpAttentionSummary(
                 "carlos@example.com",
                 "Carlos Perez",
                 "Dr. Roberto Gomez",
@@ -202,7 +202,7 @@ class AppointmentNotificationServiceTest {
                 "22/10/2026"
         );
 
-        verify(emailService).enviarCorreoHtml(
+        verify(emailService).sendHtmlEmail(
                 eq("carlos@example.com"),
                 eq("MediTriaje 2.0 — Plan de Cuidado y Seguimiento Post-Atención"),
                 eq("<html>Resumen</html>")
@@ -211,25 +211,25 @@ class AppointmentNotificationServiceTest {
 
     @Test
     @DisplayName("resolverEmailPaciente obtiene el correo del usuario vinculado al paciente")
-    void resolverEmailPaciente_exitoso() {
-        Paciente paciente = new Paciente(20L, 50L, "pac-uuid", "CC", "12345678", "Carlos", "Perez",
+    void resolvePatientEmail_success() {
+        Patient paciente = new Patient(20L, 50L, "pac-uuid", "CC", "12345678", "Carlos", "Perez",
                 LocalDate.of(1990, 1, 1), "3001234567", Instant.now(), Instant.now());
-        Usuario usuario = new Usuario(50L, "user-uuid", "paciente@example.com", "hash", "ACTIVO", 0, null, Instant.now());
+        User usuario = new User(50L, "user-uuid", "paciente@example.com", "hash", "ACTIVO", 0, null, Instant.now());
 
-        when(pacienteRepository.buscarPorId(20L)).thenReturn(Optional.of(paciente));
-        when(usuarioRepository.buscarPorId(50L)).thenReturn(Optional.of(usuario));
+        when(patientRepository.findById(20L)).thenReturn(Optional.of(paciente));
+        when(userRepository.findById(50L)).thenReturn(Optional.of(usuario));
 
-        String email = notificationService.resolverEmailPaciente(20L);
+        String email = notificationService.resolvePatientEmail(20L);
 
         assertThat(email).isEqualTo("paciente@example.com");
     }
 
     @Test
     @DisplayName("resolverEmailPaciente retorna null si paciente no existe")
-    void resolverEmailPaciente_noExiste() {
-        when(pacienteRepository.buscarPorId(999L)).thenReturn(Optional.empty());
+    void resolvePatientEmail_notFound() {
+        when(patientRepository.findById(999L)).thenReturn(Optional.empty());
 
-        String email = notificationService.resolverEmailPaciente(999L);
+        String email = notificationService.resolvePatientEmail(999L);
 
         assertThat(email).isNull();
     }
