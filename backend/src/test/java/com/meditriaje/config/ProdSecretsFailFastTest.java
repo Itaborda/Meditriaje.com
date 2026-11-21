@@ -49,9 +49,8 @@ class ProdSecretsFailFastTest {
 
         assertThatThrownBy(() -> {
             try (ConfigurableApplicationContext ctx = new SpringApplicationBuilder(MediTriajeApplication.class)
-                    .profiles("prod")
                     .properties(props)
-                    .run()) {
+                    .run("--spring.profiles.active=prod")) {
                 // No debe llegar aquí
             }
         }).satisfies(ex -> {

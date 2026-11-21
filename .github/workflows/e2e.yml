@@ -47,10 +47,10 @@ jobs:
         run: |
           echo "Esperando que el contenedor de Oracle responda..."
           sleep 10
-          docker exec ${{ job.services.oracle.id }} sqlplus -s system/testPassword1@//localhost:1521/FREEPDB1 << 'EOF'
-          ALTER SESSION SET CONTAINER = FREEPDB1;
+          docker exec -i ${{ job.services.oracle.id }} sqlplus -s "sys/testPassword1@//localhost:1521/FREEPDB1 as sysdba" << 'EOF'
+          WHENEVER SQLERROR EXIT SQL.SQLCODE
           CREATE USER MEDITRIAJE_OWNER IDENTIFIED BY "Owner_Pass1";
-          GRANT CONNECT, RESOURCE, CREATE SESSION TO MEDITRIAJE_OWNER;
+          GRANT CONNECT, RESOURCE, CREATE SESSION, CREATE VIEW TO MEDITRIAJE_OWNER;
           ALTER USER MEDITRIAJE_OWNER QUOTA UNLIMITED ON USERS;
 
           CREATE USER MEDITRIAJE_APP IDENTIFIED BY "App_Pass1";
@@ -74,6 +74,8 @@ jobs:
             --spring.flyway.url=jdbc:oracle:thin:@localhost:1521/FREEPDB1 \
             --spring.flyway.user=MEDITRIAJE_OWNER \
             --spring.flyway.password=Owner_Pass1 \
+            --meditriaje.admin.email=admin@demo.meditriaje.test \
+            --meditriaje.admin.password="DemoSecretPass123!" \
             --meditriaje.demo.seed=true \
             --meditriaje.demo.password="DemoSecretPass123!" \
             --app.frontend-url=http://localhost:3000 \
@@ -81,12 +83,12 @@ jobs:
             --server.port=8080 > backend.log 2>&1 &
           
           echo "Esperando inicialización de la API (healthcheck en puerto 8080)..."
-          timeout 90 bash -c 'until curl -s http://localhost:8080/actuator/health | grep "UP"; do sleep 3; done' || (cat backend.log && exit 1)
+          timeout 150 bash -c 'until curl -s http://localhost:8080/actuator/health | grep "UP"; do sleep 3; done' || (cat backend.log && exit 1)
           echo "Backend iniciado y saludable."
 
       - name: Iniciar servidor Frontend estático
         run: |
-          npx --yes serve frontend -p 3000 > frontend.log 2>&1 &
+          node e2e/e2e-server.js > frontend.log 2>&1 &
           echo "Esperando frontend en puerto 3000..."
           timeout 20 bash -c 'until curl -s http://localhost:3000/index.html | grep "<!DOCTYPE html>"; do sleep 1; done' || (cat frontend.log && exit 1)
           echo "Frontend estático disponible en http://localhost:3000."
@@ -102,6 +104,9 @@ jobs:
         run: npx playwright test
         env:
           E2E_BASE_URL: http://localhost:3000
+          DEMO_ADMIN_EMAIL: admin@demo.meditriaje.test
+          DEMO_PATIENT_EMAIL: laura.morales@demo.meditriaje.test
+          DEMO_DOCTOR_EMAIL: dra.gomez@demo.meditriaje.test
           DEMO_PASSWORD: DemoSecretPass123!
           CI: "true"
 
