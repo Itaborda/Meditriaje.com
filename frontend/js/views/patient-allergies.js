@@ -185,11 +185,10 @@ function mostrarModalDeclararAlergia(container) {
 
   ui.showModal({
     title: 'Declarar alergia autorreportada',
-    body: modalHtml,
+    message: modalHtml,
     confirmText: 'Guardar alergia',
     cancelText: 'Cancelar',
     onConfirm: async () => {
-      const form = document.getElementById('formDeclararAlergia');
       const sustancia = document.getElementById('modal-sustancia')?.value.trim();
       const severidad = document.getElementById('modal-severidad')?.value;
       const reaccion = document.getElementById('modal-reaccion')?.value.trim();
@@ -207,7 +206,7 @@ function mostrarModalDeclararAlergia(container) {
           reaccion: reaccion || null
         });
         ui.showToast('Alergia declarada correctamente.', 'success');
-        patientAllergiesView(container);
+        await patientAllergiesView(container);
         return true;
       } catch (err) {
         if (errBox) { errBox.textContent = err.message; errBox.style.display = 'block'; }
@@ -234,7 +233,7 @@ function mostrarModalInactivarAlergia(container, publicId, sustancia) {
 
   ui.showModal({
     title: 'Inactivar alergia autorreportada',
-    body: modalHtml,
+    message: modalHtml,
     confirmText: 'Inactivar',
     cancelText: 'Cancelar',
     onConfirm: async () => {
@@ -249,7 +248,7 @@ function mostrarModalInactivarAlergia(container, publicId, sustancia) {
       try {
         await api.patch(`/patients/me/allergies/${publicId}/deactivate`, { motivo });
         ui.showToast('Alergia inactivada correctamente.', 'info');
-        patientAllergiesView(container);
+        await patientAllergiesView(container);
         return true;
       } catch (err) {
         if (errBox) { errBox.textContent = err.message; errBox.style.display = 'block'; }
