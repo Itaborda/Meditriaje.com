@@ -5,10 +5,25 @@
  */
 
 import { api } from '../api.js';
-import { router } from '../router.js';
+import { motion } from '../motion.js';
 import { ui, esc } from '../ui.js';
 
 let activeCountdownInterval = null;
+let activeHashChangeCleanup = null;
+
+/**
+ * Limpia el intervalo de cuenta regresiva y el listener de navegación asociado.
+ */
+function clearActiveCountdown() {
+  if (activeCountdownInterval) {
+    clearInterval(activeCountdownInterval);
+    activeCountdownInterval = null;
+  }
+  if (activeHashChangeCleanup) {
+    window.removeEventListener('hashchange', activeHashChangeCleanup);
+    activeHashChangeCleanup = null;
+  }
+}
 
 /**
  * Formatea una fecha ISO a hora y fecha de Bogotá
@@ -34,7 +49,7 @@ function formatDate(isoString, includeTime = true) {
     }
     return new Intl.DateTimeFormat('es-CO', options).format(d);
   } catch {
-    return isoString;
+    return String(isoString);
   }
 }
 
@@ -43,41 +58,44 @@ function formatDate(isoString, includeTime = true) {
  * @param {HTMLElement} container
  */
 export async function patientEmergencyQrView(container) {
-  // Limpiar temporizador previo si existía
-  if (activeCountdownInterval) {
-    clearInterval(activeCountdownInterval);
-    activeCountdownInterval = null;
-  }
+  clearActiveCountdown();
 
   container.innerHTML = `
-    <div class="sg-section" style="padding-top: var(--space-4); padding-bottom: var(--space-12);">
-      <!-- Navegación y encabezado -->
-      <div class="flex items-center gap-2 mb-4">
-        <a href="#/patient/dashboard" class="btn btn-ghost btn--sm" aria-label="Volver al panel del paciente">
-          ${ui.icon('chevron-left', 'icon icon--sm')}
-          <span>Volver al panel</span>
+    <div style="max-width: var(--container); margin: 0 auto; padding-top: var(--space-4); padding-bottom: var(--space-12);">
+      <nav class="breadcrumb mb-3" aria-label="Ruta de navegación">
+        <a href="#/patient/dashboard" class="flex items-center gap-1">
+          ${ui.icon('home', 'icon icon--sm')}
+          <span>Inicio</span>
         </a>
-      </div>
+        <span class="breadcrumb-separator" aria-hidden="true">&gt;</span>
+        <span class="breadcrumb-current" aria-current="page">QR de Emergencia</span>
+      </nav>
 
+      <!-- Navegación y encabezado -->
       <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
-        <div>
-          <h1 class="text-3xl font-bold mb-1 flex items-center gap-3">
-            <span style="color: var(--danger); display: flex;">${ui.icon('shield', 'icon icon--lg')}</span>
-            <span>Código QR y Resumen de Emergencia</span>
-          </h1>
-          <p class="text-muted text-sm" style="max-width: 70ch;">
+        <div class="min-w-0">
+          <div class="flex items-center gap-2 mb-1">
+            <a href="#/patient/dashboard" class="btn btn-ghost btn--sm btn--icon-only" aria-label="Volver al panel del paciente" title="Volver al panel">
+              ${ui.icon('arrow-left')}
+            </a>
+            <h1 class="text-2xl font-bold m-0 flex items-center gap-2">
+              <span class="shrink-0" style="color: var(--danger); display: inline-flex;">${ui.icon('shield', 'icon icon--md')}</span>
+              <span>Código QR y Resumen de Emergencia</span>
+            </h1>
+          </div>
+          <p class="text-muted text-sm m-0" style="max-width: 70ch;">
             Genera un acceso temporal seguro para paramédicos y personal de urgencias en caso de emergencia médica o traslado.
           </p>
         </div>
       </div>
 
       <!-- Alerta informativa de seguridad (ADR-010) -->
-      <div class="card mb-8" style="border-left: 4px solid var(--primary); background-color: var(--surface);">
+      <div class="card mb-6" style="border-left: 4px solid var(--primary); background-color: var(--surface);">
         <div class="card-body flex gap-4 items-start">
-          <div style="color: var(--primary); flex-shrink: 0; padding-top: 2px;">
+          <div class="shrink-0" style="color: var(--primary); padding-top: 2px;">
             ${ui.icon('shield', 'icon icon--md')}
           </div>
-          <div class="text-sm">
+          <div class="text-sm min-w-0">
             <h2 class="font-semibold text-base mb-1" style="color: var(--text);">Privacidad y Seguridad de tu Resumen Clínico</h2>
             <ul style="margin: 0; padding-left: var(--space-4); color: var(--text-muted); line-height: 1.6;">
               <li><strong>Cero datos en el código:</strong> El código QR jamás contiene datos clínicos ni de identificación; únicamente transporta una URL web con un token cifrado de 256 bits.</li>
@@ -92,9 +110,9 @@ export async function patientEmergencyQrView(container) {
       <!-- Contenedor del QR Activo (se oculta si no hay ninguno recién generado o activo) -->
       <div id="activeQrSection" class="mb-8" style="display: none;"></div>
 
-      <div class="grid grid-cols-1 grid-cols-2-lg gap-8 mb-8">
+      <div class="grid grid-cols-1 grid-cols-2-lg gap-6 mb-8">
         <!-- Formulario Generador -->
-        <div class="card">
+        <div class="card qr-feature-card">
           <div class="card-header">
             <h2 class="card-title text-xl flex items-center gap-2">
               ${ui.icon('plus', 'icon icon--sm text-primary')}
@@ -104,41 +122,48 @@ export async function patientEmergencyQrView(container) {
           </div>
           <div class="card-body">
             <form id="formGenerarQr" novalidate>
-              <fieldset style="border: none; padding: 0; margin: 0 0 var(--space-5) 0;">
-                <legend class="font-semibold text-sm mb-3" style="color: var(--text);">Alcance de información clínica incluida:</legend>
+              <fieldset style="border: none; padding: 0; margin: 0 0 var(--space-4) 0;">
+                <legend class="font-semibold text-sm mb-2" style="color: var(--text);">Alcance de información clínica incluida:</legend>
                 
-                <div class="flex flex-col gap-3">
-                  <label class="flex items-center gap-3 cursor-pointer">
-                    <input type="checkbox" id="chkAlergias" name="incluirAlergias" checked style="width: 18px; height: 18px; accent-color: var(--primary);" />
-                    <div>
-                      <span class="font-medium text-sm">Alergias e hipersensibilidades</span>
-                      <p class="text-xs text-muted" style="margin: 0;">Sustancias registradas, severidad y tipo de reacción adversa.</p>
+                <div class="flex flex-col">
+                  <label class="form-check">
+                    <input type="checkbox" id="chkAlergias" name="incluirAlergias" checked />
+                    <div class="form-check-label">
+                      <span class="font-medium text-sm block">Alergias e hipersensibilidades</span>
+                      <p class="text-xs text-muted m-0">Sustancias registradas, severidad y tipo de reacción adversa.</p>
                     </div>
                   </label>
 
-                  <label class="flex items-center gap-3 cursor-pointer">
-                    <input type="checkbox" id="chkMedicamentos" name="incluirMedicamentos" checked style="width: 18px; height: 18px; accent-color: var(--primary);" />
-                    <div>
-                      <span class="font-medium text-sm">Medicamentos activos prescritos</span>
-                      <p class="text-xs text-muted" style="margin: 0;">Prescripciones médicas con vigencia activa en tus recetas.</p>
+                  <label class="form-check">
+                    <input type="checkbox" id="chkMedicamentos" name="incluirMedicamentos" checked />
+                    <div class="form-check-label">
+                      <span class="font-medium text-sm block">Medicamentos activos prescritos</span>
+                      <p class="text-xs text-muted m-0">Prescripciones médicas con vigencia activa en tus recetas.</p>
                     </div>
                   </label>
 
-                  <label class="flex items-center gap-3 cursor-pointer">
-                    <input type="checkbox" id="chkAtenciones" name="incluirAtenciones" checked style="width: 18px; height: 18px; accent-color: var(--primary);" />
-                    <div>
-                      <span class="font-medium text-sm">Atenciones recientes y diagnósticos CIE-10</span>
-                      <p class="text-xs text-muted" style="margin: 0;">Últimas 5 consultas clínicas con diagnósticos y especialidad.</p>
+                  <label class="form-check">
+                    <input type="checkbox" id="chkAtenciones" name="incluirAtenciones" checked />
+                    <div class="form-check-label">
+                      <span class="font-medium text-sm block">Atenciones recientes y diagnósticos CIE-10</span>
+                      <p class="text-xs text-muted m-0">Últimas 5 consultas clínicas con diagnósticos y especialidad.</p>
                     </div>
                   </label>
 
-                  <label class="flex items-center gap-3 cursor-pointer">
-                    <input type="checkbox" id="chkContacto" name="incluirContacto" checked style="width: 18px; height: 18px; accent-color: var(--primary);" />
-                    <div>
-                      <span class="font-medium text-sm">Datos de contacto de emergencia</span>
-                      <p class="text-xs text-muted" style="margin: 0;">Teléfono y correo electrónico para comunicación inmediata.</p>
+                  <label class="form-check mb-0">
+                    <input type="checkbox" id="chkContacto" name="incluirContacto" checked />
+                    <div class="form-check-label">
+                      <span class="font-medium text-sm block">Datos de contacto de emergencia</span>
+                      <p class="text-xs text-muted m-0">Teléfono y correo electrónico para comunicación inmediata.</p>
                     </div>
                   </label>
+                </div>
+
+                <div id="qrScopeWarning" class="alert alert--warning mt-3 mb-0 text-xs" role="alert" style="display: none;">
+                  ${ui.icon('alert-triangle', 'icon icon--sm alert-icon')}
+                  <div class="alert-content">
+                    <strong>Alcance vacío:</strong> Debes seleccionar al menos una categoría de información clínica para generar el código QR.
+                  </div>
                 </div>
               </fieldset>
 
@@ -160,7 +185,7 @@ export async function patientEmergencyQrView(container) {
                     autocomplete="off"
                   />
                 </div>
-                <p class="text-xs text-muted mt-1">
+                <p class="text-xs text-muted mt-1 m-0">
                   Si defines un PIN, los paramédicos deberán digitarlo al escanear. Déjalo en blanco si prefieres acceso inmediato sin clave (ideal ante riesgo de pérdida de conciencia).
                 </p>
               </div>
@@ -174,7 +199,7 @@ export async function patientEmergencyQrView(container) {
         </div>
 
         <!-- Instrucciones y Recomendaciones -->
-        <div class="card" style="background-color: var(--surface-2);">
+        <div class="card qr-feature-card" style="background-color: var(--surface-2);">
           <div class="card-header">
             <h2 class="card-title text-xl flex items-center gap-2">
               ${ui.icon('info', 'icon icon--sm text-primary')}
@@ -183,32 +208,32 @@ export async function patientEmergencyQrView(container) {
           </div>
           <div class="card-body text-sm flex flex-col gap-4 text-muted">
             <div class="flex items-start gap-3">
-              <span class="badge badge--scheduled font-bold" style="border-radius: var(--radius-full); width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; padding: 0;">1</span>
-              <div>
+              <span class="badge badge--scheduled font-bold shrink-0" style="border-radius: var(--radius-full); width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; padding: 0;">1</span>
+              <div class="min-w-0">
                 <strong style="color: var(--text);">Genera el código antes de salir o trasladarte:</strong>
                 <p style="margin: 2px 0 0 0;">Configura el alcance y presiona generar. Tendrás 15 minutos de disponibilidad activa.</p>
               </div>
             </div>
 
             <div class="flex items-start gap-3">
-              <span class="badge badge--scheduled font-bold" style="border-radius: var(--radius-full); width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; padding: 0;">2</span>
-              <div>
+              <span class="badge badge--scheduled font-bold shrink-0" style="border-radius: var(--radius-full); width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; padding: 0;">2</span>
+              <div class="min-w-0">
                 <strong style="color: var(--text);">Muéstralo en la pantalla de tu móvil o imprímelo:</strong>
                 <p style="margin: 2px 0 0 0;">Cualquier cámara de smartphone o lector de ambulancia podrá escanearlo directamente sin instalar ninguna app.</p>
               </div>
             </div>
 
             <div class="flex items-start gap-3">
-              <span class="badge badge--scheduled font-bold" style="border-radius: var(--radius-full); width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; padding: 0;">3</span>
-              <div>
+              <span class="badge badge--scheduled font-bold shrink-0" style="border-radius: var(--radius-full); width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; padding: 0;">3</span>
+              <div class="min-w-0">
                 <strong style="color: var(--text);">Auditoría inmutable de cada consulta:</strong>
                 <p style="margin: 2px 0 0 0;">Cada vez que un médico o paramédico abre tu resumen, el sistema descuenta una lectura y registra la hora e IP de origen para tu tranquilidad.</p>
               </div>
             </div>
 
             <div class="flex items-start gap-3">
-              <span class="badge badge--danger font-bold" style="border-radius: var(--radius-full); width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; padding: 0;">4</span>
-              <div>
+              <span class="badge badge--danger font-bold shrink-0" style="border-radius: var(--radius-full); width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; padding: 0;">4</span>
+              <div class="min-w-0">
                 <strong style="color: var(--text);">Revocación instantánea:</strong>
                 <p style="margin: 2px 0 0 0;">Si la emergencia fue superada o el código ya no se requiere, puedes revocarlo con un solo clic y quedará invalidado de inmediato.</p>
               </div>
@@ -219,32 +244,60 @@ export async function patientEmergencyQrView(container) {
 
       <!-- Tabla Historial de Accesos Generados -->
       <div class="card">
-        <div class="card-header flex items-center justify-between">
+        <div class="card-header flex flex-wrap items-center justify-between gap-2">
           <h2 class="card-title text-xl flex items-center gap-2">
             ${ui.icon('clock', 'icon icon--sm text-primary')}
             <span>Historial de Códigos QR Generados</span>
           </h2>
-          <button id="btnRecargarHistorial" class="btn btn-ghost btn--sm" title="Refrescar lista">
+          <button type="button" id="btnRecargarHistorial" class="btn btn-ghost btn--sm" title="Refrescar lista">
+            ${ui.icon('refresh-cw', 'icon icon--sm')}
             <span>Actualizar</span>
           </button>
         </div>
-        <div class="card-body" id="historialQrContainer">
-          <div class="skeleton skeleton-card" style="height: 120px;"></div>
-        </div>
+        <div class="card-body" id="historialQrContainer"></div>
       </div>
     </div>
   `;
 
+  motion.staggerCards('.qr-feature-card', { root: container });
+
   // Cargar el historial de tokens
   await cargarHistorial(container);
 
-  // Manejar el envío del formulario
   const form = container.querySelector('#formGenerarQr');
-  form.addEventListener('submit', async (e) => {
+  const scopeWarning = container.querySelector('#qrScopeWarning');
+  const scopeCheckboxes = [
+    form?.chkAlergias,
+    form?.chkMedicamentos,
+    form?.chkAtenciones,
+    form?.chkContacto
+  ].filter(Boolean);
+
+  const syncScopeWarning = () => {
+    const anyChecked = scopeCheckboxes.some(chk => chk.checked);
+    if (scopeWarning) {
+      scopeWarning.style.display = anyChecked ? 'none' : 'flex';
+    }
+    return anyChecked;
+  };
+
+  scopeCheckboxes.forEach(chk => {
+    chk.addEventListener('change', syncScopeWarning);
+  });
+
+  // Manejar el envío del formulario
+  form?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const btnSubmit = form.querySelector('#btnSubmitGenerar');
-    const pinVal = form.qrPinInput.value.trim();
 
+    if (!syncScopeWarning()) {
+      ui.showToast('Debes seleccionar al menos un alcance clínico para generar el código QR.', 'warning');
+      if (scopeWarning) motion.pulseSubtle(scopeWarning);
+      form.chkAlergias?.focus();
+      return;
+    }
+
+    const pinVal = form.qrPinInput.value.trim();
     if (pinVal && !/^[0-9]{4}$/.test(pinVal)) {
       ui.showToast('El PIN debe contener exactamente 4 dígitos numéricos.', 'danger');
       form.qrPinInput.focus();
@@ -260,8 +313,7 @@ export async function patientEmergencyQrView(container) {
     };
 
     try {
-      btnSubmit.disabled = true;
-      btnSubmit.innerHTML = `<span>Generando código seguro...</span>`;
+      ui.setButtonLoading(btnSubmit, true);
 
       const response = await api.post('/patients/me/emergency-qr', payload);
       ui.showToast('Código QR de emergencia generado exitosamente.', 'success');
@@ -278,18 +330,16 @@ export async function patientEmergencyQrView(container) {
       // Scroll suave a la sección del QR
       document.getElementById('activeQrSection')?.scrollIntoView({ behavior: 'smooth' });
     } catch (err) {
-      ui.showToast(err.message || 'Error al generar código QR de emergencia.', 'danger');
+      ui.showToast(esc(err.message || 'Error al generar código QR de emergencia.'), 'danger');
     } finally {
-      btnSubmit.disabled = false;
-      btnSubmit.innerHTML = `
-        ${ui.icon('shield', 'icon icon--md')}
-        <span>Generar Código QR de Emergencia</span>
-      `;
+      ui.setButtonLoading(btnSubmit, false);
     }
   });
 
   // Botón recargar historial
-  container.querySelector('#btnRecargarHistorial')?.addEventListener('click', () => {
+  const btnRecargar = container.querySelector('#btnRecargarHistorial');
+  btnRecargar?.addEventListener('click', () => {
+    motion.spinOnce(btnRecargar);
     cargarHistorial(container);
   });
 }
@@ -303,10 +353,7 @@ function renderQrActivo(rootContainer, qrData) {
   const activeSection = rootContainer.querySelector('#activeQrSection');
   if (!activeSection) return;
 
-  if (activeCountdownInterval) {
-    clearInterval(activeCountdownInterval);
-    activeCountdownInterval = null;
-  }
+  clearActiveCountdown();
 
   activeSection.style.display = 'block';
 
@@ -319,20 +366,26 @@ function renderQrActivo(rootContainer, qrData) {
     ? `<span class="badge badge--scheduled">Protegido con PIN de 4 dígitos</span>`
     : `<span class="badge badge--confirmed">Acceso directo (sin PIN)</span>`;
 
+  const scopeLabels = [];
+  if (qrData.incluirAlergias) scopeLabels.push('Alergias');
+  if (qrData.incluirMedicamentos) scopeLabels.push('Medicamentos');
+  if (qrData.incluirAtenciones) scopeLabels.push('Atenciones');
+  if (qrData.incluirContacto) scopeLabels.push('Contacto');
+
   activeSection.innerHTML = `
     <div class="card" style="border: 2px solid var(--primary); background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%);">
       <div class="card-header flex flex-wrap items-center justify-between gap-4">
-        <div class="flex items-center gap-3">
-          <div style="background-color: var(--teal-50); color: var(--primary); padding: 8px; border-radius: var(--radius-md); display: flex;">
+        <div class="flex items-center gap-3 min-w-0">
+          <div class="shrink-0" style="background-color: var(--primary-soft); border: 1px solid var(--primary-soft-border); color: var(--primary); padding: 8px; border-radius: var(--radius-md); display: flex;">
             ${ui.icon('shield', 'icon icon--md')}
           </div>
-          <div>
+          <div class="min-w-0">
             <h3 class="card-title text-xl font-bold">Código QR de Emergencia Activo</h3>
             <p class="card-subtitle text-xs text-muted">Válido para paramédicos y personal de urgencias</p>
           </div>
         </div>
 
-        <div class="flex items-center gap-3">
+        <div class="flex flex-wrap items-center gap-2">
           ${pinNotice}
           <div id="countdownBadge" class="badge badge--danger text-sm font-bold flex items-center gap-1">
             ${ui.icon('clock', 'icon icon--sm')}
@@ -343,43 +396,38 @@ function renderQrActivo(rootContainer, qrData) {
 
       <div class="card-body">
         <div class="grid grid-cols-1 grid-cols-2-md gap-8 items-center">
-          <!-- Contenedor del QR Visual -->
-          <div class="flex flex-col items-center justify-center p-4 bg-white rounded-lg shadow-sm" style="border: 1px solid var(--border); max-width: 280px; margin: 0 auto; width: 100%;">
-            <div id="qrCanvasTarget" style="display: flex; justify-content: center; align-items: center; width: 220px; height: 220px;"></div>
-            <p class="text-xs text-muted text-center mt-3 font-mono font-medium" style="color: #475569;">
+          <!-- Contenedor del QR Visual (siempre fondo #FFFFFF para máxima legibilidad en cámara) -->
+          <div class="flex flex-col items-center justify-center p-4 rounded-lg shadow-sm" style="background-color: #FFFFFF; color: #0F172A; border: 1px solid var(--border); max-width: 280px; margin: 0 auto; width: 100%;">
+            <div id="qrCanvasTarget" style="display: flex; justify-content: center; align-items: center; width: 220px; height: 220px; background-color: #FFFFFF;"></div>
+            <p class="text-xs text-center mt-3 mb-0 font-mono font-medium" style="color: #0F172A;">
               Escanear con cámara de smartphone
             </p>
           </div>
 
           <!-- Detalles del acceso y acciones -->
-          <div class="flex flex-col gap-4">
+          <div class="flex flex-col gap-4 min-w-0">
             <div>
-              <span class="text-xs font-semibold text-muted uppercase tracking-wider block mb-1">Dirección Web de Emergencia:</span>
-              <div class="flex items-center gap-2">
+              <label for="directUrlInput" class="text-xs font-semibold text-muted uppercase tracking-wider block mb-1">Dirección Web de Emergencia:</label>
+              <div class="flex flex-wrap items-center gap-2">
                 <input
                   type="text"
                   id="directUrlInput"
-                  class="form-input text-xs font-mono"
+                  class="form-input text-xs font-mono flex-1 min-w-0"
                   readonly
                   value="${esc(fullUrl)}"
                   style="background-color: var(--surface);"
                 />
-                <button type="button" id="btnCopyUrl" class="btn btn-secondary btn--sm" title="Copiar enlace">
-                  ${ui.icon('check', 'icon icon--sm')}
+                <button type="button" id="btnCopyUrl" class="btn btn-secondary btn--sm shrink-0" title="Copiar enlace">
+                  <span data-copy-icon style="display: inline-flex;">${ui.icon('copy', 'icon icon--sm')}</span>
                   <span id="copyBtnText">Copiar</span>
                 </button>
               </div>
             </div>
 
             <div class="text-sm text-muted">
-              <div><strong>Lecturas disponibles:</strong> Máximo ${qrData.maxAccesos} consultas.</div>
-              <div><strong>Expira a las:</strong> ${formatDate(qrData.expiraAt)}</div>
-              <div><strong>Alcance:</strong> 
-                ${qrData.incluirAlergias ? 'Alergias · ' : ''}
-                ${qrData.incluirMedicamentos ? 'Medicamentos · ' : ''}
-                ${qrData.incluirAtenciones ? 'Atenciones · ' : ''}
-                ${qrData.incluirContacto ? 'Contacto' : ''}
-              </div>
+              <div><strong>Lecturas disponibles:</strong> Máximo ${esc(qrData.maxAccesos)} consultas.</div>
+              <div><strong>Expira a las:</strong> ${esc(formatDate(qrData.expiraAt))}</div>
+              <div><strong>Alcance:</strong> ${esc(scopeLabels.join(' · ') || 'Básico')}</div>
             </div>
 
             <div class="pt-2 flex flex-wrap gap-3">
@@ -401,6 +449,8 @@ function renderQrActivo(rootContainer, qrData) {
     </div>
   `;
 
+  motion.stepTransition(activeSection, 'forward');
+
   // Renderizar el QR con la librería local
   const canvasTarget = activeSection.querySelector('#qrCanvasTarget');
   if (canvasTarget && typeof window.QRCode !== 'undefined') {
@@ -416,10 +466,10 @@ function renderQrActivo(rootContainer, qrData) {
       });
     } catch (err) {
       console.error('Error renderizando QRCode:', err);
-      canvasTarget.innerHTML = `<p class="text-xs text-danger text-center">No fue posible renderizar el gráfico QR.</p>`;
+      canvasTarget.innerHTML = `<p class="text-xs text-danger text-center m-0">No fue posible renderizar el gráfico QR.</p>`;
     }
   } else if (canvasTarget) {
-    canvasTarget.innerHTML = `<p class="text-xs text-danger text-center">La librería gráfica de QR no está disponible en este momento.</p>`;
+    canvasTarget.innerHTML = `<p class="text-xs text-danger text-center m-0">La librería gráfica de QR no está disponible en este momento.</p>`;
   }
 
   // Descargar gráfico QR como imagen PNG
@@ -450,20 +500,38 @@ function renderQrActivo(rootContainer, qrData) {
   // Copiar enlace al portapapeles
   const btnCopy = activeSection.querySelector('#btnCopyUrl');
   const copyBtnText = activeSection.querySelector('#copyBtnText');
+  const copyIconWrap = activeSection.querySelector('[data-copy-icon]');
+  let copyResetTimeout = null;
+
   btnCopy?.addEventListener('click', async () => {
+    motion.pulseSubtle(btnCopy);
+    let copied = false;
     try {
       await navigator.clipboard.writeText(fullUrl);
-      copyBtnText.textContent = '¡Copiado!';
-      ui.showToast('Enlace copiado al portapapeles.', 'info');
-      setTimeout(() => {
-        if (copyBtnText) copyBtnText.textContent = 'Copiar';
-      }, 2500);
+      copied = true;
     } catch {
+      const urlInput = activeSection.querySelector('#directUrlInput');
+      if (urlInput) {
+        urlInput.select();
+        copied = document.execCommand('copy');
+      }
+    }
+
+    if (copied) {
+      if (copyBtnText) copyBtnText.textContent = '¡Copiado!';
+      if (copyIconWrap) copyIconWrap.innerHTML = ui.icon('check', 'icon icon--sm');
+      ui.showToast('Enlace copiado al portapapeles.', 'info');
+      if (copyResetTimeout) clearTimeout(copyResetTimeout);
+      copyResetTimeout = setTimeout(() => {
+        if (copyBtnText) copyBtnText.textContent = 'Copiar';
+        if (copyIconWrap) copyIconWrap.innerHTML = ui.icon('copy', 'icon icon--sm');
+      }, 2500);
+    } else {
       ui.showToast('Selecciona y copia manualmente la URL.', 'info');
     }
   });
 
-  // Temporizador regresivo dinámico
+  // Temporizador regresivo dinámico con limpieza en hashchange
   const countdownText = activeSection.querySelector('#countdownText');
   const countdownBadge = activeSection.querySelector('#countdownBadge');
   const expiraMs = new Date(qrData.expiraAt).getTime();
@@ -476,8 +544,7 @@ function renderQrActivo(rootContainer, qrData) {
       if (countdownBadge) {
         countdownBadge.className = 'badge badge--rescheduled text-sm font-bold flex items-center gap-1';
       }
-      clearInterval(activeCountdownInterval);
-      activeCountdownInterval = null;
+      clearActiveCountdown();
       return;
     }
     const mins = Math.floor(difSec / 60);
@@ -490,6 +557,8 @@ function renderQrActivo(rootContainer, qrData) {
 
   updateCountdown();
   activeCountdownInterval = setInterval(updateCountdown, 1000);
+  activeHashChangeCleanup = () => clearActiveCountdown();
+  window.addEventListener('hashchange', activeHashChangeCleanup, { once: true });
 
   // Botón Revocar Código
   const btnRevocar = activeSection.querySelector('#btnRevocarActivo');
@@ -507,29 +576,31 @@ async function cargarHistorial(rootContainer) {
   const container = rootContainer.querySelector('#historialQrContainer');
   if (!container) return;
 
+  ui.renderSkeleton(container, 'table');
+
   try {
     const accesos = await api.get('/patients/me/emergency-qr');
     if (!accesos || accesos.length === 0) {
-      container.innerHTML = `
-        <div class="empty-state text-center py-6">
-          <p class="text-sm text-muted">Aún no has generado ningún código QR de emergencia.</p>
-        </div>
-      `;
+      ui.renderEmpty(container, {
+        icon: 'qr-code',
+        title: 'Sin códigos QR generados',
+        description: 'Aún no has generado ningún código QR de emergencia. Configura un alcance arriba cuando necesites compartir tu resumen clínico.'
+      });
       return;
     }
 
     container.innerHTML = `
       <div class="table-container" style="overflow-x: auto;">
-        <table class="table" style="width: 100%;">
+        <table class="table table--stacked" style="width: 100%;">
           <thead>
             <tr>
-              <th>Fecha de Creación</th>
-              <th>Estado</th>
-              <th>Lecturas</th>
-              <th>PIN</th>
-              <th>Alcance Autorizado</th>
-              <th>Vencimiento</th>
-              <th style="text-align: right;">Acciones</th>
+              <th scope="col">Fecha de Creación</th>
+              <th scope="col">Estado</th>
+              <th scope="col">Lecturas</th>
+              <th scope="col">PIN</th>
+              <th scope="col">Alcance Autorizado</th>
+              <th scope="col">Vencimiento</th>
+              <th scope="col" style="text-align: right;">Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -549,13 +620,13 @@ async function cargarHistorial(rootContainer) {
 
               return `
                 <tr>
-                  <td class="font-medium text-xs">${formatDate(a.createdAt)}</td>
-                  <td><span class="badge ${badgeClass}">${esc(a.estado)}</span></td>
-                  <td class="text-xs font-mono">${a.accesosRealizados} / ${a.maxAccesos}</td>
-                  <td class="text-xs">${a.requierePin ? 'Sí (4 dígitos)' : 'No (Libre)'}</td>
-                  <td class="text-xs text-muted">${alcanceTags.join(', ') || 'Básico'}</td>
-                  <td class="text-xs text-muted">${formatDate(a.expiraAt)}</td>
-                  <td style="text-align: right;">
+                  <td data-label="Creación" class="font-medium text-xs">${esc(formatDate(a.createdAt))}</td>
+                  <td data-label="Estado"><span class="badge ${badgeClass}">${esc(a.estado)}</span></td>
+                  <td data-label="Lecturas" class="text-xs font-mono">${esc(a.accesosRealizados)} / ${esc(a.maxAccesos)}</td>
+                  <td data-label="PIN" class="text-xs">${a.requierePin ? 'Sí (4 dígitos)' : 'No (Libre)'}</td>
+                  <td data-label="Alcance" class="text-xs text-muted">${esc(alcanceTags.join(', ') || 'Básico')}</td>
+                  <td data-label="Vencimiento" class="text-xs text-muted">${esc(formatDate(a.expiraAt))}</td>
+                  <td data-label="Acciones" style="text-align: right;">
                     ${puedeRevocar ? `
                       <button type="button" class="btn btn-ghost btn--sm text-danger btnRevocarFila" data-id="${esc(a.publicId)}" title="Revocar acceso">
                         ${ui.icon('x', 'icon icon--sm')}
@@ -579,11 +650,11 @@ async function cargarHistorial(rootContainer) {
       });
     });
   } catch (err) {
-    container.innerHTML = `
-      <div class="empty-state text-center py-4">
-        <p class="text-sm text-danger">No se pudo cargar el historial de códigos QR: ${esc(err.message)}</p>
-      </div>
-    `;
+    ui.renderError(container, {
+      title: 'No se pudo cargar el historial de códigos QR',
+      message: esc(err.message || 'Ocurrió un problema al consultar el historial.'),
+      onRetry: () => cargarHistorial(rootContainer)
+    });
   }
 }
 
@@ -598,25 +669,23 @@ function confirmarRevocacion(rootContainer, publicId) {
     message: '¿Estás seguro de que deseas revocar este código QR? Cualquier paramédico o médico que intente escanearlo recibirá un aviso de acceso inválido y no podrá consultar tus datos.',
     confirmText: 'Sí, revocar ahora',
     cancelText: 'Cancelar',
+    isDanger: true,
     onConfirm: async () => {
       try {
-        await api.patch(`/patients/me/emergency-qr/${publicId}/revoke`);
+        await api.patch(`/patients/me/emergency-qr/${encodeURIComponent(publicId)}/revoke`);
         ui.showToast('Acceso QR revocado exitosamente.', 'info');
 
-        // Si el QR activo correspondía a este publicId, ocultar o refrescar
         const activeSection = rootContainer.querySelector('#activeQrSection');
         if (activeSection) {
           activeSection.style.display = 'none';
-          if (activeCountdownInterval) {
-            clearInterval(activeCountdownInterval);
-            activeCountdownInterval = null;
-          }
         }
+        clearActiveCountdown();
 
-        // Recargar historial
         await cargarHistorial(rootContainer);
+        return true;
       } catch (err) {
-        ui.showToast(err.message || 'Error al revocar acceso QR.', 'danger');
+        ui.showToast(esc(err.message || 'Error al revocar acceso QR.'), 'danger');
+        return false;
       }
     }
   });

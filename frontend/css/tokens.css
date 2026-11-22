@@ -50,6 +50,7 @@
   --primary-hover:  var(--teal-800);
   --primary-soft:   var(--teal-50);
   --primary-soft-border: var(--teal-200);
+  --primary-alpha:  rgba(15, 118, 110, 0.12);
   --on-primary:     #FFFFFF;
   --link:           #1D4ED8;           /* 6.7:1 sobre blanco */
   --focus:          #0EA5E9;
@@ -164,6 +165,7 @@
   --primary-hover: #5EEAD4;
   --primary-soft: #0F2A2A;
   --primary-soft-border: #134E4A;
+  --primary-alpha: rgba(45, 212, 191, 0.16);
   --on-primary: #042F2E;
   --link: #7DD3FC;
   --focus: #38BDF8;

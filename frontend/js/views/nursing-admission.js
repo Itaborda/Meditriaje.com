@@ -7,6 +7,7 @@
  */
 
 import { emergencyApi } from '../api.js';
+import { motion } from '../motion.js';
 import { router } from '../router.js';
 import { ui, esc } from '../ui.js';
 
@@ -30,14 +31,14 @@ export async function nursingAdmissionView(container) {
           <!-- Hospital único: el servidor asigna la sede del episodio -->
 
           <!-- Tipo de Identificación / Switch NN -->
-          <div class="card p-4 mb-4" style="background-color: var(--card-bg, #f8fafc); border: 1px solid var(--border);">
-            <div class="flex items-center justify-between mb-3">
+          <div class="card p-4 mb-4" style="background-color: var(--surface-2); border: 1px solid var(--border);">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
               <div>
                 <span class="font-bold text-sm">¿El paciente cuenta con identificación civil?</span>
                 <p class="text-xs text-muted m-0">Si el paciente ingresa inconsciente, desorientado o indocumentado, active el registro provisional.</p>
               </div>
-              <label class="switch flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" id="chkEsNN" style="width: 20px; height: 20px;">
+              <label class="toggle-switch switch">
+                <input type="checkbox" id="chkEsNN">
                 <span class="font-semibold text-sm" id="lblEsNN">No identificado (NN)</span>
               </label>
             </div>
@@ -69,10 +70,10 @@ export async function nursingAdmissionView(container) {
               </div>
 
               <!-- Bloque Registro Presencial Sin Cuenta Web -->
-              <div id="bloquePacienteManual" style="display: none;" class="mt-3 p-3 rounded border bg-white">
-                <div class="flex items-center justify-between mb-3">
+              <div id="bloquePacienteManual" style="display: none; background-color: var(--surface);" class="mt-3 p-3 rounded border">
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
                   <span class="font-bold text-sm">Datos Civiles del Paciente (Sin Cuenta MediTriaje)</span>
-                  <span class="badge badge--info text-xs">Ingreso presencial directo</span>
+                  <span class="badge badge--scheduled text-xs">Ingreso presencial directo</span>
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                   <div class="form-group m-0">
@@ -141,7 +142,7 @@ export async function nursingAdmissionView(container) {
 
               <div class="form-group">
                 <label for="txtDescripcionFisica" class="form-label text-sm">Rasgos Físicos Relevantes / Señas Particulares</label>
-                <textarea id="txtDescripcionFisica" class="form-input" rows="2" placeholder="Ej. Tatuaje en antebrazo derecho, cicatriz frontal, vestimenta azul..."></textarea>
+                <textarea id="txtDescripcionFisica" class="form-textarea" rows="2" placeholder="Ej. Tatuaje en antebrazo derecho, cicatriz frontal, vestimenta azul..."></textarea>
               </div>
             </div>
           </div>
@@ -172,16 +173,16 @@ export async function nursingAdmissionView(container) {
           <!-- Motivo de Ingreso -->
           <div class="form-group mb-4">
             <label for="txtMotivoConsulta" class="form-label font-semibold">Motivo Principal de Consulta / Síntomas Agudos <span class="text-danger">*</span></label>
-            <textarea id="txtMotivoConsulta" class="form-input" rows="3" required placeholder="Describa brevemente la urgencia por la que acude el paciente..."></textarea>
+            <textarea id="txtMotivoConsulta" class="form-textarea" rows="3" required placeholder="Describa brevemente la urgencia por la que acude el paciente..."></textarea>
           </div>
 
           <div class="form-group mb-6">
             <label for="txtObservaciones" class="form-label">Observaciones Administrativas / Notas de Triage Previo</label>
-            <textarea id="txtObservaciones" class="form-input" rows="2" placeholder="Información de antecedentes inmediatos, traslados o circunstancias del evento..."></textarea>
+            <textarea id="txtObservaciones" class="form-textarea" rows="2" placeholder="Información de antecedentes inmediatos, traslados o circunstancias del evento..."></textarea>
           </div>
 
           <!-- Acciones -->
-          <div class="flex items-center justify-end gap-3">
+          <div class="flex flex-wrap items-center justify-end gap-2">
             <a href="#/nursing/dashboard" class="btn btn-ghost">Cancelar</a>
             <button type="submit" id="btnSubmitAdmission" class="btn btn-primary flex items-center gap-2">
               ${ui.icon('check', 'icon icon--sm')}
@@ -206,10 +207,37 @@ export async function nursingAdmissionView(container) {
   const divResultado = document.getElementById('resultadoBusquedaPaciente');
   const hdnPacienteId = document.getElementById('hdnPacientePublicId');
 
-  const setManualOpen = (open) => {
+  const clearFieldError = (el) => {
+    el?.classList.remove('form-input--error', 'form-textarea--error');
+  };
+
+  const markFieldError = (el) => {
+    if (!el) return;
+    const isTextarea = el.tagName?.toLowerCase() === 'textarea';
+    el.classList.add(isTextarea ? 'form-textarea--error' : 'form-input--error');
+  };
+
+  [
+    'txtBuscarPaciente',
+    'txtManualNumDoc',
+    'txtManualNombres',
+    'txtManualApellidos',
+    'txtManualFechaNac',
+    'txtMotivoConsulta'
+  ].forEach(id => {
+    const el = document.getElementById(id);
+    el?.addEventListener('input', () => clearFieldError(el));
+    el?.addEventListener('change', () => clearFieldError(el));
+  });
+
+  const setManualOpen = (open, animate = false) => {
+    const wasHidden = bloqueManual.style.display === 'none';
     bloqueManual.style.display = open ? 'block' : 'none';
     if (open) {
       hdnPacienteId.value = '';
+      if (animate && wasHidden) {
+        motion.revealPanel(bloqueManual, { root: container });
+      }
     }
   };
 
@@ -219,15 +247,17 @@ export async function nursingAdmissionView(container) {
       bloqueNN.style.display = 'block';
       hdnPacienteId.value = '';
       setManualOpen(false);
+      motion.revealPanel(bloqueNN, { root: container });
     } else {
       bloqueCivil.style.display = 'block';
       bloqueNN.style.display = 'none';
+      motion.revealPanel(bloqueCivil, { root: container });
     }
   });
 
   btnToggleManual.addEventListener('click', () => {
     const willOpen = bloqueManual.style.display === 'none';
-    setManualOpen(willOpen);
+    setManualOpen(willOpen, true);
     if (willOpen) {
       divResultado.innerHTML = `<span class="text-xs text-muted">Modo de registro presencial directo activo.</span>`;
       const q = txtBuscar.value.trim();
@@ -243,13 +273,21 @@ export async function nursingAdmissionView(container) {
     }
   });
 
+  txtBuscar.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      btnBuscar.click();
+    }
+  });
+
   const showSelectedPatient = (label) => {
     divResultado.innerHTML = `
-      <div class="p-3 border rounded bg-white flex flex-wrap items-center justify-between gap-2">
+      <div class="p-3 border rounded selected-patient-card flex flex-wrap items-center justify-between gap-2" style="background-color: var(--surface);">
         <div class="text-success font-semibold">✓ Paciente seleccionado: ${esc(label)}</div>
         <button type="button" id="btnCambiarPaciente" class="btn btn-ghost btn--xs">Cambiar</button>
       </div>
     `;
+    motion.pulseSubtle(divResultado.querySelector('.selected-patient-card'));
     document.getElementById('btnCambiarPaciente')?.addEventListener('click', () => {
       hdnPacienteId.value = '';
       divResultado.innerHTML = '';
@@ -261,12 +299,21 @@ export async function nursingAdmissionView(container) {
     const q = txtBuscar.value.trim();
     const tipoDoc = selTipoBuscar.value;
     if (!q) {
+      markFieldError(txtBuscar);
+      txtBuscar.focus();
       divResultado.innerHTML = `<span class="text-warning">Ingrese un número de documento a buscar.</span>`;
       return;
     }
 
+    clearFieldError(txtBuscar);
     hdnPacienteId.value = '';
-    divResultado.innerHTML = `<span class="text-muted">Buscando paciente por documento...</span>`;
+    ui.setButtonLoading(btnBuscar, true);
+    divResultado.innerHTML = `
+      <div class="inline-flex items-center gap-2 text-muted text-sm py-1">
+        ${ui.icon('refresh-cw', 'icon icon--sm icon--spin')}
+        <span>Buscando paciente por documento...</span>
+      </div>
+    `;
     try {
       const pacientes = await emergencyApi.buscarPacientesPorDocumento(q, tipoDoc);
       if (Array.isArray(pacientes) && pacientes.length > 0) {
@@ -274,15 +321,15 @@ export async function nursingAdmissionView(container) {
         divResultado.innerHTML = `
           <div class="flex flex-col gap-2 mt-2">
             ${pacientes.map(p => `
-              <div class="p-3 border rounded bg-white flex flex-wrap items-center justify-between gap-2">
+              <div class="p-3 border rounded patient-result-card flex flex-wrap items-center justify-between gap-2" style="background-color: var(--surface);">
                 <div>
                   <div class="font-bold text-sm">${esc(p.nombreCompleto || `${p.nombres || ''} ${p.apellidos || ''}`.trim())}</div>
                   <div class="text-xs text-muted font-mono">
                     ${esc(p.tipoDocumento)} ${esc(p.numeroDocumento)}${p.telefono ? ` · Tel: ${esc(p.telefono)}` : ''}
                   </div>
                 </div>
-                <div class="flex items-center gap-2">
-                  <span class="badge ${p.tieneCuentaMediTriaje ? 'badge--confirmed' : 'badge--info'} text-xs">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="badge ${p.tieneCuentaMediTriaje ? 'badge--confirmed' : 'badge--scheduled'} text-xs">
                     ${p.tieneCuentaMediTriaje ? 'Registrado en MediTriaje' : 'Sin cuenta web'}
                   </span>
                   <button
@@ -298,6 +345,8 @@ export async function nursingAdmissionView(container) {
             `).join('')}
           </div>
         `;
+
+        motion.staggerCards(divResultado.querySelectorAll('.patient-result-card'), { root: container });
 
         divResultado.querySelectorAll('.btn-seleccionar-paciente').forEach(btn => {
           btn.addEventListener('click', () => {
@@ -315,7 +364,7 @@ export async function nursingAdmissionView(container) {
             Complete los datos a continuación para admitirlo sin necesidad de cuenta en MediTriaje.
           </div>
         `;
-        setManualOpen(true);
+        setManualOpen(true, true);
         document.getElementById('txtManualNumDoc').value = q;
         if (tipoDoc) {
           document.getElementById('selManualTipoDoc').value = tipoDoc;
@@ -323,6 +372,8 @@ export async function nursingAdmissionView(container) {
       }
     } catch (err) {
       divResultado.innerHTML = `<span class="text-danger">Error buscando paciente: ${esc(err.message || 'Error de servidor')}</span>`;
+    } finally {
+      ui.setButtonLoading(btnBuscar, false);
     }
   });
 
@@ -331,16 +382,21 @@ export async function nursingAdmissionView(container) {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
 
+    form.querySelectorAll('.form-input--error, .form-textarea--error').forEach(clearFieldError);
+
     const esNN = chkNN.checked;
     const pacientePubId = hdnPacienteId.value.trim();
     const manualActivo = bloqueManual.style.display !== 'none';
     const viaIngreso = document.getElementById('selViaIngreso').value;
-    const motivoConsulta = document.getElementById('txtMotivoConsulta').value.trim();
+    const txtMotivo = document.getElementById('txtMotivoConsulta');
+    const motivoConsulta = txtMotivo.value.trim();
     const acompananteNombre = document.getElementById('txtAcompananteNombre').value.trim();
     const acompananteTelefono = document.getElementById('txtAcompananteTelefono').value.trim();
     const observaciones = document.getElementById('txtObservaciones').value.trim();
 
     if (!motivoConsulta) {
+      markFieldError(txtMotivo);
+      txtMotivo.focus();
       ui.showToast('El motivo de consulta es obligatorio.', 'warning');
       return;
     }
@@ -374,13 +430,32 @@ export async function nursingAdmissionView(container) {
       };
     } else if (manualActivo) {
       const tipoDoc = document.getElementById('selManualTipoDoc').value;
-      const numDoc = document.getElementById('txtManualNumDoc').value.trim();
-      const nombres = document.getElementById('txtManualNombres').value.trim();
-      const apellidos = document.getElementById('txtManualApellidos').value.trim();
-      const fechaNac = document.getElementById('txtManualFechaNac').value;
+      const numDocEl = document.getElementById('txtManualNumDoc');
+      const nombresEl = document.getElementById('txtManualNombres');
+      const apellidosEl = document.getElementById('txtManualApellidos');
+      const fechaNacEl = document.getElementById('txtManualFechaNac');
+      const numDoc = numDocEl.value.trim();
+      const nombres = nombresEl.value.trim();
+      const apellidos = apellidosEl.value.trim();
+      const fechaNac = fechaNacEl.value;
       const telefono = document.getElementById('txtManualTelefono').value.trim();
 
-      if (!numDoc || !nombres || !apellidos || !fechaNac) {
+      const requiredManual = [
+        [numDocEl, numDoc],
+        [nombresEl, nombres],
+        [apellidosEl, apellidos],
+        [fechaNacEl, fechaNac]
+      ];
+      let firstInvalid = null;
+      requiredManual.forEach(([el, val]) => {
+        if (!val) {
+          markFieldError(el);
+          if (!firstInvalid) firstInvalid = el;
+        }
+      });
+
+      if (firstInvalid) {
+        firstInvalid.focus();
         ui.showToast('Complete documento, nombres, apellidos y fecha de nacimiento del paciente.', 'warning');
         return;
       }
@@ -401,21 +476,21 @@ export async function nursingAdmissionView(container) {
         observaciones: observaciones || null
       };
     } else {
+      markFieldError(txtBuscar);
+      txtBuscar.focus();
       ui.showToast('Busque y seleccione un paciente por cédula, ingrese sus datos sin cuenta o active el modo NN.', 'warning');
       return;
     }
 
     const submitBtn = document.getElementById('btnSubmitAdmission');
-    submitBtn.disabled = true;
-    submitBtn.innerHTML = `Guardando admisión...`;
+    ui.setButtonLoading(submitBtn, true);
 
     try {
       const resp = await emergencyApi.registrarAdmision(payload);
       ui.showToast('Admisión de urgencias registrada con éxito.', 'success');
       router.navigate(`/nursing/assessment/${resp.episodioPublicId}`);
     } catch (err) {
-      submitBtn.disabled = false;
-      submitBtn.innerHTML = `${ui.icon('check', 'icon icon--sm')} <span>Completar Admisión y Proceder a Triaje</span>`;
+      ui.setButtonLoading(submitBtn, false);
       ui.showToast('Error registrando admisión: ' + (err.message || 'Error de servidor'), 'error');
     }
   });

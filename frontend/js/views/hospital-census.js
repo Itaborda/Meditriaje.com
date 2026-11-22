@@ -15,8 +15,10 @@ let censusState = {
   censusData: null,
   beds: [],
   filterEstado: '',
-  filterArea: ''
+  filterArea: '',
+  filterQuery: ''
 };
+let activeContainer = null;
 
 function formatBedBadge(estado) {
   switch (estado) {
@@ -34,6 +36,15 @@ function formatBedBadge(estado) {
 }
 
 export async function hospitalCensusView(container) {
+  activeContainer = container;
+  censusState = {
+    censusData: null,
+    beds: [],
+    filterEstado: '',
+    filterArea: '',
+    filterQuery: ''
+  };
+
   container.innerHTML = `
     <div style="max-width: var(--container); margin: 0 auto; padding-top: var(--space-4); padding-bottom: var(--space-12);">
       
@@ -41,7 +52,7 @@ export async function hospitalCensusView(container) {
       <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
         <div>
           <div class="flex items-center gap-2 mb-1">
-            <div class="empty-state-icon" style="margin: 0; width: 40px; height: 40px; background-color: var(--indigo-50, #eef2ff); color: var(--indigo-600, #4f46e5);">
+            <div class="empty-state-icon" style="margin: 0; width: 40px; height: 40px; background-color: var(--indigo-50); color: var(--indigo-600);">
               ${ui.icon('grid', 'icon icon--md')}
             </div>
             <h1 class="text-2xl font-bold m-0">Centro de Control Hospitalario</h1>
@@ -115,22 +126,20 @@ export async function hospitalCensusView(container) {
 
       <!-- Pabellones y Áreas Hospitalarias -->
       <div class="card p-4 mb-6">
-        <div class="flex items-center justify-between mb-3">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
           <h2 class="text-base font-bold m-0">Ocupación por Áreas y Pabellones</h2>
-          <span class="text-xs text-muted">Capacidad por servicio asistencial</span>
+          <span class="text-xs text-muted">Haz clic en un área para filtrar las camas</span>
         </div>
-        <div class="grid grid-cols-1 grid-cols-2-md grid-cols-4-lg gap-3" id="areaSummaryGrid">
-          <p class="text-sm text-muted">Consultando áreas...</p>
-        </div>
+        <div class="grid grid-cols-1 grid-cols-2-md grid-cols-4-lg gap-3" id="areaSummaryGrid"></div>
       </div>
 
       <!-- Barra de Filtros del Mapa de Camas -->
       <div class="card p-4 mb-6">
         <div class="flex flex-wrap items-center justify-between gap-4">
-          <div class="flex flex-wrap items-center gap-3">
-            <div class="flex items-center gap-2">
-              <span class="text-xs font-semibold">Estado:</span>
-              <select id="filterBedEstado" class="form-select form-input--sm" style="width: auto;">
+          <div class="flex flex-wrap items-center gap-3 flex-1 min-w-0">
+            <div class="flex items-center gap-2 min-w-0">
+              <label for="filterBedEstado" class="text-xs font-semibold whitespace-nowrap">Estado:</label>
+              <select id="filterBedEstado" class="form-select form-input--sm" style="width: auto; max-width: 100%;">
                 <option value="">Todos los estados</option>
                 <option value="DISPONIBLE">Disponibles</option>
                 <option value="OCUPADA">Ocupadas</option>
@@ -139,25 +148,35 @@ export async function hospitalCensusView(container) {
               </select>
             </div>
 
-            <div class="flex items-center gap-2">
-              <span class="text-xs font-semibold">Área:</span>
-              <select id="filterBedArea" class="form-select form-input--sm" style="width: auto;">
+            <div class="flex items-center gap-2 min-w-0">
+              <label for="filterBedArea" class="text-xs font-semibold whitespace-nowrap">Área:</label>
+              <select id="filterBedArea" class="form-select form-input--sm" style="width: auto; max-width: 100%;">
                 <option value="">Todas las áreas</option>
               </select>
             </div>
+
+            <div class="flex items-center gap-2 flex-1" style="min-width: 190px; max-width: 320px;">
+              <label for="filterBedQuery" class="sr-only">Buscar cama, habitación o paciente</label>
+              <input type="search" id="filterBedQuery" class="form-input form-input--sm" style="max-width: 100%;" placeholder="Buscar cama, habitación o paciente...">
+            </div>
           </div>
 
-          <div class="text-xs text-muted" id="lblBedCount">Mostrando 0 camas</div>
+          <div class="text-xs text-muted font-medium" id="lblBedCount">Mostrando 0 camas</div>
         </div>
       </div>
 
       <!-- Grid Visual de Camas -->
-      <div class="grid grid-cols-1 grid-cols-2-md grid-cols-4-lg gap-4" id="bedCardsGrid">
-        <div class="p-8 text-center text-muted col-span-full">Cargando inventario de camas...</div>
-      </div>
+      <div class="grid grid-cols-1 grid-cols-2-md grid-cols-4-lg gap-4" id="bedCardsGrid"></div>
 
     </div>
   `;
+
+  const areaSkeletonEl = container.querySelector('#areaSummaryGrid');
+  const bedSkeletonEl = container.querySelector('#bedCardsGrid');
+  ui.renderSkeleton(areaSkeletonEl, 'cards');
+  areaSkeletonEl?.firstElementChild?.classList.add('col-span-full');
+  ui.renderSkeleton(bedSkeletonEl, 'cards');
+  bedSkeletonEl?.firstElementChild?.classList.add('col-span-full');
 
   motion.staggerCards(container.querySelectorAll('#censusKpiGrid > .card'), { root: container });
 
@@ -167,18 +186,31 @@ export async function hospitalCensusView(container) {
     openUniversalQrScanner();
   });
 
-  document.getElementById('btnRefreshCensus').addEventListener('click', async () => {
-    await loadData();
-    ui.showToast('Censo hospitalario actualizado.', 'info');
+  const btnRefresh = document.getElementById('btnRefreshCensus');
+  btnRefresh?.addEventListener('click', async () => {
+    btnRefresh.disabled = true;
+    motion.spinOnce(btnRefresh);
+    try {
+      await loadData();
+      ui.showToast('Censo hospitalario actualizado.', 'info');
+    } finally {
+      btnRefresh.disabled = false;
+    }
   });
 
-  document.getElementById('filterBedEstado').addEventListener('change', (e) => {
+  document.getElementById('filterBedEstado')?.addEventListener('change', (e) => {
     censusState.filterEstado = e.target.value;
     renderBeds();
   });
 
-  document.getElementById('filterBedArea').addEventListener('change', (e) => {
+  document.getElementById('filterBedArea')?.addEventListener('change', (e) => {
     censusState.filterArea = e.target.value;
+    syncAreaSummaryActiveState();
+    renderBeds();
+  });
+
+  document.getElementById('filterBedQuery')?.addEventListener('input', (e) => {
+    censusState.filterQuery = e.target.value;
     renderBeds();
   });
 
@@ -347,7 +379,7 @@ async function openCreateBedsModal() {
           ${renderRoomOptions(firstAreaId)}
         </select>
       </div>
-      <div class="grid grid-cols-2 gap-3">
+      <div class="grid grid-cols-1 grid-cols-2-md gap-3">
         <div class="form-group m-0">
           <label for="txtBedCodigo" class="form-label font-semibold">Código / Prefijo <span class="text-danger">*</span></label>
           <input type="text" id="txtBedCodigo" class="form-input" maxlength="25" placeholder="Ej. CAMA-401" required>
@@ -429,6 +461,19 @@ async function loadData() {
         </div>
       `;
     }
+    const bedGrid = document.getElementById('bedCardsGrid');
+    if (bedGrid) {
+      ui.renderEmpty(bedGrid, {
+        icon: 'bed',
+        title: 'Inventario de camas en sincronización',
+        description: 'No fue posible consultar el inventario de camas en este momento.',
+        actionText: 'Reintentar',
+        onAction: () => loadData()
+      });
+      bedGrid.firstElementChild?.classList.add('col-span-full');
+    }
+    const countLbl = document.getElementById('lblBedCount');
+    if (countLbl) countLbl.textContent = 'Mostrando 0 camas';
   }
 }
 
@@ -448,43 +493,85 @@ function updateKpis(c) {
   });
 }
 
+function syncAreaSummaryActiveState() {
+  const container = document.getElementById('areaSummaryGrid');
+  if (!container) return;
+  container.querySelectorAll('.area-summary-btn').forEach(btn => {
+    const isSelected = btn.dataset.area === censusState.filterArea && censusState.filterArea !== '';
+    btn.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+    btn.classList.toggle('card--highlight', isSelected);
+    btn.style.boxShadow = isSelected ? '0 0 0 2px var(--primary)' : '';
+    btn.style.borderColor = isSelected ? 'var(--primary)' : '';
+  });
+}
+
 function renderAreas(areas) {
   const container = document.getElementById('areaSummaryGrid');
+  if (!container) return;
   if (!areas || areas.length === 0) {
-    container.innerHTML = `<p class="text-sm text-muted m-0">No hay áreas configuradas en el hospital.</p>`;
+    container.innerHTML = `<p class="text-sm text-muted m-0 col-span-full">No hay áreas configuradas en el hospital.</p>`;
     return;
   }
 
   container.innerHTML = areas.map(a => {
     const pct = a.totalCamas > 0 ? Math.round((a.ocupadas / a.totalCamas) * 100) : 0;
+    const areaName = a.areaNombre || '';
+    const isSelected = censusState.filterArea === areaName && areaName !== '';
     return `
-      <div class="card p-3 bg-slate-50 border">
-        <div class="font-bold text-sm truncate">${esc(a.areaNombre)}</div>
-        <div class="text-xs text-muted font-mono">${esc(a.areaCodigo)} · ${esc(a.tipoArea)}</div>
+      <button
+        type="button"
+        class="card card--interactive p-3 bg-slate-50 border text-left w-full area-summary-btn ${isSelected ? 'card--highlight' : ''}"
+        data-area="${esc(areaName)}"
+        aria-pressed="${isSelected ? 'true' : 'false'}"
+        style="text-align: left; font: inherit; color: inherit; ${isSelected ? 'box-shadow: 0 0 0 2px var(--primary); border-color: var(--primary);' : ''}"
+        title="Filtrar camas del área ${esc(areaName)}"
+      >
+        <div class="font-bold text-sm truncate w-full">${esc(areaName)}</div>
+        <div class="text-xs text-muted font-mono truncate w-full">${esc(a.areaCodigo)} · ${esc(a.tipoArea)}</div>
         
-        <div class="flex items-center justify-between mt-2 text-xs">
+        <div class="flex items-center justify-between mt-2 text-xs w-full">
           <span>Ocupación: <strong>${a.ocupadas}/${a.totalCamas}</strong></span>
-          <span class="font-bold ${pct > 85 ? 'text-danger' : 'text-primary'}">${pct}%</span>
+          <span class="font-bold tabular-nums ${pct > 85 ? 'text-danger' : 'text-primary'}">${pct}%</span>
         </div>
 
-        <div style="background-color: var(--border, #e2e8f0); height: 6px; border-radius: 9999px; margin-top: 6px; overflow: hidden;">
-          <div style="background-color: ${pct > 85 ? 'var(--danger, #dc2626)' : 'var(--primary, #0d9488)'}; width: ${pct}%; height: 100%;"></div>
+        <div class="w-full" style="background-color: var(--border); height: 6px; border-radius: var(--radius-full); margin-top: 6px; overflow: hidden;">
+          <div class="census-area-progress" data-progress="${pct}%" style="background-color: ${pct > 85 ? 'var(--danger)' : 'var(--primary)'}; width: ${pct}%; height: 100%; border-radius: var(--radius-full);"></div>
         </div>
-      </div>
+      </button>
     `;
   }).join('');
+
+  container.querySelectorAll('.area-summary-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const targetArea = btn.dataset.area || '';
+      censusState.filterArea = censusState.filterArea === targetArea ? '' : targetArea;
+      const selArea = document.getElementById('filterBedArea');
+      if (selArea) selArea.value = censusState.filterArea;
+      syncAreaSummaryActiveState();
+      renderBeds();
+    });
+  });
+
+  const root = activeContainer || container;
+  motion.staggerCards(container.querySelectorAll('.area-summary-btn'), { delayStep: 22, maxDelay: 140, duration: 220, y: 8, root });
+  motion.animateProgress(container.querySelectorAll('.census-area-progress'), { root });
 }
 
 function updateAreaFilter(areas) {
   const sel = document.getElementById('filterBedArea');
+  if (!sel) return;
   sel.innerHTML = `<option value="">Todas las áreas</option>` + (areas || []).map(a => `
     <option value="${esc(a.areaNombre)}">${esc(a.areaNombre)}</option>
   `).join('');
+  if (censusState.filterArea) {
+    sel.value = censusState.filterArea;
+  }
 }
 
 function renderBeds() {
   const grid = document.getElementById('bedCardsGrid');
   const countLbl = document.getElementById('lblBedCount');
+  if (!grid || !countLbl) return;
 
   let list = censusState.beds;
   if (censusState.filterEstado) {
@@ -493,11 +580,25 @@ function renderBeds() {
   if (censusState.filterArea) {
     list = list.filter(b => b.areaNombre === censusState.filterArea);
   }
+  if (censusState.filterQuery && censusState.filterQuery.trim()) {
+    const q = censusState.filterQuery.trim().toLowerCase();
+    list = list.filter(b =>
+      String(b.codigo || '').toLowerCase().includes(q) ||
+      String(b.habitacionCodigo || '').toLowerCase().includes(q) ||
+      String(b.pacienteNombre || '').toLowerCase().includes(q) ||
+      String(b.areaNombre || '').toLowerCase().includes(q)
+    );
+  }
 
   countLbl.textContent = `Mostrando ${list.length} de ${censusState.beds.length} camas`;
 
   if (list.length === 0) {
-    grid.innerHTML = `<div class="p-8 text-center text-muted col-span-full">No se encontraron camas con los filtros seleccionados.</div>`;
+    ui.renderEmpty(grid, {
+      icon: 'bed',
+      title: 'Sin camas coincidentes',
+      description: 'No se encontraron camas con los filtros seleccionados.'
+    });
+    grid.firstElementChild?.classList.add('col-span-full');
     return;
   }
 
@@ -511,9 +612,9 @@ function renderBeds() {
     else if (isLimpieza) cardBorder = 'border-amber-500';
 
     return `
-      <div class="card p-4 border flex flex-col justify-between ${cardBorder}">
+      <div class="card p-4 border flex flex-col justify-between bed-card ${cardBorder}">
         <div>
-          <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center justify-between gap-2 mb-2">
             <span class="font-bold text-base font-mono">${esc(b.codigo)}</span>
             ${formatBedBadge(b.estado)}
           </div>
@@ -551,20 +652,20 @@ function renderBeds() {
           ` : ''}
 
           ${isLimpieza ? `
-            <button type="button" class="btn btn--xs btn-primary btn-bed-action" data-id="${esc(b.publicId)}" data-status="DISPONIBLE" title="Liberar cama a Disponible tras desinfección">
+            <button type="button" class="btn btn--xs btn-primary btn-bed-action" data-id="${esc(b.publicId)}" data-code="${esc(b.codigo)}" data-status="DISPONIBLE" title="Liberar cama a Disponible tras desinfección">
               ${ui.icon('check', 'icon icon--xs')}
               <span>Marcar Disponible</span>
             </button>
           ` : ''}
 
           ${b.estado === 'DISPONIBLE' ? `
-            <button type="button" class="btn btn--xs btn-ghost btn-bed-action" data-id="${esc(b.publicId)}" data-status="MANTENIMIENTO" title="Poner en mantenimiento">
+            <button type="button" class="btn btn--xs btn-ghost btn-bed-action" data-id="${esc(b.publicId)}" data-code="${esc(b.codigo)}" data-status="MANTENIMIENTO" title="Poner en mantenimiento">
               <span>Mantenimiento</span>
             </button>
           ` : ''}
 
           ${b.estado === 'MANTENIMIENTO' ? `
-            <button type="button" class="btn btn--xs btn-ghost btn-bed-action" data-id="${esc(b.publicId)}" data-status="DISPONIBLE" title="Habilitar cama">
+            <button type="button" class="btn btn--xs btn-ghost btn-bed-action" data-id="${esc(b.publicId)}" data-code="${esc(b.codigo)}" data-status="DISPONIBLE" title="Habilitar cama">
               <span>Habilitar</span>
             </button>
           ` : ''}
@@ -573,19 +674,43 @@ function renderBeds() {
     `;
   }).join('');
 
+  const root = activeContainer || grid;
+  motion.staggerCards(grid.querySelectorAll('.bed-card'), { delayStep: 18, maxDelay: 140, duration: 220, y: 8, root });
+
+  const executeBedStatusChange = async (btn, camaId, status) => {
+    ui.setButtonLoading(btn, true);
+    try {
+      await hospitalApi.cambiarEstadoCama(camaId, status);
+      ui.showToast(`Estado de cama actualizado a ${status}.`, 'success');
+      await loadData();
+    } catch (err) {
+      ui.showToast('Error cambiando estado: ' + err.message, 'error');
+      return false;
+    } finally {
+      ui.setButtonLoading(btn, false);
+    }
+  };
+
   // Acciones de cambio de estado de cama
   grid.querySelectorAll('.btn-bed-action').forEach(btn => {
     btn.addEventListener('click', async () => {
       const camaId = btn.dataset.id;
+      const bedCode = btn.dataset.code || 'esta cama';
       const status = btn.dataset.status;
 
-      try {
-        await hospitalApi.cambiarEstadoCama(camaId, status);
-        ui.showToast(`Estado de cama actualizado a ${status}.`, 'success');
-        await loadData();
-      } catch (err) {
-        ui.showToast('Error cambiando estado: ' + err.message, 'error');
+      if (status === 'MANTENIMIENTO') {
+        ui.showModal({
+          title: '¿Poner cama en mantenimiento?',
+          message: `La cama <strong>${esc(bedCode)}</strong> pasará a estado <strong>MANTENIMIENTO</strong> y no estará disponible para asignación de pacientes hasta ser habilitada.`,
+          confirmText: 'Sí, poner en mantenimiento',
+          cancelText: 'Cancelar',
+          isDanger: true,
+          onConfirm: async () => executeBedStatusChange(btn, camaId, status)
+        });
+        return;
       }
+
+      await executeBedStatusChange(btn, camaId, status);
     });
   });
 }

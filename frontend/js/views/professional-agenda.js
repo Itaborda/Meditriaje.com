@@ -6,6 +6,7 @@
 
 import { api } from '../api.js';
 import { auth } from '../auth.js';
+import { motion } from '../motion.js';
 import { router } from '../router.js';
 import { ui, esc } from '../ui.js';
 import { showMfaModal } from './mfa-setup-modal.js';
@@ -27,6 +28,17 @@ function todayBogota() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
 }
 
+/** Desplaza una fecha YYYY-MM-DD en N días calendario sin deriva de zona horaria. */
+function shiftIsoDate(isoDate, deltaDays) {
+  const base = isoDate && /^\d{4}-\d{2}-\d{2}$/.test(isoDate) ? isoDate : todayBogota();
+  const [y, m, d] = base.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + deltaDays));
+  const yy = dt.getUTCFullYear();
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getUTCDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
+}
+
 function formatTime(iso) {
   return new Intl.DateTimeFormat('es-CO', {
     timeZone: 'America/Bogota', hour: '2-digit', minute: '2-digit', hour12: true
@@ -38,6 +50,34 @@ function formatLongDate(isoDate) {
   return new Intl.DateTimeFormat('es-CO', {
     timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
   }).format(new Date(Date.UTC(y, m - 1, d)));
+}
+
+function formatBogotaDateFromIso(iso) {
+  if (!iso) return '';
+  try {
+    return new Intl.DateTimeFormat('es-CO', {
+      timeZone: 'America/Bogota', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+    }).format(new Date(iso));
+  } catch {
+    return '';
+  }
+}
+
+function normalizeTriageKey(nivel) {
+  const raw = String(nivel || '').trim().toUpperCase().replace(/^NIVEL[_\s-]*/, '');
+  const map = {
+    '1': 'i',
+    'I': 'i',
+    '2': 'ii',
+    'II': 'ii',
+    '3': 'iii',
+    'III': 'iii',
+    '4': 'iv',
+    'IV': 'iv',
+    '5': 'v',
+    'V': 'v'
+  };
+  return map[raw] || '';
 }
 
 function statusBadge(estado) {
@@ -54,7 +94,7 @@ function statusBadge(estado) {
 }
 
 export async function professionalAgendaView(container) {
-  const state = { fecha: todayBogota(), estado: '' };
+  const state = { fecha: todayBogota(), estado: '', loadSeq: 0 };
   const debeCambiarPass = Boolean(auth.user?.debeCambiarPassword);
 
   container.innerHTML = `
@@ -121,11 +161,51 @@ export async function professionalAgendaView(container) {
                 ${ESTADOS.map(e => `<option value="${e.value}">${e.label}</option>`).join('')}
               </select>
             </div>
-            <div class="flex gap-2">
-              <button type="submit" class="btn btn-primary w-full">${ui.icon('search')}<span>Consultar</span></button>
-              <button type="button" id="btnToday" class="btn btn-secondary">Hoy</button>
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="submit" class="btn btn-primary flex-1" style="min-width: 120px;">${ui.icon('search')}<span>Consultar</span></button>
+              <div class="flex items-center gap-1">
+                <button type="button" id="btnPrevDay" class="btn btn-secondary btn--icon-only" title="Día anterior" aria-label="Día anterior">
+                  ${ui.icon('chevron-left', 'icon icon--sm')}
+                </button>
+                <button type="button" id="btnToday" class="btn btn-secondary">Hoy</button>
+                <button type="button" id="btnNextDay" class="btn btn-secondary btn--icon-only" title="Día siguiente" aria-label="Día siguiente">
+                  ${ui.icon('chevron-right', 'icon icon--sm')}
+                </button>
+              </div>
             </div>
           </form>
+        </div>
+      </div>
+
+      <!-- Resumen KPI compacto -->
+      <div class="grid grid-cols-2 grid-cols-4-md gap-3 mb-6" id="agendaKpis">
+        <div class="card p-4 flex flex-row items-center justify-between gap-2">
+          <div>
+            <div class="text-xs text-muted font-bold uppercase tracking-wider">Total</div>
+            <div class="text-2xl font-bold mt-1 tabular-nums" id="kpiAgendaTotal">0</div>
+          </div>
+          <div class="stat-icon-wrapper" aria-hidden="true">${ui.icon('calendar', 'icon icon--sm')}</div>
+        </div>
+        <div class="card p-4 flex flex-row items-center justify-between gap-2">
+          <div>
+            <div class="text-xs text-muted font-bold uppercase tracking-wider">Pendientes</div>
+            <div class="text-2xl font-bold mt-1 text-primary tabular-nums" id="kpiAgendaPendientes">0</div>
+          </div>
+          <div class="stat-icon-wrapper" aria-hidden="true">${ui.icon('clock', 'icon icon--sm')}</div>
+        </div>
+        <div class="card p-4 flex flex-row items-center justify-between gap-2">
+          <div>
+            <div class="text-xs text-muted font-bold uppercase tracking-wider">Atendidas</div>
+            <div class="text-2xl font-bold mt-1 text-success tabular-nums" id="kpiAgendaAtendidas">0</div>
+          </div>
+          <div class="stat-icon-wrapper" style="background-color: var(--success-bg); color: var(--success);" aria-hidden="true">${ui.icon('check-circle', 'icon icon--sm')}</div>
+        </div>
+        <div class="card p-4 flex flex-row items-center justify-between gap-2">
+          <div>
+            <div class="text-xs text-muted font-bold uppercase tracking-wider">Urgentes I–II</div>
+            <div class="text-2xl font-bold mt-1 text-danger tabular-nums" id="kpiAgendaUrgentes">0</div>
+          </div>
+          <div class="stat-icon-wrapper" style="background-color: var(--danger-bg); color: var(--danger);" aria-hidden="true">${ui.icon('alert-triangle', 'icon icon--sm')}</div>
         </div>
       </div>
 
@@ -133,12 +213,30 @@ export async function professionalAgendaView(container) {
     </div>
   `;
 
+  motion.staggerCards(container.querySelectorAll('#agendaKpis > .card'), { root: container });
+
   const listEl = container.querySelector('#agendaList');
   const dateEl = container.querySelector('#agendaDate');
   const statusEl = container.querySelector('#agendaStatus');
 
+  function updateAgendaKpis(citas) {
+    const total = citas.length;
+    const pendientes = citas.filter(c => c.estado === 'PROGRAMADA' || c.estado === 'CONFIRMADA' || c.estado === 'REPROGRAMADA').length;
+    const atendidas = citas.filter(c => c.estado === 'ATENDIDA').length;
+    const urgentes = citas.filter(c => {
+      const key = normalizeTriageKey(c.triajeNivel);
+      return key === 'i' || key === 'ii';
+    }).length;
+
+    motion.animateCounter(container.querySelector('#kpiAgendaTotal'), total, { duration: 360 });
+    motion.animateCounter(container.querySelector('#kpiAgendaPendientes'), pendientes, { duration: 360 });
+    motion.animateCounter(container.querySelector('#kpiAgendaAtendidas'), atendidas, { duration: 360 });
+    motion.animateCounter(container.querySelector('#kpiAgendaUrgentes'), urgentes, { duration: 360 });
+  }
+
   async function load() {
-    ui.renderLoading(listEl, 'Consultando tu agenda...');
+    const seq = ++state.loadSeq;
+    ui.renderSkeleton(listEl, 'cards');
     try {
       const res = await api.get('/professionals/me/agenda', {
         fecha: state.fecha || undefined,
@@ -146,8 +244,10 @@ export async function professionalAgendaView(container) {
         page: 0,
         size: 100
       });
+      if (seq !== state.loadSeq || !container.isConnected) return;
       render(res?.content || []);
     } catch (err) {
+      if (seq !== state.loadSeq || !container.isConnected) return;
       ui.renderError(listEl, {
         title: 'No fue posible cargar la agenda',
         message: err.message,
@@ -157,6 +257,8 @@ export async function professionalAgendaView(container) {
   }
 
   function render(citas) {
+    updateAgendaKpis(citas);
+
     if (citas.length === 0) {
       ui.renderEmpty(listEl, {
         icon: 'calendar',
@@ -175,15 +277,16 @@ export async function professionalAgendaView(container) {
           const canStart = c.estado === 'PROGRAMADA' || c.estado === 'CONFIRMADA';
           const yaIniciada = c.fechaHoraInicio ? (new Date(c.fechaHoraInicio).getTime() <= Date.now()) : false;
           const canNoShow = c.estado === 'PROGRAMADA' && yaIniciada && !c.tieneAtencion;
-          const fechaCita = c.fechaHoraInicio ? formatLongDate(new Date(c.fechaHoraInicio).toISOString().slice(0, 10)) : '';
+          const fechaCita = formatBogotaDateFromIso(c.fechaHoraInicio);
           const horaInicio = formatTime(c.fechaHoraInicio);
           const horaFin = c.fechaHoraFin ? formatTime(c.fechaHoraFin) : '';
           const isTele = c.modalidad === 'TELEMEDICINA';
+          const triageKey = normalizeTriageKey(c.triajeNivel);
 
           return `
             <div class="card p-4" style="border-left: 4px solid ${canStart ? 'var(--primary)' : 'var(--border)'};">
               <div class="flex flex-wrap items-center justify-between gap-4">
-                <div class="flex sm-row items-start gap-4 flex-1 min-w-0">
+                <div class="flex flex-wrap items-start gap-4 flex-1 min-w-0">
                   <!-- Horario y Día -->
                   <div style="min-width: 7.5rem; flex-shrink: 0;">
                     <span class="text-lg font-bold block text-primary tabular-nums">${horaInicio} ${horaFin ? `<span class="text-xs text-muted font-normal block tabular-nums">– ${horaFin}</span>` : ''}</span>
@@ -194,7 +297,7 @@ export async function professionalAgendaView(container) {
                   </div>
 
                   <!-- Paciente y Detalles -->
-                  <div class="flex-1 min-w-0 w-full">
+                  <div class="flex-1 min-w-0" style="min-width: 220px;">
                     <div class="flex items-center gap-2">
                       ${ui.icon('user', 'icon icon--sm text-primary shrink-0')}
                       <span class="font-bold text-base block text-text">${esc(c.pacienteNombre)}</span>
@@ -202,8 +305,8 @@ export async function professionalAgendaView(container) {
                     <div class="flex flex-wrap items-center gap-2 mt-1.5">
                       ${statusBadge(c.estado)}
                       <span class="badge badge--neutral text-xs">${esc(c.especialidadNombre || 'Medicina General')}</span>
-                      ${c.triajeNivel ? `
-                        <span class="badge badge--triage-${esc(c.triajeNivel.toLowerCase())} text-xs font-bold">
+                      ${triageKey ? `
+                        <span class="badge badge--triage-${triageKey} text-xs font-bold">
                           ${ui.icon('activity', 'icon icon--xs')} Triaje Nivel ${esc(c.triajeNivel)}
                         </span>
                       ` : (c.triajePublicId ? `
@@ -245,6 +348,16 @@ export async function professionalAgendaView(container) {
         }).join('')}
       </div>
     `;
+
+    motion.staggerCards(listEl.querySelectorAll('.card'), {
+      delayStep: 30,
+      maxDelay: 180,
+      root: container
+    });
+    const urgentBadges = listEl.querySelectorAll('.badge--triage-i, .badge--triage-ii');
+    if (urgentBadges.length > 0) {
+      motion.pulseUrgency(urgentBadges, { root: container });
+    }
 
     listEl.querySelectorAll('.btn-no-show').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -300,8 +413,26 @@ export async function professionalAgendaView(container) {
     state.estado = statusEl.value;
     load();
   });
+  dateEl.addEventListener('change', () => {
+    state.fecha = dateEl.value;
+    load();
+  });
+  statusEl.addEventListener('change', () => {
+    state.estado = statusEl.value;
+    load();
+  });
+  container.querySelector('#btnPrevDay')?.addEventListener('click', () => {
+    const nextDate = shiftIsoDate(dateEl.value, -1);
+    dateEl.value = state.fecha = nextDate;
+    load();
+  });
   container.querySelector('#btnToday').addEventListener('click', () => {
     dateEl.value = state.fecha = todayBogota();
+    load();
+  });
+  container.querySelector('#btnNextDay')?.addEventListener('click', () => {
+    const nextDate = shiftIsoDate(dateEl.value, 1);
+    dateEl.value = state.fecha = nextDate;
     load();
   });
   container.querySelector('#btnBreakGlass')?.addEventListener('click', () => {

@@ -9,8 +9,10 @@ import { api } from '../api.js';
 import { router } from '../router.js';
 import { ui, esc } from '../ui.js';
 import { auth } from '../auth.js';
+import { motion } from '../motion.js';
 
 let widgetInitialized = false;
+let lastRenderedRole = null;
 
 /**
  * Obtiene la configuración de bienvenida, chips sugeridos y contexto según el rol activo.
@@ -189,9 +191,14 @@ export function initSystemAssistantWidget() {
             </span>
           </div>
         </div>
-        <button type="button" id="assistant-close-btn" class="assistant-close-btn" aria-label="Cerrar panel de asistente">
-          ${ui.icon('x', 'icon icon--sm')}
-        </button>
+        <div class="flex items-center gap-1">
+          <button type="button" id="assistant-reset-btn" class="assistant-close-btn" aria-label="Reiniciar conversación" title="Nueva conversación">
+            ${ui.icon('refresh-cw', 'icon icon--xs')}
+          </button>
+          <button type="button" id="assistant-close-btn" class="assistant-close-btn" aria-label="Cerrar panel de asistente">
+            ${ui.icon('x', 'icon icon--sm')}
+          </button>
+        </div>
       </header>
 
       <!-- Mensajes del Chat -->
@@ -229,6 +236,7 @@ export function initSystemAssistantWidget() {
 
   function renderizarPantallaInicial() {
     const config = getAssistantRoleConfig();
+    lastRenderedRole = config.rol;
     const subEl = host.querySelector('#assistant-panel-subtitle');
     if (subEl) {
       subEl.innerHTML = `<span class="status-dot"></span> ${esc(config.subtitulo)}`;
@@ -269,15 +277,23 @@ export function initSystemAssistantWidget() {
   // Renderizar la pantalla inicial con el rol actual
   renderizarPantallaInicial();
 
-  // Escuchar cambios de autenticación para regenerar el asistente según el nuevo rol
+  // Solo regenera la conversación si cambia el rol (evita borrar mensajes en refresh de token)
   auth.addEventListener('auth:change', () => {
-    renderizarPantallaInicial();
+    const nextRole = getAssistantRoleConfig().rol;
+    if (nextRole !== lastRenderedRole) {
+      renderizarPantallaInicial();
+    }
   });
 
   function abrirPanel() {
     panel.classList.add('is-open');
     panel.setAttribute('aria-hidden', 'false');
     fab.setAttribute('aria-expanded', 'true');
+    motion.revealPanel(panel, { duration: 220, y: 10, root: host });
+    const chips = messagesBox.querySelectorAll('.assistant-chip');
+    if (chips.length > 0) {
+      motion.staggerCards(chips, { delayStep: 25, maxDelay: 120, y: 6, duration: 200, root: host });
+    }
     input.focus();
   }
 
@@ -297,17 +313,34 @@ export function initSystemAssistantWidget() {
   });
 
   closeBtn.addEventListener('click', cerrarPanel);
+  host.querySelector('#assistant-reset-btn')?.addEventListener('click', () => {
+    renderizarPantallaInicial();
+    motion.pulseSubtle(messagesBox);
+    input.focus();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && panel.classList.contains('is-open')) {
+      cerrarPanel();
+    }
+  });
 
   // Envío del formulario
+  const sendBtn = host.querySelector('#assistant-send-btn');
+  let isSending = false;
   form.addEventListener('submit', (e) => {
     e.preventDefault();
+    if (isSending) return;
     const texto = input.value.trim();
     if (!texto) return;
     enviarConsulta(texto);
   });
 
   async function enviarConsulta(consultaTexto) {
+    isSending = true;
     input.value = '';
+    input.disabled = true;
+    if (sendBtn) sendBtn.disabled = true;
     // 1. Agregar burbuja del usuario
     agregarMensajeUsuario(consultaTexto);
 
@@ -333,6 +366,11 @@ export function initSystemAssistantWidget() {
         sugerencias: [],
         avisoLegal: null
       });
+    } finally {
+      isSending = false;
+      input.disabled = false;
+      if (sendBtn) sendBtn.disabled = false;
+      if (panel.classList.contains('is-open')) input.focus();
     }
 
     scrollAlFinal();
@@ -348,6 +386,7 @@ export function initSystemAssistantWidget() {
       <span class="assistant-msg-time">Tú</span>
     `;
     messagesBox.appendChild(el);
+    motion.revealPanel(el, { duration: 180, y: 6, root: host });
   }
 
   function agregarIndicadorTipeo() {
@@ -424,6 +463,7 @@ export function initSystemAssistantWidget() {
     });
 
     messagesBox.appendChild(el);
+    motion.revealPanel(el, { duration: 200, y: 6, root: host });
   }
 
   function scrollAlFinal() {
@@ -541,10 +581,11 @@ function inyectarEstilosWidget() {
     }
     .status-dot {
       display: inline-block;
-      width: 6px;
-      height: 6px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
-      background-color: #2DD4BF;
+      background-color: var(--on-primary);
+      box-shadow: 0 0 0 2px rgba(255,255,255,0.28);
     }
     .assistant-close-btn {
       background: transparent;
@@ -734,11 +775,14 @@ function inyectarEstilosWidget() {
       .assistant-fab-label--short {
         display: inline;
       }
+      .assistant-input {
+        font-size: 1rem;
+      }
       .assistant-panel {
         right: var(--space-4);
         left: var(--space-4);
         width: auto;
-        max-height: calc(100vh - 150px);
+        max-height: calc(100dvh - 140px);
         bottom: calc(var(--space-4) + 60px + env(safe-area-inset-bottom));
       }
       body.has-bottom-nav .assistant-panel {

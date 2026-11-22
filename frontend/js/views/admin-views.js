@@ -228,7 +228,7 @@ async function renderAdminDashboardHome(container) {
 
       <!-- Módulos de Gestión Rápida -->
       <h2 class="text-lg font-bold mb-4">Módulos de Gestión</h2>
-      <div class="grid grid-cols-1 grid-cols-2-md grid-cols-3-lg gap-4 mb-8">
+      <div id="adminModulesGrid" class="grid grid-cols-1 grid-cols-2-md grid-cols-3-lg gap-4 mb-8">
         <!-- Infraestructura -->
         <div class="card p-4">
           <div class="flex items-center gap-2 mb-3 pb-2 border-b">
@@ -399,19 +399,23 @@ async function renderAdminDashboardHome(container) {
   // Listener para actualización bajo demanda
   container.querySelector('#btnAdminRefresh')?.addEventListener('click', async () => {
     const btn = container.querySelector('#btnAdminRefresh');
-    if (btn) btn.classList.add('btn--loading');
-    await Promise.all([loadDashboardMetrics(container), loadRecentAudit(container)]);
-    if (btn) btn.classList.remove('btn--loading');
-    ui.showToast('Métricas y bitácora actualizadas en tiempo real.', 'info', 3000);
+    ui.setButtonLoading(btn, true);
+    try {
+      await Promise.all([loadDashboardMetrics(container), loadRecentAudit(container)]);
+      ui.showToast('Métricas y bitácora actualizadas en tiempo real.', 'info', 3000);
+    } finally {
+      ui.setButtonLoading(btn, false);
+    }
   });
 
-  // Animación escalonada discreta para tarjetas KPI
+  // Animación escalonada discreta para tarjetas KPI y módulos
   const kpiCards = Array.from(
     container.querySelectorAll('#dashMetricBeds, #dashMetricPros, #dashMetricSpecs, #dashMetricSlots')
   )
     .map(el => el.closest('.card'))
     .filter(Boolean);
   motion.staggerCards(kpiCards, { root: container });
+  motion.staggerCards(container.querySelectorAll('#adminModulesGrid > .card'), { delayStep: 40, root: container });
 
   // Cargar métricas y auditoría en segundo plano
   loadDashboardMetrics(container);
@@ -489,7 +493,7 @@ async function loadRecentAudit(container) {
     if (!items || items.length === 0) {
       auditContainer.innerHTML = `
         <div class="empty-state text-center py-6">
-          <div class="empty-state-icon" style="margin: 0 auto var(--space-3) auto; background-color: var(--teal-50); color: var(--primary);">
+          <div class="empty-state-icon" style="margin: 0 auto var(--space-3) auto; background-color: var(--primary-soft); color: var(--primary);">
             ${ui.icon('shield', 'icon icon--lg')}
           </div>
           <p class="text-sm font-medium m-0">No hay eventos recientes en la bitácora de auditoría.</p>
@@ -525,6 +529,7 @@ async function loadRecentAudit(container) {
         </table>
       </div>
     `;
+    motion.staggerCards(auditContainer.querySelectorAll('tbody tr'), { delayStep: 25, maxDelay: 160, root: container });
   } catch (err) {
     auditContainer.innerHTML = `
       <div class="alert alert--info m-0" role="status">
@@ -544,13 +549,15 @@ async function renderSpecialties(container) {
   let page = 0;
   const size = 10;
   let estadoFiltro = '';
+  let searchQuery = '';
+  let lastData = null;
 
   container.innerHTML = `
     <div>
       <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
         <h2 class="text-xl font-bold m-0">Especialidades Médicas</h2>
         <button type="button" id="btnToggleNewSpec" class="btn btn-primary btn--sm" aria-label="Registrar nueva especialidad médica">
-          ${ui.icon('plus', 'icon icon--sm')}<span>+ Nueva especialidad</span>
+          ${ui.icon('plus', 'icon icon--sm')}<span>Nueva especialidad</span>
         </button>
       </div>
 
@@ -577,13 +584,18 @@ async function renderSpecialties(container) {
       </div>
 
       <!-- Filtros -->
-      <div class="flex items-center justify-between gap-3 mb-3">
-        <div class="form-group m-0" style="max-width: 14rem;">
-          <select id="specEstadoFilter" class="form-select" aria-label="Filtrar por estado">
-            <option value="">Todos los estados</option>
-            <option value="ACTIVO">Solo Activos</option>
-            <option value="INACTIVO">Solo Inactivos</option>
-          </select>
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <div class="flex flex-wrap items-center gap-3 flex-1 min-w-0">
+          <div class="form-group m-0" style="min-width: 11rem; max-width: 14rem;">
+            <select id="specEstadoFilter" class="form-select" aria-label="Filtrar por estado">
+              <option value="">Todos los estados</option>
+              <option value="ACTIVO">Solo Activos</option>
+              <option value="INACTIVO">Solo Inactivos</option>
+            </select>
+          </div>
+          <div class="form-group m-0 flex-1" style="min-width: 12rem; max-width: 18rem;">
+            <input type="search" id="specSearchFilter" class="form-input" placeholder="Buscar especialidad..." aria-label="Buscar especialidad por nombre">
+          </div>
         </div>
         <div id="specPaginationInfo" class="text-xs text-muted"></div>
       </div>
@@ -594,8 +606,12 @@ async function renderSpecialties(container) {
 
   const newCard = container.querySelector('#newSpecCard');
   container.querySelector('#btnToggleNewSpec').addEventListener('click', () => {
-    newCard.style.display = newCard.style.display === 'none' ? 'block' : 'none';
-    if (newCard.style.display === 'block') container.querySelector('#specNombre').focus();
+    const isOpening = newCard.style.display === 'none';
+    newCard.style.display = isOpening ? 'block' : 'none';
+    if (isOpening) {
+      motion.revealPanel(newCard, { root: container });
+      container.querySelector('#specNombre').focus();
+    }
   });
   container.querySelector('#btnCancelNewSpec').addEventListener('click', () => {
     newCard.style.display = 'none';
@@ -638,15 +654,21 @@ async function renderSpecialties(container) {
     load();
   });
 
+  container.querySelector('#specSearchFilter').addEventListener('input', (e) => {
+    searchQuery = e.target.value;
+    if (lastData) renderTable(lastData);
+  });
+
   async function load() {
     const tableBox = container.querySelector('#specTableContainer');
-    ui.renderLoading(tableBox, 'Cargando especialidades...');
+    ui.renderSkeleton(tableBox, 'table');
     try {
       const res = await api.get('/admin/specialties', {
         page,
         size,
         estado: estadoFiltro || undefined
       });
+      lastData = res;
       renderTable(res);
     } catch (err) {
       ui.renderError(tableBox, {
@@ -658,7 +680,9 @@ async function renderSpecialties(container) {
   }
 
   function renderTable(data) {
-    const list = data?.content || [];
+    const rawList = data?.content || [];
+    const q = searchQuery.trim().toLowerCase();
+    const list = q ? rawList.filter(it => String(it.nombre || '').toLowerCase().includes(q)) : rawList;
     const tableBox = container.querySelector('#specTableContainer');
     container.querySelector('#specPaginationInfo').textContent =
       `Mostrando ${list.length} de ${data?.totalElements || 0} registros`;
@@ -690,20 +714,22 @@ async function renderSpecialties(container) {
                 <td data-label="Duración">${it.duracionSlotMin} minutos</td>
                 <td data-label="Estado">${statusBadge(it.estado)}</td>
                 <td data-label="Acciones" style="text-align: right;">
-                  <button type="button" class="btn btn-secondary btn--sm btn-edit"
-                    data-id="${esc(it.publicId)}"
-                    data-nombre="${esc(it.nombre)}"
-                    data-duracion="${it.duracionSlotMin}"
-                    aria-label="Editar especialidad ${esc(it.nombre)}">
-                    Editar
-                  </button>
-                  ${it.estado === 'ACTIVO' ? `
-                    <button type="button" class="btn btn-ghost btn--sm text-danger btn-deactivate" data-id="${esc(it.publicId)}" data-nombre="${esc(it.nombre)}" aria-label="Desactivar especialidad ${esc(it.nombre)}">
-                      Desactivar
-                    </button>` : `
-                    <button type="button" class="btn btn-ghost btn--sm text-success btn-activate" data-id="${esc(it.publicId)}" data-nombre="${esc(it.nombre)}" aria-label="Activar especialidad ${esc(it.nombre)}">
-                      Activar
-                    </button>`}
+                  <div class="table-actions">
+                    <button type="button" class="btn btn-secondary btn--sm btn-edit"
+                      data-id="${esc(it.publicId)}"
+                      data-nombre="${esc(it.nombre)}"
+                      data-duracion="${it.duracionSlotMin}"
+                      aria-label="Editar especialidad ${esc(it.nombre)}">
+                      Editar
+                    </button>
+                    ${it.estado === 'ACTIVO' ? `
+                      <button type="button" class="btn btn-ghost btn--sm text-danger btn-deactivate" data-id="${esc(it.publicId)}" data-nombre="${esc(it.nombre)}" aria-label="Desactivar especialidad ${esc(it.nombre)}">
+                        Desactivar
+                      </button>` : `
+                      <button type="button" class="btn btn-ghost btn--sm text-success btn-activate" data-id="${esc(it.publicId)}" data-nombre="${esc(it.nombre)}" aria-label="Activar especialidad ${esc(it.nombre)}">
+                        Activar
+                      </button>`}
+                  </div>
                 </td>
               </tr>
             `).join('')}
@@ -712,12 +738,14 @@ async function renderSpecialties(container) {
       </div>
 
       <!-- Paginación -->
-      <div class="flex items-center justify-between gap-3">
+      <div class="flex flex-wrap items-center justify-between gap-3">
         <button type="button" id="specPrev" class="btn btn-secondary btn--sm" ${!data?.hasPrevious ? 'disabled' : ''}>Anterior</button>
         <span class="text-xs text-muted">Página ${(data?.page || 0) + 1} de ${Math.max(1, data?.totalPages || 1)}</span>
         <button type="button" id="specNext" class="btn btn-secondary btn--sm" ${!data?.hasNext ? 'disabled' : ''}>Siguiente</button>
       </div>
     `;
+
+    motion.staggerCards(tableBox.querySelectorAll('tbody tr'), { delayStep: 20, maxDelay: 160, root: container });
 
     tableBox.querySelector('#specPrev')?.addEventListener('click', () => { if (page > 0) { page--; load(); } });
     tableBox.querySelector('#specNext')?.addEventListener('click', () => { page++; load(); });
@@ -734,7 +762,7 @@ async function renderSpecialties(container) {
           message: `
             <div class="form-group mb-2">
               <label for="editSpecNombre" class="form-label text-xs">Nombre de la especialidad</label>
-              <input type="text" id="editSpecNombre" class="form-input" value="${esc(curNombre)}" maxlength="60">
+              <input type="text" id="editSpecNombre" class="form-input" value="${esc(curNombre)}" maxlength="60" autofocus>
             </div>
             <div class="form-group mb-2">
               <label for="editSpecDur" class="form-label text-xs">Duración de slot (minutos)</label>
@@ -747,7 +775,7 @@ async function renderSpecialties(container) {
             const duracionSlotMin = Number(document.querySelector('#editSpecDur')?.value);
             if (!nombre || !duracionSlotMin || duracionSlotMin < 5 || duracionSlotMin > 240) {
               ui.showToast('Datos inválidos para la especialidad.', 'warning');
-              return;
+              return false;
             }
             try {
               await api.put(`/admin/specialties/${id}`, { nombre, duracionSlotMin });
@@ -755,6 +783,7 @@ async function renderSpecialties(container) {
               load();
             } catch (err) {
               ui.showToast(err.message || 'Error al actualizar.', 'danger');
+              return false;
             }
           }
         });
@@ -818,6 +847,8 @@ async function renderProfessionals(container) {
   const size = 10;
   let especialidadFiltro = '';
   let estadoFiltro = '';
+  let searchQuery = '';
+  let lastData = null;
   let activeSpecialties = [];
 
   container.innerHTML = `
@@ -825,7 +856,7 @@ async function renderProfessionals(container) {
       <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
         <h2 class="text-xl font-bold m-0">Profesionales Asistenciales</h2>
         <button type="button" id="btnToggleNewProf" class="btn btn-primary btn--sm" aria-label="Dar de alta a nuevo profesional asistencial">
-          ${ui.icon('plus', 'icon icon--sm')}<span>+ Nuevo profesional</span>
+          ${ui.icon('plus', 'icon icon--sm')}<span>Nuevo profesional</span>
         </button>
       </div>
 
@@ -897,7 +928,7 @@ async function renderProfessionals(container) {
       </div>
 
       <!-- Filtros -->
-      <div class="grid grid-cols-1 grid-cols-3-md gap-3 mb-3">
+      <div class="grid grid-cols-1 grid-cols-2-md grid-cols-4-lg gap-3 mb-3">
         <div class="form-group m-0">
           <select id="profSpecFilter" class="form-select" aria-label="Filtrar por especialidad">
             <option value="">Todas las especialidades</option>
@@ -909,6 +940,9 @@ async function renderProfessionals(container) {
             <option value="ACTIVO">Solo Activos</option>
             <option value="INACTIVO">Solo Inactivos</option>
           </select>
+        </div>
+        <div class="form-group m-0">
+          <input type="search" id="profSearchFilter" class="form-input" placeholder="Buscar nombre, doc o ReTHUS..." aria-label="Buscar profesional por nombre, documento o ReTHUS">
         </div>
         <div id="profPaginationInfo" class="text-xs text-muted flex items-center justify-end"></div>
       </div>
@@ -933,8 +967,12 @@ async function renderProfessionals(container) {
 
   const newCard = container.querySelector('#newProfCard');
   container.querySelector('#btnToggleNewProf').addEventListener('click', () => {
-    newCard.style.display = newCard.style.display === 'none' ? 'block' : 'none';
-    if (newCard.style.display === 'block') container.querySelector('#profNumDoc').focus();
+    const isOpening = newCard.style.display === 'none';
+    newCard.style.display = isOpening ? 'block' : 'none';
+    if (isOpening) {
+      motion.revealPanel(newCard, { root: container });
+      container.querySelector('#profNumDoc').focus();
+    }
   });
   container.querySelector('#btnCancelNewProf').addEventListener('click', () => {
     newCard.style.display = 'none';
@@ -1192,7 +1230,7 @@ async function renderProfessionals(container) {
             Se ha creado la cuenta asistencial para <strong>${esc(res.nombres)} ${esc(res.apellidos)}</strong> (${esc(res.especialidadNombre)}).
           </p>
           <div class="card p-3 mb-3" style="background: var(--surface-1); border-left: 4px solid var(--primary);">
-            <div class="text-xs grid grid-cols-2 gap-2 mb-2">
+            <div class="text-xs grid grid-cols-1 grid-cols-2-md gap-2 mb-2">
               <div><strong class="text-muted">Documento:</strong> ${esc(res.tipoDocumento || 'CC')} ${esc(res.numeroDocumento || '—')}</div>
               <div><strong class="text-muted">Registro ReTHUS:</strong> ${esc(res.registroMedico)}</div>
               <div><strong class="text-muted">Correo:</strong> ${esc(res.email)}</div>
@@ -1200,8 +1238,10 @@ async function renderProfessionals(container) {
             </div>
           </div>
           <div class="alert alert--info mb-3 text-xs" style="padding: var(--space-2) var(--space-3);">
-            ${ui.icon('mail', 'icon icon--sm mr-1')}
-            <span>Las credenciales iniciales fueron despachadas automáticamente al correo institucional <strong>${esc(res.email)}</strong> vía Brevo SMTP.</span>
+            ${ui.icon('mail', 'icon icon--sm alert-icon')}
+            <div class="alert-content">
+              <span>Las credenciales iniciales fueron despachadas automáticamente al correo institucional <strong>${esc(res.email)}</strong> vía Brevo SMTP.</span>
+            </div>
           </div>
           <div class="card p-3 mb-3" style="background: var(--surface-2); border-left: 4px solid var(--warning);">
             <span class="text-xs text-muted block mb-1 font-bold">CONTRASEÑA TEMPORAL GENERADA (RESPALDO):</span>
@@ -1210,8 +1250,9 @@ async function renderProfessionals(container) {
               <button type="button" id="btnCopyPass" class="btn btn-secondary btn--sm">Copiar</button>
             </div>
           </div>
-          <p class="text-xs text-muted m-0">
-            ⚠️ <em>En su primer inicio de sesión se le exigirá cambiar la contraseña de inmediato por una de su exclusiva custodia (Ley 1581/2012).</em>
+          <p class="text-xs text-muted m-0 flex items-start gap-1">
+            ${ui.icon('alert-triangle', 'icon icon--xs text-warning shrink-0')}
+            <span><em>En su primer inicio de sesión se le exigirá cambiar la contraseña de inmediato por una de su exclusiva custodia (Ley 1581/2012).</em></span>
           </p>
         `,
         confirmText: 'Entendido y guardada',
@@ -1220,6 +1261,7 @@ async function renderProfessionals(container) {
 
       document.querySelector('#btnCopyPass')?.addEventListener('click', () => {
         navigator.clipboard?.writeText(res.passwordTemporal);
+        motion.pulseSubtle(document.querySelector('#tempPassCode'));
         ui.showToast('Contraseña copiada al portapapeles.', 'info');
       });
 
@@ -1242,9 +1284,14 @@ async function renderProfessionals(container) {
     load();
   });
 
+  container.querySelector('#profSearchFilter').addEventListener('input', (e) => {
+    searchQuery = e.target.value;
+    if (lastData) renderTable(lastData);
+  });
+
   async function load() {
     const tableBox = container.querySelector('#profTableContainer');
-    ui.renderLoading(tableBox, 'Cargando profesionales...');
+    ui.renderSkeleton(tableBox, 'table');
     try {
       const res = await api.get('/admin/professionals', {
         page,
@@ -1252,6 +1299,7 @@ async function renderProfessionals(container) {
         especialidadPublicId: especialidadFiltro || undefined,
         estado: estadoFiltro || undefined
       });
+      lastData = res;
       renderTable(res);
     } catch (err) {
       ui.renderError(tableBox, {
@@ -1263,7 +1311,16 @@ async function renderProfessionals(container) {
   }
 
   function renderTable(data) {
-    const list = data?.content || [];
+    const rawList = data?.content || [];
+    const q = searchQuery.trim().toLowerCase();
+    const list = q ? rawList.filter(it =>
+      String(it.nombres || '').toLowerCase().includes(q) ||
+      String(it.apellidos || '').toLowerCase().includes(q) ||
+      String(it.numeroDocumento || '').toLowerCase().includes(q) ||
+      String(it.registroMedico || '').toLowerCase().includes(q) ||
+      String(it.email || '').toLowerCase().includes(q) ||
+      String(it.especialidadNombre || '').toLowerCase().includes(q)
+    ) : rawList;
     const tableBox = container.querySelector('#profTableContainer');
     container.querySelector('#profPaginationInfo').textContent =
       `Mostrando ${list.length} de ${data?.totalElements || 0} registros`;
@@ -1302,28 +1359,30 @@ async function renderProfessionals(container) {
                 <td data-label="Contacto">
                   <div class="text-xs">
                     <div>${esc(it.email)}</div>
-                    ${it.telefono ? `<div class="text-muted">📱 ${esc(it.telefono)}</div>` : ''}
+                    ${it.telefono ? `<div class="text-muted flex items-center gap-1">${ui.icon('phone', 'icon icon--xs')} <span>${esc(it.telefono)}</span></div>` : ''}
                   </div>
                 </td>
                 <td data-label="Especialidad"><span class="badge badge--scheduled">${esc(it.especialidadNombre)}</span></td>
                 <td data-label="Estado">${statusBadge(it.estado)}</td>
                 <td data-label="Acciones" style="text-align: right;">
-                  <button type="button" class="btn btn-secondary btn--sm btn-edit"
-                    data-id="${esc(it.publicId)}"
-                    data-nombres="${esc(it.nombres)}"
-                    data-apellidos="${esc(it.apellidos)}"
-                    data-spec="${esc(it.especialidadPublicId)}"
-                    data-telefono="${esc(it.telefono || '')}"
-                    aria-label="Editar profesional ${esc(it.nombres)} ${esc(it.apellidos)}">
-                    Editar
-                  </button>
-                  ${it.estado === 'ACTIVO' ? `
-                    <button type="button" class="btn btn-ghost btn--sm text-danger btn-deactivate" data-id="${esc(it.publicId)}" data-nombre="${esc(it.nombres)}" aria-label="Desactivar profesional ${esc(it.nombres)}">
-                      Desactivar
-                    </button>` : `
-                    <button type="button" class="btn btn-ghost btn--sm text-success btn-activate" data-id="${esc(it.publicId)}" data-nombre="${esc(it.nombres)}" aria-label="Activar profesional ${esc(it.nombres)}">
-                      Activar
-                    </button>`}
+                  <div class="table-actions">
+                    <button type="button" class="btn btn-secondary btn--sm btn-edit"
+                      data-id="${esc(it.publicId)}"
+                      data-nombres="${esc(it.nombres)}"
+                      data-apellidos="${esc(it.apellidos)}"
+                      data-spec="${esc(it.especialidadPublicId)}"
+                      data-telefono="${esc(it.telefono || '')}"
+                      aria-label="Editar profesional ${esc(it.nombres)} ${esc(it.apellidos)}">
+                      Editar
+                    </button>
+                    ${it.estado === 'ACTIVO' ? `
+                      <button type="button" class="btn btn-ghost btn--sm text-danger btn-deactivate" data-id="${esc(it.publicId)}" data-nombre="${esc(it.nombres)}" aria-label="Desactivar profesional ${esc(it.nombres)}">
+                        Desactivar
+                      </button>` : `
+                      <button type="button" class="btn btn-ghost btn--sm text-success btn-activate" data-id="${esc(it.publicId)}" data-nombre="${esc(it.nombres)}" aria-label="Activar profesional ${esc(it.nombres)}">
+                        Activar
+                      </button>`}
+                  </div>
                 </td>
               </tr>
             `).join('')}
@@ -1332,12 +1391,14 @@ async function renderProfessionals(container) {
       </div>
 
       <!-- Paginación -->
-      <div class="flex items-center justify-between gap-3">
+      <div class="flex flex-wrap items-center justify-between gap-3">
         <button type="button" id="profPrev" class="btn btn-secondary btn--sm" ${!data?.hasPrevious ? 'disabled' : ''}>Anterior</button>
         <span class="text-xs text-muted">Página ${(data?.page || 0) + 1} de ${Math.max(1, data?.totalPages || 1)}</span>
         <button type="button" id="profNext" class="btn btn-secondary btn--sm" ${!data?.hasNext ? 'disabled' : ''}>Siguiente</button>
       </div>
     `;
+
+    motion.staggerCards(tableBox.querySelectorAll('tbody tr'), { delayStep: 20, maxDelay: 160, root: container });
 
     tableBox.querySelector('#profPrev')?.addEventListener('click', () => { if (page > 0) { page--; load(); } });
     tableBox.querySelector('#profNext')?.addEventListener('click', () => { page++; load(); });
@@ -1360,7 +1421,7 @@ async function renderProfessionals(container) {
           message: `
             <div class="form-group mb-2">
               <label for="editProfNombres" class="form-label text-xs">Nombres</label>
-              <input type="text" id="editProfNombres" class="form-input" value="${esc(curNombres)}" maxlength="60">
+              <input type="text" id="editProfNombres" class="form-input" value="${esc(curNombres)}" maxlength="60" autofocus>
             </div>
             <div class="form-group mb-2">
               <label for="editProfApellidos" class="form-label text-xs">Apellidos</label>
@@ -1383,14 +1444,14 @@ async function renderProfessionals(container) {
             const telefonoRaw = document.querySelector('#editProfTelefono')?.value.trim();
             if (!nombres || !apellidos || !especialidadPublicId) {
               ui.showToast('Nombres, apellidos y especialidad son obligatorios.', 'warning');
-              return;
+              return false;
             }
             let telefono = undefined;
             if (telefonoRaw) {
               const normalizado = telefonoRaw.replace(/\s+/g, '');
               if (!/^(\+57)?3[0-9]{9}$/.test(normalizado)) {
                 ui.showToast('El celular debe ser un número colombiano válido de 10 dígitos iniciando en 3.', 'warning');
-                return;
+                return false;
               }
               telefono = normalizado;
             }
@@ -1400,6 +1461,7 @@ async function renderProfessionals(container) {
               load();
             } catch (err) {
               ui.showToast(err.message || 'Error al actualizar profesional.', 'danger');
+              return false;
             }
           }
         });
@@ -1481,7 +1543,7 @@ async function renderSlots(container) {
         </p>
 
         <form id="slotGenForm" novalidate>
-          <div class="grid grid-cols-1 grid-cols-3-md gap-4 mb-4">
+          <div class="grid grid-cols-1 grid-cols-2-md gap-4 mb-4">
             <div class="form-group m-0">
               <label for="genProf" class="form-label text-xs">Profesional <span class="required">*</span></label>
               <select id="genProf" class="form-select" required>
@@ -1518,13 +1580,13 @@ async function renderSlots(container) {
 
           <div class="mb-4">
             <label class="form-label text-xs">Días aplicables</label>
-            <div class="flex flex-wrap gap-3">
-              <label class="flex items-center gap-1 text-xs cursor-pointer"><input type="checkbox" name="genDay" value="MONDAY" checked> Lun</label>
-              <label class="flex items-center gap-1 text-xs cursor-pointer"><input type="checkbox" name="genDay" value="TUESDAY" checked> Mar</label>
-              <label class="flex items-center gap-1 text-xs cursor-pointer"><input type="checkbox" name="genDay" value="WEDNESDAY" checked> Mié</label>
-              <label class="flex items-center gap-1 text-xs cursor-pointer"><input type="checkbox" name="genDay" value="THURSDAY" checked> Jue</label>
-              <label class="flex items-center gap-1 text-xs cursor-pointer"><input type="checkbox" name="genDay" value="FRIDAY" checked> Vie</label>
-              <label class="flex items-center gap-1 text-xs cursor-pointer"><input type="checkbox" name="genDay" value="SATURDAY"> Sáb</label>
+            <div class="chip-group" id="genDaysGroup">
+              <label class="chip is-selected"><input type="checkbox" name="genDay" value="MONDAY" checked style="accent-color: var(--on-primary); width: 1rem; height: 1rem; cursor: pointer;"> <span>Lun</span></label>
+              <label class="chip is-selected"><input type="checkbox" name="genDay" value="TUESDAY" checked style="accent-color: var(--on-primary); width: 1rem; height: 1rem; cursor: pointer;"> <span>Mar</span></label>
+              <label class="chip is-selected"><input type="checkbox" name="genDay" value="WEDNESDAY" checked style="accent-color: var(--on-primary); width: 1rem; height: 1rem; cursor: pointer;"> <span>Mié</span></label>
+              <label class="chip is-selected"><input type="checkbox" name="genDay" value="THURSDAY" checked style="accent-color: var(--on-primary); width: 1rem; height: 1rem; cursor: pointer;"> <span>Jue</span></label>
+              <label class="chip is-selected"><input type="checkbox" name="genDay" value="FRIDAY" checked style="accent-color: var(--on-primary); width: 1rem; height: 1rem; cursor: pointer;"> <span>Vie</span></label>
+              <label class="chip"><input type="checkbox" name="genDay" value="SATURDAY" style="accent-color: var(--on-primary); width: 1rem; height: 1rem; cursor: pointer;"> <span>Sáb</span></label>
             </div>
           </div>
 
@@ -1573,6 +1635,13 @@ async function renderSlots(container) {
       </div>
     </div>
   `;
+
+  // Sincronizar estado visual de chips de días
+  container.querySelectorAll('#genDaysGroup input[name="genDay"]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      cb.closest('.chip')?.classList.toggle('is-selected', cb.checked);
+    });
+  });
 
   // Cargar profesionales para los selects (la sede la resuelve el servidor)
   try {
@@ -1649,7 +1718,7 @@ async function renderSlots(container) {
 
   async function loadSlots() {
     const tableBox = container.querySelector('#slotTableContainer');
-    ui.renderLoading(tableBox, 'Buscando slots...');
+    ui.renderSkeleton(tableBox, 'table');
 
     const prof = container.querySelector('#filterProf').value;
     const estado = container.querySelector('#filterEstado').value;
@@ -1721,14 +1790,16 @@ async function renderSlots(container) {
                 </td>
                 <td data-label="Estado">${statusBadge(s.estado)}</td>
                 <td data-label="Acciones" style="text-align: right;">
-                  ${s.estado === 'LIBRE' ? `
-                    <button type="button" class="btn btn-secondary btn--sm btn-block-slot" data-id="${esc(s.publicId)}" aria-label="Bloquear turno de ${esc(s.profesionalNombre)}">Bloquear</button>
-                    <button type="button" class="btn btn-ghost btn--sm text-danger btn-del-slot" data-id="${esc(s.publicId)}" aria-label="Eliminar turno libre de ${esc(s.profesionalNombre)}">Eliminar</button>
-                  ` : s.estado === 'BLOQUEADO' ? `
-                    <button type="button" class="btn btn-secondary btn--sm btn-unblock-slot" data-id="${esc(s.publicId)}" aria-label="Desbloquear turno de ${esc(s.profesionalNombre)}">Desbloquear</button>
-                  ` : `
-                    <span class="text-xs text-muted">Cita asignada</span>
-                  `}
+                  <div class="table-actions">
+                    ${s.estado === 'LIBRE' ? `
+                      <button type="button" class="btn btn-secondary btn--sm btn-block-slot" data-id="${esc(s.publicId)}" aria-label="Bloquear turno de ${esc(s.profesionalNombre)}">Bloquear</button>
+                      <button type="button" class="btn btn-ghost btn--sm text-danger btn-del-slot" data-id="${esc(s.publicId)}" aria-label="Eliminar turno libre de ${esc(s.profesionalNombre)}">Eliminar</button>
+                    ` : s.estado === 'BLOQUEADO' ? `
+                      <button type="button" class="btn btn-secondary btn--sm btn-unblock-slot" data-id="${esc(s.publicId)}" aria-label="Desbloquear turno de ${esc(s.profesionalNombre)}">Desbloquear</button>
+                    ` : `
+                      <span class="text-xs text-muted">Cita asignada</span>
+                    `}
+                  </div>
                 </td>
               </tr>
             `).join('')}
@@ -1737,12 +1808,14 @@ async function renderSlots(container) {
       </div>
 
       <!-- Paginación -->
-      <div class="flex items-center justify-between gap-3">
+      <div class="flex flex-wrap items-center justify-between gap-3">
         <button type="button" id="slotsPrev" class="btn btn-secondary btn--sm" ${!data?.hasPrevious ? 'disabled' : ''}>Anterior</button>
         <span class="text-xs text-muted">Página ${(data?.page || 0) + 1} de ${Math.max(1, data?.totalPages || 1)}</span>
         <button type="button" id="slotsNext" class="btn btn-secondary btn--sm" ${!data?.hasNext ? 'disabled' : ''}>Siguiente</button>
       </div>
     `;
+
+    motion.staggerCards(tableBox.querySelectorAll('tbody tr'), { delayStep: 18, maxDelay: 150, root: container });
 
     tableBox.querySelector('#slotsPrev')?.addEventListener('click', () => { if (page > 0) { page--; loadSlots(); } });
     tableBox.querySelector('#slotsNext')?.addEventListener('click', () => { page++; loadSlots(); });
@@ -1750,12 +1823,15 @@ async function renderSlots(container) {
     // Bloquear slot
     tableBox.querySelectorAll('.btn-block-slot').forEach(b => {
       b.addEventListener('click', async () => {
+        ui.setButtonLoading(b, true);
         try {
           await api.patch(`/admin/slots/${b.dataset.id}/block`);
           ui.showToast('Slot bloqueado.', 'info');
           loadSlots();
         } catch (err) {
           ui.showToast(err.message || 'Error al bloquear.', 'danger');
+        } finally {
+          ui.setButtonLoading(b, false);
         }
       });
     });
@@ -1763,12 +1839,15 @@ async function renderSlots(container) {
     // Desbloquear slot
     tableBox.querySelectorAll('.btn-unblock-slot').forEach(b => {
       b.addEventListener('click', async () => {
+        ui.setButtonLoading(b, true);
         try {
           await api.patch(`/admin/slots/${b.dataset.id}/unblock`);
           ui.showToast('Slot desbloqueado a libre.', 'success');
           loadSlots();
         } catch (err) {
           ui.showToast(err.message || 'Error al desbloquear.', 'danger');
+        } finally {
+          ui.setButtonLoading(b, false);
         }
       });
     });

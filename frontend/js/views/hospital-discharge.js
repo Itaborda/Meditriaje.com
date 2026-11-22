@@ -4,6 +4,7 @@
  */
 
 import { hospitalApi, emergencyApi } from '../api.js';
+import { motion } from '../motion.js';
 import { router } from '../router.js';
 import { ui, esc } from '../ui.js';
 
@@ -15,7 +16,7 @@ export async function hospitalDischargeView(container, { params }) {
       title: 'Episodio no especificado',
       description: 'Identificador de episodio de hospitalización no encontrado.',
       actionText: 'Volver al Centro de Control',
-      actionUrl: '#/hospital/census'
+      onAction: () => router.navigate('/hospital/census')
     });
     return;
   }
@@ -38,16 +39,14 @@ export async function hospitalDischargeView(container, { params }) {
       </div>
 
       <!-- Resumen del Paciente -->
-      <div class="card p-6 mb-6" id="dischargeSummaryCard">
-        <p class="text-sm text-muted">Cargando datos del paciente...</p>
-      </div>
+      <div class="mb-6" id="dischargeSummaryCard"></div>
 
       <!-- Formulario de Egreso -->
       <div class="card p-6">
         <form id="dischargeForm" novalidate>
           
           <div class="form-group mb-4">
-            <label for="selTipoDestino" class="form-label font-semibold">Destino del Egreso <span class="text-danger">*</span></label>
+            <label for="selTipoDestino" class="form-label font-semibold">Destino del Egreso <span class="required">*</span></label>
             <select id="selTipoDestino" class="form-select" required>
               <option value="ALTA_DOMICILIO">Alta Médica a Domicilio con Manejo Ambulatorio</option>
               <option value="CONTRAREFERENCIA">Contra-referencia a IPS de Menor Complejidad</option>
@@ -58,25 +57,28 @@ export async function hospitalDischargeView(container, { params }) {
           </div>
 
           <div class="form-group mb-4">
-            <label for="txtDiagEgreso" class="form-label font-semibold">Diagnóstico Principal de Egreso (CIE-10 / Texto) <span class="text-danger">*</span></label>
+            <label for="txtDiagEgreso" class="form-label font-semibold">Diagnóstico Principal de Egreso (CIE-10 / Texto) <span class="required">*</span></label>
             <input type="text" id="txtDiagEgreso" class="form-input" required placeholder="Ej. Neumonía bacteriana no especificada (J15.9)">
           </div>
 
           <div class="form-group mb-4">
-            <label for="txtEpicrisis" class="form-label font-semibold">Epicrisis Resumida <span class="text-danger">*</span></label>
-            <textarea id="txtEpicrisis" class="form-input" rows="5" required placeholder="Resumen de evolución clínica, paraclínicos relevantes, procedimientos efectuados y condición médica actual al momento del alta..."></textarea>
+            <label for="txtEpicrisis" class="form-label font-semibold">Epicrisis Resumida <span class="required">*</span></label>
+            <textarea id="txtEpicrisis" class="form-textarea" rows="5" required placeholder="Resumen de evolución clínica, paraclínicos relevantes, procedimientos efectuados y condición médica actual al momento del alta..."></textarea>
           </div>
 
           <div class="form-group mb-6">
             <label for="txtPlanManejo" class="form-label font-semibold">Plan de Manejo y Recomendaciones Ambulatorias</label>
-            <textarea id="txtPlanManejo" class="form-input" rows="3" placeholder="Medicamentos formulados, signos de alarma para reconsultar por urgencias, control por consulta externa..."></textarea>
+            <textarea id="txtPlanManejo" class="form-textarea" rows="3" placeholder="Medicamentos formulados, signos de alarma para reconsultar por urgencias, control por consulta externa..."></textarea>
           </div>
 
-          <div class="card p-4 mb-6 bg-amber-50 border-amber-300 text-xs text-amber-900">
-            <strong>Efectos automáticos del egreso:</strong> La cama hospitalaria asignada pasará inmediatamente al estado de <strong>LIMPIEZA</strong> para su respectiva desinfección, el episodio se marcará como cerrado inmutable y quedará registrado en la bitácora de auditoría clínica (H05).
+          <div id="dischargeWarningAlert" class="alert alert--warning mb-6 text-xs">
+            ${ui.icon('alert-triangle', 'icon alert-icon')}
+            <div class="alert-content">
+              <strong>Efectos automáticos del egreso:</strong> La cama hospitalaria asignada pasará inmediatamente al estado de <strong>LIMPIEZA</strong> para su respectiva desinfección, el episodio se marcará como cerrado inmutable y quedará registrado en la bitácora de auditoría clínica (H05).
+            </div>
           </div>
 
-          <div class="flex items-center justify-end gap-3">
+          <div class="flex flex-wrap items-center justify-end gap-3">
             <a href="#/hospital/census" class="btn btn-ghost">Cancelar</a>
             <button type="submit" id="btnSubmitDischarge" class="btn btn-primary flex items-center gap-2">
               ${ui.icon('check', 'icon icon--sm')}
@@ -90,33 +92,73 @@ export async function hospitalDischargeView(container, { params }) {
     </div>
   `;
 
-  try {
-    const ep = await emergencyApi.obtenerDetalleEpisodio(episodePublicId);
-    const patientName = ep.pacienteNombre || ep.pacienteNombreCompleto || 'Paciente';
-    const epId = ep.episodioPublicId || ep.publicId || episodePublicId;
-    const motivo = ep.motivoConsulta || ep.motivoLlegada || '—';
-    document.getElementById('dischargeSummaryCard').innerHTML = `
-      <div class="flex items-center justify-between">
-        <div>
-          <h1 class="text-xl font-bold m-0">${esc(patientName)}</h1>
-          <div class="text-xs text-muted mt-1 font-mono">
-            Episodio: ${esc(epId)} · Sede: ${esc(ep.sedeNombre || 'Hospital')}
-          </div>
-          <div class="text-xs text-muted mt-1">
-            Motivo Ingreso: <strong>${esc(motivo)}</strong>
+  const summaryCard = container.querySelector('#dischargeSummaryCard');
+  const warningAlert = container.querySelector('#dischargeWarningAlert');
+  const selDestino = container.querySelector('#selTipoDestino');
+
+  async function loadPatientSummary() {
+    ui.renderSkeleton(summaryCard, 'card');
+    try {
+      const ep = await emergencyApi.obtenerDetalleEpisodio(episodePublicId);
+      const patientName = ep.pacienteNombre || ep.pacienteNombreCompleto || 'Paciente';
+      const epId = ep.episodioPublicId || ep.publicId || episodePublicId;
+      const motivo = ep.motivoConsulta || ep.motivoLlegada || '—';
+      summaryCard.innerHTML = `
+        <div class="card p-6">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h1 class="text-xl font-bold m-0">${esc(patientName)}</h1>
+              <div class="text-xs text-muted mt-1 font-mono">
+                Episodio: ${esc(epId)} · Sede: ${esc(ep.sedeNombre || 'Hospital')}
+              </div>
+              <div class="text-xs text-muted mt-1">
+                Motivo Ingreso: <strong>${esc(motivo)}</strong>
+              </div>
+            </div>
+            <span class="badge ${ep.estado === 'HOSPITALIZADO' ? 'badge--in-progress' : 'badge--scheduled'} font-bold">
+              ${esc(ep.estado)}
+            </span>
           </div>
         </div>
-        <span class="badge ${ep.estado === 'HOSPITALIZADO' ? 'badge--in-progress' : 'badge--scheduled'} font-bold">
-          ${esc(ep.estado)}
-        </span>
-      </div>
-    `;
-  } catch (err) {
-    ui.showToast('Error cargando paciente: ' + err.message, 'error');
+      `;
+      motion.stepTransition(summaryCard, 'forward');
+    } catch (err) {
+      ui.showToast('Error cargando paciente: ' + err.message, 'error');
+      ui.renderError(summaryCard, {
+        title: 'No fue posible cargar los datos del paciente',
+        message: err.message || 'Error de comunicación con el servidor.',
+        onRetry: loadPatientSummary
+      });
+    }
   }
+
+  await loadPatientSummary();
+
+  selDestino?.addEventListener('change', () => {
+    if (warningAlert) {
+      const isDeath = selDestino.value === 'FALLECIMIENTO';
+      warningAlert.className = `alert ${isDeath ? 'alert--danger' : 'alert--warning'} mb-6 text-xs`;
+      motion.pulseSubtle(warningAlert);
+    }
+  });
 
   // Envío del formulario
   const form = document.getElementById('dischargeForm');
+  const btn = document.getElementById('btnSubmitDischarge');
+
+  async function executeDischarge(payload) {
+    ui.setButtonLoading(btn, true);
+    try {
+      await hospitalApi.registrarEgreso(episodePublicId, payload);
+      ui.showToast('Egreso hospitalario emitido y cama liberada a limpieza.', 'success');
+      router.navigate('#/hospital/census');
+    } catch (err) {
+      ui.setButtonLoading(btn, false);
+      ui.showToast('Error emitiendo egreso: ' + (err.message || 'Error de servidor'), 'error');
+      return false;
+    }
+  }
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
 
@@ -130,23 +172,25 @@ export async function hospitalDischargeView(container, { params }) {
       return;
     }
 
-    const btn = document.getElementById('btnSubmitDischarge');
-    btn.disabled = true;
-    btn.innerHTML = `Procesando alta...`;
+    const payload = {
+      tipoDestino,
+      diagnosticoEgreso: diagEgreso,
+      epicrisisResumen: epicrisis,
+      planManejo: planManejo || null
+    };
 
-    try {
-      await hospitalApi.registrarEgreso(episodePublicId, {
-        tipoDestino,
-        diagnosticoEgreso: diagEgreso,
-        epicrisisResumen: epicrisis,
-        planManejo: planManejo || null
+    if (tipoDestino === 'FALLECIMIENTO') {
+      ui.showModal({
+        title: 'Confirmar Egreso por Fallecimiento',
+        message: 'Está por registrar el egreso hospitalario con destino <strong>Fallecimiento / Registro de Defunción</strong>. El episodio se cerrará de forma definitiva e irreversible y la cama asignada pasará a limpieza. ¿Desea confirmar?',
+        confirmText: 'Confirmar Fallecimiento',
+        cancelText: 'Cancelar',
+        isDanger: true,
+        onConfirm: async () => executeDischarge(payload)
       });
-      ui.showToast('Egreso hospitalario emitido y cama liberada a limpieza.', 'success');
-      router.navigate('#/hospital/census');
-    } catch (err) {
-      btn.disabled = false;
-      btn.innerHTML = `${ui.icon('check', 'icon icon--sm')} <span>Firmar y Emitir Alta Hospitalaria</span>`;
-      ui.showToast('Error emitiendo egreso: ' + (err.message || 'Error de servidor'), 'error');
+      return;
     }
+
+    await executeDischarge(payload);
   });
 }

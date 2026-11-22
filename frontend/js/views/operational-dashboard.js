@@ -47,7 +47,7 @@ export async function renderOperationalDashboard(container) {
           <span class="breadcrumb-separator" aria-hidden="true">&gt;</span>
           <span class="breadcrumb-current" aria-current="page">Centro de Mando</span>
         </nav>
-        <div class="flex items-center gap-3" style="margin-top: var(--space-1);">
+        <div class="flex flex-wrap items-center gap-2" style="margin-top: var(--space-1);">
           <h1 class="view-title" style="margin: 0;">Centro de Mando y Analítica Hospitalaria</h1>
           <span class="operational-live-badge" title="Monitoreo activo en tiempo real">
             <span class="operational-live-dot" aria-hidden="true"></span>
@@ -102,9 +102,9 @@ export async function renderOperationalDashboard(container) {
           </div>
         </div>
       </div>
-      <a href="#seccion-alertas-operativas" class="btn btn-danger btn--sm" style="white-space: nowrap;">
+      <button type="button" id="btnJumpToAlerts" class="btn btn-danger btn--sm" style="white-space: nowrap;">
         Gestionar Alertas
-      </a>
+      </button>
     </section>
 
     <!-- Tarjetas de KPIs Principales -->
@@ -118,7 +118,7 @@ export async function renderOperationalDashboard(container) {
           </div>
           <div id="kpi-tasa-ocupacion" class="operational-kpi-value">0%</div>
           <div class="operational-progress" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
-            <div id="kpi-progress-bar" class="operational-progress-bar is-normal" style="width: 0%;"></div>
+            <div id="kpi-progress-bar" class="operational-progress-bar is-normal" data-progress="0%" style="width: 0%;"></div>
           </div>
           <div id="kpi-desglose-camas" class="operational-kpi-subtitle">0 de 0 camas ocupadas</div>
         </div>
@@ -205,7 +205,7 @@ export async function renderOperationalDashboard(container) {
           <div>
             <div class="operational-triage-header">
               <span class="operational-triage-name">Nivel I — Resucitación</span>
-              <span class="operational-triage-badge" style="background: var(--triage-1-bd); color: #FFFFFF;">I</span>
+              <span class="operational-triage-badge">I</span>
             </div>
             <div id="tiempo-t1" class="operational-triage-time">0 min</div>
             <div class="operational-triage-meta">Estándar: Inmediato (0 min)</div>
@@ -220,13 +220,13 @@ export async function renderOperationalDashboard(container) {
           <div>
             <div class="operational-triage-header">
               <span class="operational-triage-name">Nivel II — Emergencia</span>
-              <span class="operational-triage-badge" style="background: var(--triage-2-bd); color: #FFFFFF;">II</span>
+              <span class="operational-triage-badge">II</span>
             </div>
             <div id="tiempo-t2" class="operational-triage-time">0 min</div>
             <div class="operational-triage-meta">Estándar: Máx. 30 minutos</div>
           </div>
           <div id="warn-t2" class="operational-triage-warning" style="display: none;">
-            ⚠️ Excede norma (+0 min)
+            ${ui.icon('alert-triangle', 'icon icon--xs')} <span>Excede norma (+0 min)</span>
           </div>
           <div class="text-xs" style="margin-top: var(--space-2); opacity: 0.9;">
             En espera: <strong id="cnt-wait-t2">0 pacientes</strong>
@@ -238,13 +238,13 @@ export async function renderOperationalDashboard(container) {
           <div>
             <div class="operational-triage-header">
               <span class="operational-triage-name">Nivel III — Urgencia</span>
-              <span class="operational-triage-badge" style="background: var(--triage-3-bd); color: #FFFFFF;">III</span>
+              <span class="operational-triage-badge">III</span>
             </div>
             <div id="tiempo-t3" class="operational-triage-time">0 min</div>
             <div class="operational-triage-meta">Estándar: Máx. 45 minutos</div>
           </div>
           <div id="warn-t3" class="operational-triage-warning" style="display: none;">
-            ⚠️ Excede norma (+0 min)
+            ${ui.icon('alert-triangle', 'icon icon--xs')} <span>Excede norma (+0 min)</span>
           </div>
           <div class="text-xs" style="margin-top: var(--space-2); opacity: 0.9;">
             En espera: <strong id="cnt-wait-t3">0 pacientes</strong>
@@ -256,7 +256,7 @@ export async function renderOperationalDashboard(container) {
           <div>
             <div class="operational-triage-header">
               <span class="operational-triage-name">Nivel IV — Prioritario</span>
-              <span class="operational-triage-badge" style="background: var(--triage-4-bd); color: #FFFFFF;">IV</span>
+              <span class="operational-triage-badge">IV</span>
             </div>
             <div id="tiempo-t4" class="operational-triage-time">0 min</div>
             <div class="operational-triage-meta">Estándar: Consulta prioritaria</div>
@@ -271,7 +271,7 @@ export async function renderOperationalDashboard(container) {
           <div>
             <div class="operational-triage-header">
               <span class="operational-triage-name">Nivel V — No Urgente</span>
-              <span class="operational-triage-badge" style="background: var(--triage-5-bd); color: #FFFFFF;">V</span>
+              <span class="operational-triage-badge">V</span>
             </div>
             <div id="tiempo-t5" class="operational-triage-time">0 min</div>
             <div class="operational-triage-meta">Estándar: Atención ambulatoria</div>
@@ -294,7 +294,7 @@ export async function renderOperationalDashboard(container) {
             Eventos asistenciales que sobrepasan la capacidad instalada o tiempos máximos de triaje.
           </p>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
           <button type="button" id="btnEvaluateAlerts" class="btn btn-secondary btn--sm" title="Evaluar umbrales actuales de ocupación y demora">
             ${ui.icon('activity', 'icon icon--sm')}
             <span>Evaluar Alertas</span>
@@ -304,7 +304,7 @@ export async function renderOperationalDashboard(container) {
       </div>
 
       <div class="table-container">
-        <table class="table" style="width: 100%; text-align: left;">
+        <table class="table table--stacked" style="width: 100%; text-align: left;">
           <thead>
             <tr>
               <th scope="col">Hora</th>
@@ -318,7 +318,7 @@ export async function renderOperationalDashboard(container) {
           <tbody id="tbody-alertas">
             <tr>
               <td colspan="6" style="text-align: center; color: var(--text-muted); padding: var(--space-6);">
-                Cargando estado de alertas...
+                <div class="skeleton skeleton-text mb-0" style="width: 90%; margin: 0 auto;"></div>
               </td>
             </tr>
           </tbody>
@@ -374,7 +374,7 @@ export async function renderOperationalDashboard(container) {
           </div>
           <div>
             <div class="text-xs text-muted">Nivel de Triaje:</div>
-            <span id="qr-nivel-triaje" class="badge">-</span>
+            <span id="qr-nivel-triaje" class="badge badge--neutral">-</span>
           </div>
           <div>
             <div class="text-xs text-muted">Sede:</div>
@@ -440,16 +440,23 @@ export async function renderOperationalDashboard(container) {
 
   const tbodyAlertas = container.querySelector('#tbody-alertas');
   const btnEvaluateAlerts = container.querySelector('#btnEvaluateAlerts');
+  const btnJumpToAlerts = container.querySelector('#btnJumpToAlerts');
 
   let isAutoRefreshActive = true;
+  let lastOccupancyPct = null;
+
+  btnJumpToAlerts?.addEventListener('click', () => {
+    container.querySelector('#seccion-alertas-operativas')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
 
   motion.staggerCards(container.querySelectorAll('.operational-kpi-card'), { root: container });
+  motion.staggerCards(container.querySelectorAll('.operational-triage-card'), { delayStep: 30, maxDelay: 180, root: container });
 
   // Carga inicial del panel del hospital
   await cargarDatosDashboard();
 
   btnEvaluateAlerts?.addEventListener('click', async () => {
-    btnEvaluateAlerts.disabled = true;
+    ui.setButtonLoading(btnEvaluateAlerts, true);
     try {
       const alertas = await operationalApi.evaluarAlertas();
       await cargarDatosDashboard();
@@ -464,18 +471,20 @@ export async function renderOperationalDashboard(container) {
     } catch (err) {
       ui.showToast('Error evaluando alertas: ' + (err.message || 'Error de servidor'), 'error');
     } finally {
-      btnEvaluateAlerts.disabled = false;
+      ui.setButtonLoading(btnEvaluateAlerts, false);
     }
   });
 
   // Botón manual de refresco
   btnManualRefresh.addEventListener('click', async () => {
     btnManualRefresh.disabled = true;
-    btnManualRefresh.innerHTML = `${ui.icon('refresh', 'icon icon--sm icon--spin')} <span>Actualizando...</span>`;
-    await cargarDatosDashboard();
-    btnManualRefresh.disabled = false;
-    btnManualRefresh.innerHTML = `${ui.icon('refresh', 'icon icon--sm')} <span>Actualizar</span>`;
-    ui.showToast('Métricas operativas actualizadas.', 'info', 2000);
+    motion.spinOnce(btnManualRefresh);
+    try {
+      await cargarDatosDashboard();
+      ui.showToast('Métricas operativas actualizadas.', 'info', 2000);
+    } finally {
+      btnManualRefresh.disabled = false;
+    }
   });
 
   // Alternar auto-refresco
@@ -497,11 +506,16 @@ export async function renderOperationalDashboard(container) {
     }
   });
 
+  function isOperationalRoute() {
+    const h = window.location.hash;
+    return h === '#/operational' || h.startsWith('#/operational/') || h.startsWith('#/admin/operational');
+  }
+
   function iniciarAutoRefresh() {
     detenerAutoRefresh();
     refreshIntervalId = setInterval(() => {
       // Solo refrescar si la vista actual sigue siendo el dashboard operativo
-      if (window.location.hash.startsWith('#/operational/dashboard')) {
+      if (isOperationalRoute() && container.isConnected) {
         cargarDatosDashboard(true);
       } else {
         detenerAutoRefresh();
@@ -516,6 +530,14 @@ export async function renderOperationalDashboard(container) {
     }
   }
 
+  const onRouteChangeCleanup = () => {
+    if (!isOperationalRoute()) {
+      detenerAutoRefresh();
+      window.removeEventListener('hashchange', onRouteChangeCleanup);
+    }
+  };
+  window.addEventListener('hashchange', onRouteChangeCleanup);
+
   // Iniciar auto-refresco por defecto
   iniciarAutoRefresh();
 
@@ -529,8 +551,11 @@ export async function renderOperationalDashboard(container) {
 
       // 1. KPI Ocupación
       const pct = Math.round(data.tasaOcupacionPorcentaje || 0);
+      const clampedPct = Math.max(0, Math.min(pct, 100));
       motion.animateCounter(kpiOcupacion, pct, { suffix: '%' });
-      kpiProgressBar.style.width = `${Math.min(pct, 100)}%`;
+      kpiProgressBar.style.width = `${clampedPct}%`;
+      kpiProgressBar.dataset.progress = `${clampedPct}%`;
+      kpiProgressBar.parentElement?.setAttribute('aria-valuenow', String(clampedPct));
       kpiProgressBar.className = 'operational-progress-bar';
       if (pct >= 85) {
         kpiProgressBar.classList.add('is-danger');
@@ -539,6 +564,10 @@ export async function renderOperationalDashboard(container) {
       } else {
         kpiProgressBar.classList.add('is-normal');
       }
+      if (!isBackground || lastOccupancyPct !== clampedPct) {
+        motion.animateProgress(kpiProgressBar, { root: container });
+      }
+      lastOccupancyPct = clampedPct;
 
       kpiDesglose.textContent = `${data.camasOcupadas || 0} ocupadas de ${data.totalCamas || 0} camas`;
       motion.animateCounter(kpiLibresVal, data.camasDisponibles || 0);
@@ -596,14 +625,16 @@ export async function renderOperationalDashboard(container) {
       // Comparación contra estándares legales obligatorios
       if (t2Val > 30) {
         warnT2.style.display = 'inline-flex';
-        warnT2.textContent = `⚠️ Excede norma (+${t2Val - 30} min)`;
+        warnT2.innerHTML = `${ui.icon('alert-triangle', 'icon icon--xs')} <span>Excede norma (+${t2Val - 30} min)</span>`;
+        if (!isBackground) motion.pulseUrgency(warnT2, { root: container });
       } else {
         warnT2.style.display = 'none';
       }
 
       if (t3Val > 45) {
         warnT3.style.display = 'inline-flex';
-        warnT3.textContent = `⚠️ Excede norma (+${t3Val - 45} min)`;
+        warnT3.innerHTML = `${ui.icon('alert-triangle', 'icon icon--xs')} <span>Excede norma (+${t3Val - 45} min)</span>`;
+        if (!isBackground) motion.pulseUrgency(warnT3, { root: container });
       } else {
         warnT3.style.display = 'none';
       }
@@ -612,6 +643,7 @@ export async function renderOperationalDashboard(container) {
       if (totalAlertas > 0) {
         bannerAlerta.style.display = 'flex';
         textoAlerta.textContent = `Atención: Existen ${totalAlertas} alerta(s) de saturación que requieren intervención inmediata en el hospital.`;
+        if (!isBackground) motion.pulseUrgency(bannerAlerta, { root: container });
         tbodyAlertas.innerHTML = '';
 
         data.alertasActivas.forEach(a => {
@@ -620,25 +652,27 @@ export async function renderOperationalDashboard(container) {
           const severidadBadgeClass = esCritica ? 'badge--cancelled' : 'badge--rescheduled';
 
           tr.innerHTML = `
-            <td>
+            <td data-label="Hora">
               <div class="font-medium text-sm">${formatTime(a.creadoAt)}</div>
             </td>
-            <td>
+            <td data-label="Severidad">
               <span class="badge ${severidadBadgeClass}">
                 ${esCritica ? ui.icon('alert-triangle', 'icon icon--sm') : ui.icon('alert-circle', 'icon icon--sm')}
                 ${esc(a.nivelSeveridad)}
               </span>
             </td>
-            <td><strong>${esc(a.tipoAlerta)}</strong></td>
-            <td style="max-width: 380px;">${esc(a.mensaje)}</td>
-            <td><span class="badge badge--scheduled">${esc(a.estado)}</span></td>
-            <td style="text-align: right;">
-              <button type="button" 
-                      class="btn btn-secondary btn--sm btn-ack-alerta" 
-                      data-id="${esc(a.publicId)}" 
-                      data-tipo="${esc(a.tipoAlerta)}">
-                Reconocer (ACK)
-              </button>
+            <td data-label="Tipo de Alerta"><strong>${esc(a.tipoAlerta)}</strong></td>
+            <td data-label="Mensaje" style="max-width: 380px;">${esc(a.mensaje)}</td>
+            <td data-label="Estado"><span class="badge badge--scheduled">${esc(a.estado)}</span></td>
+            <td data-label="Acción" style="text-align: right;">
+              <div class="table-actions">
+                <button type="button" 
+                        class="btn btn-secondary btn--sm btn-ack-alerta" 
+                        data-id="${esc(a.publicId)}" 
+                        data-tipo="${esc(a.tipoAlerta)}">
+                  Reconocer (ACK)
+                </button>
+              </div>
             </td>
           `;
           tbodyAlertas.appendChild(tr);
@@ -670,6 +704,13 @@ export async function renderOperationalDashboard(container) {
         console.warn('Servicio de analítica en sincronización:', err);
         bannerAlerta.style.display = 'flex';
         textoAlerta.textContent = 'Centro de Mando: El servicio de analítica hospitalaria en tiempo real se encuentra en inicialización o sincronización con la base de datos central.';
+        tbodyAlertas.innerHTML = `
+          <tr>
+            <td colspan="6" style="text-align: center; color: var(--text-muted); padding: var(--space-6);">
+              <span>Servicio de alertas en sincronización con el servidor central.</span>
+            </td>
+          </tr>
+        `;
       }
     }
   }
@@ -685,11 +726,12 @@ export async function renderOperationalDashboard(container) {
           Esta acción quedará registrada en el log inmutable de auditoría con su usuario y dirección IP.
         </p>
         <div class="form-group">
-          <label for="txtMotivoAckModal" class="form-label required">Motivo o acción de mitigación tomada:</label>
+          <label for="txtMotivoAckModal" class="label-required">Motivo o acción de mitigación tomada:</label>
           <textarea id="txtMotivoAckModal" 
-                    class="form-control" 
+                    class="form-textarea" 
                     rows="3" 
                     placeholder="Ejemplo: Se activaron 4 camas de expansión en observación y se reforzó el triaje con personal médico adicional." 
+                    autofocus
                     required></textarea>
         </div>
       </div>
@@ -723,6 +765,7 @@ export async function renderOperationalDashboard(container) {
   // Módulo de Consulta de QR de Manilla / Cabecera (O03)
   const formScan = container.querySelector('#form-scan-qr');
   const inputToken = container.querySelector('#input-token-qr');
+  const btnConsultarQr = container.querySelector('#btnConsultarQr');
   const btnOpenQrScanner = container.querySelector('#btnOpenQrScanner');
   const resScan = container.querySelector('#resultado-qr-track');
   const qrIdProv = container.querySelector('#qr-id-prov');
@@ -744,26 +787,34 @@ export async function renderOperationalDashboard(container) {
     }
 
     const token = parsed?.token || raw;
+    ui.setButtonLoading(btnConsultarQr, true);
     try {
       const qrData = await operationalApi.consultarTrackingQr(token);
       resScan.style.display = 'block';
       qrIdProv.textContent = qrData.codigoIdentidadProvisional || 'Paciente Asistencial';
       qrUbicacion.textContent = qrData.ubicacionActual || 'Ubicación intrahospitalaria pendiente';
       
-      const nivel = qrData.nivelTriaje || 'I';
+      const nivel = String(qrData.nivelTriaje || 'I').toUpperCase();
       qrNivel.textContent = `Triaje ${nivel}`;
-      qrNivel.className = `badge badge--scheduled`;
-      if (nivel === 'I') qrNivel.style.borderLeft = '3px solid var(--triage-1-bd)';
-      else if (nivel === 'II') qrNivel.style.borderLeft = '3px solid var(--triage-2-bd)';
-      else if (nivel === 'III') qrNivel.style.borderLeft = '3px solid var(--triage-3-bd)';
+      qrNivel.style.borderLeft = '';
+      if (['I', 'II', 'III', 'IV', 'V'].includes(nivel)) {
+        qrNivel.className = `badge badge--triage-${nivel.toLowerCase()}`;
+      } else {
+        qrNivel.className = 'badge badge--scheduled';
+      }
 
       qrSedeVal.textContent = qrData.sedeNombre || hospitalNameEl?.textContent || 'Hospital';
       qrTokenVal.textContent = qrData.tokenQr;
+      motion.stepTransition(resScan, 'forward');
 
       ui.showToast('Localización intrahospitalaria verificada con éxito.', 'success', 2500);
     } catch (err) {
       resScan.style.display = 'none';
+      qrNivel.className = 'badge badge--neutral';
+      qrNivel.style.borderLeft = '';
       ui.showToast(err.message || 'Token QR no encontrado o inválido.', 'error');
+    } finally {
+      ui.setButtonLoading(btnConsultarQr, false);
     }
   };
 

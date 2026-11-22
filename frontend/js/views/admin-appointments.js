@@ -8,6 +8,7 @@
  */
 
 import { api } from '../api.js';
+import { motion } from '../motion.js';
 import { ui, esc } from '../ui.js';
 
 /** Altura base en píxeles por cada hora en la cuadrícula (1h = 96px, 30m = 48px, 1m = 1.6px) */
@@ -192,6 +193,15 @@ function citaStatusBadge(estado) {
   return `<span class="badge ${meta.badgeClass}">${ui.icon(meta.iconName, 'icon icon--xs')} ${esc(meta.label)}</span>`;
 }
 
+/** Clase semántica de badge según nivel de triaje I-V o 1-5. */
+function triageBadgeClass(nivel) {
+  const n = String(nivel || '').trim().toUpperCase();
+  if (['1', '2', '3', '4', '5', 'I', 'II', 'III', 'IV', 'V'].includes(n)) {
+    return `badge--triage-${n.toLowerCase()}`;
+  }
+  return 'badge--scheduled';
+}
+
 /** Calcula el rango de horas operativo del centro (base 08:00 a 18:00 o dinámico si hay citas más temprano/tarde). */
 function computeOperatingHours(citas) {
   let minH = 8;
@@ -344,11 +354,24 @@ export async function renderAdminAppointments(container) {
     filtroProfesional: '',
     busquedaPaciente: '',
     citas: [],
+    kpiCitas: [],
+    kpiCacheKey: '',
     specialties: [],
     professionals: [],
     activeKpiFilter: '',
     timerNowId: null
   };
+
+  const cleanupAppointmentsTimers = () => {
+    if (!window.location.hash.includes('/admin/appointments')) {
+      if (state.timerNowId) {
+        clearInterval(state.timerNowId);
+        state.timerNowId = null;
+      }
+      window.removeEventListener('hashchange', cleanupAppointmentsTimers);
+    }
+  };
+  window.addEventListener('hashchange', cleanupAppointmentsTimers);
 
   // Cargar catálogos iniciales para los filtros (especialidades y profesionales)
   try {
@@ -473,50 +496,70 @@ export async function renderAdminAppointments(container) {
   const inputSearchPaciente = container.querySelector('#inputSearchPaciente');
   const kpiBarEl = container.querySelector('#calendarKpiBar');
 
-  // Actualización de métricas en la barra KPI
+  // Actualización de métricas en la barra KPI (conserva totales sin filtrar por estado)
   function updateKpiBar(citas) {
-    const total = citas.length;
-    const programadas = citas.filter(c => c.estado === 'PROGRAMADA').length;
-    const confirmadas = citas.filter(c => c.estado === 'CONFIRMADA').length;
-    const atendidas = citas.filter(c => c.estado === 'ATENDIDA').length;
-    const canceladas = citas.filter(c => c.estado === 'CANCELADA').length;
-    const noAsistio = citas.filter(c => c.estado === 'NO_ASISTIO').length;
+    const counts = {
+      '': citas.length,
+      'PROGRAMADA': citas.filter(c => c.estado === 'PROGRAMADA').length,
+      'CONFIRMADA': citas.filter(c => c.estado === 'CONFIRMADA').length,
+      'ATENDIDA': citas.filter(c => c.estado === 'ATENDIDA').length,
+      'CANCELADA': citas.filter(c => c.estado === 'CANCELADA').length,
+      'NO_ASISTIO': citas.filter(c => c.estado === 'NO_ASISTIO').length
+    };
 
-    kpiBarEl.innerHTML = `
-      <div class="calendar-kpi-card ${state.filtroEstado === '' ? 'is-active' : ''}" data-status="">
-        <span class="calendar-kpi-label">${ui.icon('calendar', 'icon icon--xs')} Total Citas</span>
-        <span class="calendar-kpi-value text-primary">${total}</span>
-      </div>
-      <div class="calendar-kpi-card ${state.filtroEstado === 'PROGRAMADA' ? 'is-active' : ''}" data-status="PROGRAMADA">
-        <span class="calendar-kpi-label">${ui.icon('clock', 'icon icon--xs')} Programadas</span>
-        <span class="calendar-kpi-value">${programadas}</span>
-      </div>
-      <div class="calendar-kpi-card ${state.filtroEstado === 'CONFIRMADA' ? 'is-active' : ''}" data-status="CONFIRMADA">
-        <span class="calendar-kpi-label">${ui.icon('check', 'icon icon--xs text-success')} Confirmadas</span>
-        <span class="calendar-kpi-value text-success">${confirmadas}</span>
-      </div>
-      <div class="calendar-kpi-card ${state.filtroEstado === 'ATENDIDA' ? 'is-active' : ''}" data-status="ATENDIDA">
-        <span class="calendar-kpi-label">${ui.icon('activity', 'icon icon--xs text-info')} Atendidas</span>
-        <span class="calendar-kpi-value text-info">${atendidas}</span>
-      </div>
-      <div class="calendar-kpi-card ${state.filtroEstado === 'CANCELADA' ? 'is-active' : ''}" data-status="CANCELADA">
-        <span class="calendar-kpi-label">${ui.icon('x', 'icon icon--xs text-danger')} Canceladas</span>
-        <span class="calendar-kpi-value text-danger">${canceladas}</span>
-      </div>
-      <div class="calendar-kpi-card ${state.filtroEstado === 'NO_ASISTIO' ? 'is-active' : ''}" data-status="NO_ASISTIO">
-        <span class="calendar-kpi-label">${ui.icon('alert-circle', 'icon icon--xs text-warning')} No asistió</span>
-        <span class="calendar-kpi-value text-warning">${noAsistio}</span>
-      </div>
-    `;
+    if (!kpiBarEl.querySelector('.calendar-kpi-card')) {
+      kpiBarEl.innerHTML = `
+        <div class="calendar-kpi-card ${state.filtroEstado === '' ? 'is-active' : ''}" data-status="" role="button" tabindex="0">
+          <span class="calendar-kpi-label">${ui.icon('calendar', 'icon icon--xs')} Total Citas</span>
+          <span class="calendar-kpi-value tabular-nums text-primary" data-kpi-key="">0</span>
+        </div>
+        <div class="calendar-kpi-card ${state.filtroEstado === 'PROGRAMADA' ? 'is-active' : ''}" data-status="PROGRAMADA" role="button" tabindex="0">
+          <span class="calendar-kpi-label">${ui.icon('clock', 'icon icon--xs')} Programadas</span>
+          <span class="calendar-kpi-value tabular-nums" data-kpi-key="PROGRAMADA">0</span>
+        </div>
+        <div class="calendar-kpi-card ${state.filtroEstado === 'CONFIRMADA' ? 'is-active' : ''}" data-status="CONFIRMADA" role="button" tabindex="0">
+          <span class="calendar-kpi-label">${ui.icon('check', 'icon icon--xs text-success')} Confirmadas</span>
+          <span class="calendar-kpi-value tabular-nums text-success" data-kpi-key="CONFIRMADA">0</span>
+        </div>
+        <div class="calendar-kpi-card ${state.filtroEstado === 'ATENDIDA' ? 'is-active' : ''}" data-status="ATENDIDA" role="button" tabindex="0">
+          <span class="calendar-kpi-label">${ui.icon('activity', 'icon icon--xs text-info')} Atendidas</span>
+          <span class="calendar-kpi-value tabular-nums text-info" data-kpi-key="ATENDIDA">0</span>
+        </div>
+        <div class="calendar-kpi-card ${state.filtroEstado === 'CANCELADA' ? 'is-active' : ''}" data-status="CANCELADA" role="button" tabindex="0">
+          <span class="calendar-kpi-label">${ui.icon('x', 'icon icon--xs text-danger')} Canceladas</span>
+          <span class="calendar-kpi-value tabular-nums text-danger" data-kpi-key="CANCELADA">0</span>
+        </div>
+        <div class="calendar-kpi-card ${state.filtroEstado === 'NO_ASISTIO' ? 'is-active' : ''}" data-status="NO_ASISTIO" role="button" tabindex="0">
+          <span class="calendar-kpi-label">${ui.icon('alert-circle', 'icon icon--xs text-warning')} No asistió</span>
+          <span class="calendar-kpi-value tabular-nums text-warning" data-kpi-key="NO_ASISTIO">0</span>
+        </div>
+      `;
 
-    // Conectar clic en KPI para filtrar rápidamente
-    kpiBarEl.querySelectorAll('.calendar-kpi-card').forEach(card => {
-      card.addEventListener('click', () => {
+      const applyKpiFilter = (card) => {
         const targetStatus = card.getAttribute('data-status');
         selectFilterEstado.value = targetStatus;
         state.filtroEstado = targetStatus;
         loadAndRender();
+      };
+
+      kpiBarEl.querySelectorAll('.calendar-kpi-card').forEach(card => {
+        card.addEventListener('click', () => applyKpiFilter(card));
+        card.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            applyKpiFilter(card);
+          }
+        });
       });
+    }
+
+    kpiBarEl.querySelectorAll('.calendar-kpi-card').forEach(card => {
+      const statusKey = card.getAttribute('data-status') || '';
+      card.classList.toggle('is-active', state.filtroEstado === statusKey);
+      const valEl = card.querySelector('.calendar-kpi-value');
+      if (valEl) {
+        motion.animateCounter(valEl, counts[statusKey] ?? 0, { root: container });
+      }
     });
   }
 
@@ -535,7 +578,7 @@ export async function renderAdminAppointments(container) {
 
   // Carga y renderizado
   async function loadAndRender() {
-    ui.renderLoading(viewportEl, 'Actualizando cuadrícula de citas médicas...');
+    ui.renderSkeleton(viewportEl, 'table');
 
     let desde;
     let hasta;
@@ -564,10 +607,31 @@ export async function renderAdminAppointments(container) {
       if (state.filtroEspecialidad) params.especialidadPublicId = state.filtroEspecialidad;
       if (state.filtroProfesional) params.profesionalPublicId = state.filtroProfesional;
 
-      const res = await api.get('/admin/appointments', params);
+      const kpiKey = `${desde}|${hasta}|${state.filtroEspecialidad}|${state.filtroProfesional}`;
+      const needsKpiFetch = Boolean(state.filtroEstado) && state.kpiCacheKey !== kpiKey;
+
+      let res;
+      if (needsKpiFetch) {
+        const kpiParams = { ...params };
+        delete kpiParams.estado;
+        const [filteredRes, allRes] = await Promise.all([
+          api.get('/admin/appointments', params),
+          api.get('/admin/appointments', kpiParams)
+        ]);
+        res = filteredRes;
+        state.kpiCitas = allRes?.content || [];
+        state.kpiCacheKey = kpiKey;
+      } else {
+        res = await api.get('/admin/appointments', params);
+        if (!state.filtroEstado) {
+          state.kpiCitas = res?.content || [];
+          state.kpiCacheKey = kpiKey;
+        }
+      }
+
       state.citas = res?.content || [];
 
-      updateKpiBar(state.citas);
+      updateKpiBar(state.kpiCitas);
       renderCurrentView();
     } catch (err) {
       ui.renderError(viewportEl, {
@@ -748,6 +812,14 @@ export async function renderAdminAppointments(container) {
     // Conectar clics a citas para abrir modal de detalle
     attachCitaClickListeners();
 
+    motion.staggerCards(viewportEl.querySelectorAll('.calendar-event-block'), {
+      delayStep: 12,
+      maxDelay: 140,
+      duration: 220,
+      y: 8,
+      root: container
+    });
+
     // Conectar tabs de días en móvil para scroll horizontal suave
     viewportEl.querySelectorAll('.calendar-day-tab-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -893,7 +965,7 @@ export async function renderAdminAppointments(container) {
                       <span>•</span>
                       <span>${esc(c.especialidadNombre)}</span>
                       ${c.triajeNivel ? `
-                        <span class="badge badge--scheduled" style="font-size: 9px; padding: 0 4px;">Triaje Nivel ${esc(c.triajeNivel)}</span>
+                        <span class="badge ${triageBadgeClass(c.triajeNivel)}" style="font-size: 9px; padding: 0 4px;">Triaje Nivel ${esc(c.triajeNivel)}</span>
                       ` : ''}
                     </div>
 
@@ -913,6 +985,13 @@ export async function renderAdminAppointments(container) {
 
     attachNowIndicator(startHour, endHour);
     attachCitaClickListeners();
+    motion.staggerCards(viewportEl.querySelectorAll('.calendar-event-block'), {
+      delayStep: 12,
+      maxDelay: 140,
+      duration: 220,
+      y: 8,
+      root: container
+    });
   }
 
   // Indicador horizontal dinámico de hora actual ("Ahora")
@@ -925,6 +1004,13 @@ export async function renderAdminAppointments(container) {
     const todayStr = todayBogota();
 
     function updateIndicator() {
+      if (!viewportEl.isConnected) {
+        if (state.timerNowId) {
+          clearInterval(state.timerNowId);
+          state.timerNowId = null;
+        }
+        return;
+      }
       const nowInfo = getCurrentBogotaTime();
       const slot = viewportEl.querySelector(`.now-indicator-slot[data-day="${todayStr}"]`);
       if (!slot) return;
@@ -937,6 +1023,8 @@ export async function renderAdminAppointments(container) {
             <div class="calendar-now-line"></div>
           </div>
         `;
+        const nowBadge = slot.querySelector('.calendar-now-badge');
+        if (nowBadge) motion.pulseSubtle(nowBadge);
       } else {
         slot.innerHTML = '';
       }
@@ -981,9 +1069,9 @@ export async function renderAdminAppointments(container) {
     }
 
     const bodyHtml = `
-      <div class="p-4" style="max-height: 78vh; overflow-y: auto;">
+      <div style="max-height: 78vh; overflow-y: auto;">
         <!-- Cabecera de Identificación y Estado -->
-        <div class="flex items-center justify-between pb-3 border-b mb-4">
+        <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b mb-4">
           <div>
             <span class="text-xs text-muted font-bold uppercase tracking-wider block">Identificador de la Cita</span>
             <span class="font-mono font-bold text-sm text-primary">${esc(c.citaPublicId || c.publicId)}</span>
@@ -1046,9 +1134,9 @@ export async function renderAdminAppointments(container) {
           <p class="text-sm m-0 mb-2">
             ${c.motivoConsulta ? esc(c.motivoConsulta) : 'Consulta médica programada por el paciente.'}
           </p>
-          <div class="flex items-center gap-2">
+          <div class="flex flex-wrap items-center gap-2">
             ${c.triajeNivel ? `
-              <span class="badge badge--scheduled text-xs">Clasificación Triaje: Nivel ${esc(c.triajeNivel)}</span>
+              <span class="badge ${triageBadgeClass(c.triajeNivel)} text-xs">Clasificación Triaje: Nivel ${esc(c.triajeNivel)}</span>
             ` : '<span class="badge badge--neutral text-xs">Sin triaje preliminar</span>'}
             ${c.triajePublicId ? `
               <span class="text-xs text-muted font-mono">Ref: ${esc(c.triajePublicId.slice(0, 8))}...</span>
@@ -1073,7 +1161,7 @@ export async function renderAdminAppointments(container) {
 
         ${(c.estado === 'PROGRAMADA' && c.fechaHoraInicio && new Date(c.fechaHoraInicio).getTime() <= Date.now()) ? `
           <div class="mt-4 pt-3 border-t flex justify-end">
-            <button type="button" id="btnAdminNoShow" class="btn btn-secondary btn--sm" style="color: var(--danger); border-color: var(--danger-bg);" title="Registrar que el paciente no se presentó a su cita médica">
+            <button type="button" id="btnAdminNoShow" class="btn btn-secondary btn--sm" style="color: var(--danger); border-color: var(--danger-border);" title="Registrar que el paciente no se presentó a su cita médica">
               ${ui.icon('alert-circle', 'icon icon--sm')}
               <span>Marcar no asistió</span>
             </button>
@@ -1114,9 +1202,10 @@ export async function renderAdminAppointments(container) {
             try {
               await api.patch(`/appointments/${c.publicId}/no-show`);
               ui.showToast('Inasistencia registrada exitosamente.', 'success');
-              await loadAppointments();
+              await loadAndRender();
             } catch (err) {
               ui.showToast(err.message || 'No fue posible registrar la inasistencia.', 'danger');
+              return false;
             }
           }
         });
@@ -1130,7 +1219,7 @@ export async function renderAdminAppointments(container) {
     const { monday, sunday } = getWeekRange(state.selectedDate);
 
     const exportHtml = `
-      <div class="p-4">
+      <div>
         <p class="text-sm text-muted mb-4">
           Descarga un reporte consolidado en archivo compatible nativamente con Microsoft Excel con codificación UTF-8 BOM y delimitadores estándar.
         </p>
@@ -1153,7 +1242,7 @@ export async function renderAdminAppointments(container) {
           </div>
 
           <!-- Rango Personalizado -->
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 grid-cols-2-md gap-3">
             <div class="form-group m-0">
               <label for="exportFechaDesde" class="form-label text-xs">Fecha Desde</label>
               <input type="date" id="exportFechaDesde" class="form-input text-xs" value="${monday}" required>
@@ -1204,7 +1293,11 @@ export async function renderAdminAppointments(container) {
 
         if (!fDesde || !fHasta) {
           ui.showToast('Por favor selecciona las fechas inicial y final para la exportación.', 'warning');
-          return;
+          return false;
+        }
+        if (fDesde > fHasta) {
+          ui.showToast('La fecha desde no puede ser posterior a la fecha hasta.', 'warning');
+          return false;
         }
 
         try {
@@ -1239,9 +1332,10 @@ export async function renderAdminAppointments(container) {
           a.remove();
           window.URL.revokeObjectURL(blobUrl);
 
-          ui.showToast('Archivo Excel descargado exitosamente.', 'confirmed');
+          ui.showToast('Archivo Excel descargado exitosamente.', 'success');
         } catch (err) {
-          ui.showToast(err.message || 'No fue posible exportar las citas médicas.', 'danger');
+          ui.showToast(err.message || 'No fue posible exportar las citas médicas.', 'error');
+          return false;
         }
       }
     });

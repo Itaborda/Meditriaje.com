@@ -6,8 +6,9 @@
 
 import { api } from '../api.js';
 import { auth } from '../auth.js';
+import { motion } from '../motion.js';
 import { router } from '../router.js';
-import { ui } from '../ui.js';
+import { ui, esc } from '../ui.js';
 
 let appointmentsState = {
   citas: [],
@@ -95,7 +96,7 @@ function getStatusBadge(estado) {
     case 'NO_ASISTIO':
       return `<span class="badge badge--cancelled">${ui.icon('alert-circle', 'icon icon--sm')} No Asistió</span>`;
     default:
-      return `<span class="badge badge--neutral">${estado}</span>`;
+      return `<span class="badge badge--neutral">${esc(estado)}</span>`;
   }
 }
 
@@ -104,8 +105,15 @@ function getStatusBadge(estado) {
  * @param {HTMLElement} container Contenedor DOM
  */
 export async function patientAppointmentsView(container) {
+  appointmentsState.page = 0;
+
   container.innerHTML = `
     <div style="max-width: var(--container); margin: 0 auto; padding-top: var(--space-4); padding-bottom: var(--space-12);">
+      <nav class="breadcrumb" aria-label="Ruta de navegación">
+        <a href="#/patient/dashboard">Inicio</a>
+        <span class="breadcrumb-separator" aria-hidden="true">/</span>
+        <span class="breadcrumb-current">Mis Citas Médicas</span>
+      </nav>
       
       <!-- Encabezado con acción rápida -->
       <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
@@ -128,25 +136,22 @@ export async function patientAppointmentsView(container) {
       <!-- Filtros rápidos por estado de cita -->
       <div class="flex flex-wrap items-center justify-between gap-4 mb-6 pb-3 border-b">
         <div class="chip-group" id="appointmentStatusFilters">
-          <button type="button" class="chip ${appointmentsState.filterStatus === 'TODAS' ? 'is-selected' : ''}" data-status="TODAS">
+          <button type="button" class="chip ${appointmentsState.filterStatus === 'TODAS' ? 'is-selected' : ''}" data-status="TODAS" aria-pressed="${appointmentsState.filterStatus === 'TODAS'}">
             Todas
           </button>
-          <button type="button" class="chip ${appointmentsState.filterStatus === 'ACTIVAS' ? 'is-selected' : ''}" data-status="ACTIVAS">
+          <button type="button" class="chip ${appointmentsState.filterStatus === 'ACTIVAS' ? 'is-selected' : ''}" data-status="ACTIVAS" aria-pressed="${appointmentsState.filterStatus === 'ACTIVAS'}">
             Próximas y Activas
           </button>
-          <button type="button" class="chip ${appointmentsState.filterStatus === 'HISTORICAS' ? 'is-selected' : ''}" data-status="HISTORICAS">
+          <button type="button" class="chip ${appointmentsState.filterStatus === 'HISTORICAS' ? 'is-selected' : ''}" data-status="HISTORICAS" aria-pressed="${appointmentsState.filterStatus === 'HISTORICAS'}">
             Finalizadas y Canceladas
           </button>
         </div>
 
-        <span id="appointmentCountBadge" class="text-xs text-muted font-medium"></span>
+        <span id="appointmentCountBadge" class="text-xs text-muted font-medium tabular-nums"></span>
       </div>
 
       <!-- Contenedor dinámico de listado -->
-      <div id="appointmentsListContainer">
-        <div class="skeleton skeleton-card" style="height: 140px; margin-bottom: var(--space-4);"></div>
-        <div class="skeleton skeleton-card" style="height: 140px;"></div>
-      </div>
+      <div id="appointmentsListContainer"></div>
     </div>
   `;
 
@@ -159,8 +164,7 @@ export async function patientAppointmentsView(container) {
  */
 async function loadAppointments(container) {
   const listContainer = container.querySelector('#appointmentsListContainer');
-  const countBadge = container.querySelector('#appointmentCountBadge');
-  ui.renderLoading(listContainer, 'Cargando tus citas médicas...');
+  ui.renderSkeleton(listContainer, 'cards');
 
   try {
     const res = await api.get('/patients/me/appointments', {
@@ -170,17 +174,13 @@ async function loadAppointments(container) {
 
     appointmentsState.citas = res?.content || [];
     appointmentsState.totalPages = res?.totalPages || 1;
-    appointmentsState.totalElements = res?.totalElements || 0;
-
-    if (countBadge) {
-      countBadge.textContent = `${appointmentsState.totalElements} cita(s) en total`;
-    }
+    appointmentsState.totalElements = res?.totalElements ?? appointmentsState.citas.length;
 
     renderAppointmentsList(container);
   } catch (err) {
     ui.renderError(listContainer, {
       title: 'No fue posible cargar tus citas',
-      message: err.message || 'Ocurrió un error al obtener la lista de citas.',
+      message: esc(err.message || 'Ocurrió un error al obtener la lista de citas.'),
       onRetry: () => loadAppointments(container)
     });
   }
@@ -192,8 +192,12 @@ async function loadAppointments(container) {
 function setupFilterListeners(container) {
   container.querySelectorAll('#appointmentStatusFilters button').forEach(btn => {
     btn.addEventListener('click', () => {
-      container.querySelectorAll('#appointmentStatusFilters button').forEach(b => b.classList.remove('is-selected'));
+      container.querySelectorAll('#appointmentStatusFilters button').forEach(b => {
+        b.classList.remove('is-selected');
+        b.setAttribute('aria-pressed', 'false');
+      });
       btn.classList.add('is-selected');
+      btn.setAttribute('aria-pressed', 'true');
       appointmentsState.filterStatus = btn.getAttribute('data-status');
       renderAppointmentsList(container);
     });
@@ -205,6 +209,7 @@ function setupFilterListeners(container) {
  */
 function renderAppointmentsList(container) {
   const listContainer = container.querySelector('#appointmentsListContainer');
+  const countBadge = container.querySelector('#appointmentCountBadge');
   if (!listContainer) return;
 
   // Aplicar filtro de estado
@@ -213,6 +218,13 @@ function renderAppointmentsList(container) {
     filtered = filtered.filter(c => c.estado === 'PROGRAMADA' || c.estado === 'CONFIRMADA');
   } else if (appointmentsState.filterStatus === 'HISTORICAS') {
     filtered = filtered.filter(c => ['ATENDIDA', 'CANCELADA', 'NO_ASISTIO', 'REPROGRAMADA'].includes(c.estado));
+  }
+
+  if (countBadge) {
+    countBadge.textContent = appointmentsState.filterStatus === 'TODAS'
+      ? `${appointmentsState.totalElements} cita(s) en total`
+      : `${filtered.length} de ${appointmentsState.citas.length} cita(s) mostradas`;
+    motion.pulseSubtle(countBadge);
   }
 
   if (filtered.length === 0) {
@@ -232,11 +244,12 @@ function renderAppointmentsList(container) {
         const isTele = cita.modalidad === 'TELEMEDICINA';
         const cancelCheck = checkCancellationAllowed(cita.fechaHoraInicio);
         const isActive = cita.estado === 'PROGRAMADA' || cita.estado === 'CONFIRMADA';
+        const safeId = esc(cita.publicId);
 
         return `
-          <div class="card p-5" id="card-cita-${cita.publicId}" style="border-left: 4px solid ${isActive ? 'var(--primary)' : 'var(--border)'};">
+          <div class="card p-5" id="card-cita-${safeId}" style="border-left: 4px solid ${isActive ? 'var(--primary)' : 'var(--border)'};">
             <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b mb-3">
-              <div class="flex items-center gap-2">
+              <div class="flex flex-wrap items-center gap-2">
                 ${getStatusBadge(cita.estado)}
                 <span class="badge ${isTele ? 'badge--rescheduled' : 'badge--neutral'} text-xs">
                   ${isTele ? 'Telemedicina' : 'Presencial'}
@@ -247,7 +260,7 @@ function renderAppointmentsList(container) {
                   </span>
                 ` : ''}
               </div>
-              <span class="text-xs text-muted font-mono">ID: ${cita.publicId.slice(0, 8)}</span>
+              <span class="text-xs text-muted font-mono">ID: ${esc(cita.publicId?.slice(0, 8) || '')}</span>
             </div>
 
             <div class="grid grid-cols-1 grid-cols-3-md gap-4 items-center">
@@ -255,29 +268,29 @@ function renderAppointmentsList(container) {
               <div>
                 <span class="text-xs text-muted font-bold uppercase tracking-wider block">Fecha y Hora:</span>
                 <p class="text-md font-bold m-0 text-text capitalize">
-                  ${formatAppointmentDate(cita.fechaHoraInicio)}
+                  ${esc(formatAppointmentDate(cita.fechaHoraInicio))}
                 </p>
               </div>
 
               <!-- Profesional y Especialidad -->
               <div>
                 <span class="text-xs text-muted font-bold uppercase tracking-wider block">Profesional:</span>
-                <p class="text-md font-semibold m-0">${cita.profesionalNombre || 'Profesional Asistencial'}</p>
-                <span class="badge badge--neutral text-xs">${cita.especialidadNombre || 'Medicina'}</span>
+                <p class="text-md font-semibold m-0">${esc(cita.profesionalNombre || 'Profesional Asistencial')}</p>
+                <span class="badge badge--neutral text-xs">${esc(cita.especialidadNombre || 'Medicina')}</span>
               </div>
 
               <!-- Sede y Ubicación -->
               <div>
                 <span class="text-xs text-muted font-bold uppercase tracking-wider block">Lugar:</span>
-                <p class="text-sm font-semibold m-0">${cita.sedeNombre || 'Centro Médico'}</p>
-                <p class="text-xs text-muted m-0">${cita.sedeDireccion || 'Consultorio asignado'}</p>
+                <p class="text-sm font-semibold m-0">${esc(cita.sedeNombre || 'Centro Médico')}</p>
+                <p class="text-xs text-muted m-0">${esc(cita.sedeDireccion || 'Consultorio asignado')}</p>
               </div>
             </div>
 
             ${cita.estado === 'CANCELADA' && cita.motivoCancelacion ? `
               <div class="alert alert--neutral mt-4 p-3" style="font-size: var(--text-xs);">
                 <strong class="text-muted block">Motivo de cancelación:</strong>
-                <span>${cita.motivoCancelacion}</span>
+                <span>${esc(cita.motivoCancelacion)}</span>
               </div>
             ` : ''}
 
@@ -288,11 +301,11 @@ function renderAppointmentsList(container) {
                   <span class="text-xs text-muted">
                     Puedes cancelar o reprogramar esta cita hasta 2 horas antes del inicio programado.
                   </span>
-                  <div class="flex items-center gap-2">
+                  <div class="flex flex-wrap items-center gap-2">
                     <button 
                       type="button" 
                       class="btn btn-secondary btn--sm btn-reschedule-appointment" 
-                      data-cita-id="${cita.publicId}"
+                      data-cita-id="${safeId}"
                     >
                       ${ui.icon('calendar', 'icon icon--sm')}
                       <span>Reprogramar</span>
@@ -300,8 +313,8 @@ function renderAppointmentsList(container) {
                     <button 
                       type="button" 
                       class="btn btn-secondary btn--sm btn-cancel-appointment" 
-                      data-cita-id="${cita.publicId}"
-                      style="color: var(--danger); border-color: var(--danger-bg);"
+                      data-cita-id="${safeId}"
+                      style="color: var(--danger); border-color: var(--danger-border);"
                     >
                       ${ui.icon('x', 'icon icon--sm')}
                       <span>Cancelar cita</span>
@@ -310,9 +323,9 @@ function renderAppointmentsList(container) {
                 ` : `
                   <div class="flex items-center gap-2 text-xs text-muted" role="note">
                     ${ui.icon('info', 'icon icon--sm')}
-                    <span>${cancelCheck.reason}</span>
+                    <span>${esc(cancelCheck.reason)}</span>
                   </div>
-                  <button type="button" class="btn btn-secondary btn--sm" disabled title="${cancelCheck.reason}">
+                  <button type="button" class="btn btn-secondary btn--sm" disabled title="${esc(cancelCheck.reason)}">
                     <span>Cancelar cita</span>
                   </button>
                 `}
@@ -322,7 +335,41 @@ function renderAppointmentsList(container) {
         `;
       }).join('')}
     </div>
+
+    ${appointmentsState.totalPages > 1 ? `
+      <div class="pagination-bar" role="navigation" aria-label="Paginación de citas">
+        <span class="text-xs text-muted tabular-nums">
+          Página ${appointmentsState.page + 1} de ${appointmentsState.totalPages} · ${appointmentsState.totalElements} cita(s)
+        </span>
+        <div class="flex items-center gap-2">
+          <button type="button" class="btn btn-secondary btn--sm btn-page-prev" ${appointmentsState.page <= 0 ? 'disabled' : ''}>
+            ${ui.icon('chevron-left', 'icon icon--sm')}
+            <span>Anterior</span>
+          </button>
+          <button type="button" class="btn btn-secondary btn--sm btn-page-next" ${appointmentsState.page >= appointmentsState.totalPages - 1 ? 'disabled' : ''}>
+            <span>Siguiente</span>
+            ${ui.icon('chevron-right', 'icon icon--sm')}
+          </button>
+        </div>
+      </div>
+    ` : ''}
   `;
+
+  motion.staggerCards(listContainer.querySelectorAll('.card'), { root: container });
+
+  listContainer.querySelector('.btn-page-prev')?.addEventListener('click', async () => {
+    if (appointmentsState.page > 0) {
+      appointmentsState.page--;
+      await loadAppointments(container);
+    }
+  });
+
+  listContainer.querySelector('.btn-page-next')?.addEventListener('click', async () => {
+    if (appointmentsState.page < appointmentsState.totalPages - 1) {
+      appointmentsState.page++;
+      await loadAppointments(container);
+    }
+  });
 
   // Asignar listeners de reprogramación
   listContainer.querySelectorAll('.btn-reschedule-appointment').forEach(btn => {
@@ -356,13 +403,13 @@ function promptCancellation(container, cita) {
   const modalHtml = `
     <div>
       <p class="mb-4">
-        ¿Estás seguro de que deseas cancelar tu cita del <strong class="capitalize">${fechaTexto}</strong> con <strong>${cita.profesionalNombre}</strong>?
+        ¿Estás seguro de que deseas cancelar tu cita del <strong class="capitalize">${esc(fechaTexto)}</strong> con <strong>${esc(cita.profesionalNombre || 'Profesional')}</strong>?
       </p>
       <div class="form-group mb-2">
         <label for="cancelReasonInput" class="form-label text-xs">Motivo de la cancelación (opcional):</label>
         <textarea 
           id="cancelReasonInput" 
-          class="form-input" 
+          class="form-textarea" 
           rows="2" 
           maxlength="255" 
           placeholder="Ej. Inconveniente personal, viaje, mejoría de los síntomas..."
@@ -426,7 +473,7 @@ function promptReschedule(container, cita) {
   const modalHtml = `
     <div>
       <p class="mb-3">
-        Reprogramar cita actual del <strong class="capitalize">${fechaTexto}</strong> con <strong>${cita.profesionalNombre || 'Profesional'}</strong>.
+        Reprogramar cita actual del <strong class="capitalize">${esc(fechaTexto)}</strong> con <strong>${esc(cita.profesionalNombre || 'Profesional')}</strong>.
       </p>
 
       <div class="form-group mb-3">
@@ -442,7 +489,7 @@ function promptReschedule(container, cita) {
 
       <div class="form-group mb-3">
         <label for="rescheduleTimeInput" class="form-label text-xs font-bold">Nueva Hora *</label>
-        <select id="rescheduleTimeInput" class="form-input" required>
+        <select id="rescheduleTimeInput" class="form-select" required>
           <option value="">Selecciona una hora</option>
           <option value="08:00">08:00 AM</option>
           <option value="08:30">08:30 AM</option>
@@ -465,7 +512,7 @@ function promptReschedule(container, cita) {
         <label for="rescheduleReasonInput" class="form-label text-xs">Motivo de reprogramación (opcional):</label>
         <textarea 
           id="rescheduleReasonInput" 
-          class="form-input" 
+          class="form-textarea" 
           rows="2" 
           maxlength="255" 
           placeholder="Ej. Cambio de turno laboral, compromiso imprevisto..."
@@ -490,7 +537,7 @@ function promptReschedule(container, cita) {
 
       if (!fecha || !hora) {
         ui.showToast('Debes seleccionar fecha y hora para reprogramar.', 'warning');
-        return;
+        return false;
       }
 
       await executeReschedule(container, cita.publicId, fecha, hora, motivo);

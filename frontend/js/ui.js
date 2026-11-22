@@ -3,6 +3,8 @@
  * Sistema de Toasts, Modales de Confirmación, Estados de Carga, Vacío y Error.
  */
 
+import { motion } from './motion.js';
+
 // Diccionario de SVGs inline estilo Lucide estándar (sin CDN ni dependencias)
 const ICONS = {
   check: '<path d="M20 6L9 17l-5-5"/>',
@@ -20,6 +22,10 @@ const ICONS = {
   'chevron-right': '<polyline points="9 18 15 12 9 6"/>',
   'chevron-left': '<polyline points="15 18 9 12 15 6"/>',
   'chevron-down': '<polyline points="6 9 12 15 18 9"/>',
+  'chevron-up': '<polyline points="18 15 12 9 6 15"/>',
+  circle: '<circle cx="12" cy="12" r="9"/>',
+  filter: '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
+  trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
   search: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
   sun: '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>',
   moon: '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>',
@@ -108,11 +114,19 @@ export const ui = {
     }
 
     const normalizedType = type === 'danger' ? 'error' : type;
+    const toastIcons = {
+      success: 'check-circle',
+      error: 'alert-circle',
+      warning: 'alert-triangle',
+      info: 'info'
+    };
+    const toastIcon = toastIcons[normalizedType] || 'info';
     const toast = document.createElement('div');
     toast.className = `toast toast--${normalizedType}`;
     toast.setAttribute('role', 'status');
 
     toast.innerHTML = `
+      <span class="toast-icon" aria-hidden="true">${this.icon(toastIcon, 'icon icon--sm')}</span>
       <span class="toast-message">${message}</span>
       <button type="button" class="toast-close" aria-label="Cerrar notificacion">
         ${this.icon('x', 'icon icon--sm')}
@@ -124,6 +138,7 @@ export const ui = {
     });
 
     container.appendChild(toast);
+    motion.animateToastIn(toast);
 
     if (duration > 0) {
       setTimeout(() => {
@@ -131,6 +146,20 @@ export const ui = {
           toast.remove();
         }
       }, duration);
+    }
+  },
+
+  /**
+   * Cierra el modal activo más reciente si existe en el DOM.
+   */
+  closeModal() {
+    const openBackdrops = document.querySelectorAll('#modal-container .modal-backdrop.is-open');
+    const top = openBackdrops[openBackdrops.length - 1];
+    if (!top) return;
+    if (typeof top.__closeModal === 'function') {
+      top.__closeModal();
+    } else {
+      top.remove();
     }
   },
 
@@ -179,15 +208,37 @@ export const ui = {
       </div>
     `;
 
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
     const closeModal = () => {
       document.removeEventListener('keydown', handleKeyDown);
       backdrop.remove();
+      if (previouslyFocused && typeof previouslyFocused.focus === 'function' && previouslyFocused.isConnected) {
+        previouslyFocused.focus();
+      }
     };
+    backdrop.__closeModal = closeModal;
 
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         closeModal();
         onCancel();
+        return;
+      }
+      if (e.key === 'Tab') {
+        const focusables = Array.from(backdrop.querySelectorAll(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        ));
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
       }
     };
 
@@ -226,6 +277,7 @@ export const ui = {
 
     document.addEventListener('keydown', handleKeyDown);
     container.appendChild(backdrop);
+    motion.animateModalOpen(backdrop);
 
     // Foco accesible al campo con autofocus si existe, o al botón de acción
     const focusTarget = backdrop.querySelector('.modal-body [autofocus]')
@@ -268,6 +320,37 @@ export const ui = {
           <div class="skeleton skeleton-text"></div>
         </div>
       `;
+    } else if (type === 'kpis') {
+      container.innerHTML = `
+        <div class="grid grid-cols-2 grid-cols-4-md gap-4 mb-6">
+          ${Array.from({ length: 4 }).map(() => `
+            <div class="card p-4">
+              <div class="skeleton skeleton-text" style="width: 55%;"></div>
+              <div class="skeleton skeleton-title mt-2" style="width: 40%;"></div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    } else if (type === 'cards') {
+      container.innerHTML = `
+        <div class="grid grid-cols-1 grid-cols-2-md gap-4">
+          ${Array.from({ length: 2 }).map(() => `
+            <div class="card">
+              <div class="skeleton skeleton-title" style="width: 50%;"></div>
+              <div class="skeleton skeleton-text" style="width: 90%;"></div>
+              <div class="skeleton skeleton-text" style="width: 70%;"></div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    } else if (type === 'table-rows') {
+      container.innerHTML = Array.from({ length: 4 }).map(() => `
+        <tr>
+          <td colspan="100" style="padding: var(--space-3) var(--space-4);">
+            <div class="skeleton skeleton-text mb-0" style="width: 96%;"></div>
+          </td>
+        </tr>
+      `).join('');
     }
   },
 
@@ -279,6 +362,7 @@ export const ui = {
     title = 'No hay elementos para mostrar',
     description = 'No se encontraron registros en esta seccion.',
     actionText = null,
+    actionUrl = null,
     onAction = null
   }) {
     if (!container) return;
@@ -293,18 +377,28 @@ export const ui = {
       </div>
     `;
 
-    if (actionText && onAction) {
-      container.querySelector('.empty-btn-action').addEventListener('click', onAction);
+    const actionBtn = container.querySelector('.empty-btn-action');
+    if (actionBtn) {
+      if (typeof onAction === 'function') {
+        actionBtn.addEventListener('click', onAction);
+      } else if (actionUrl) {
+        actionBtn.addEventListener('click', () => {
+          window.location.hash = actionUrl.startsWith('#') ? actionUrl : `#${actionUrl}`;
+        });
+      }
     }
   },
 
   /**
-   * Renderiza un mensaje de error con botón de reintento.
+   * Renderiza un mensaje de error con botón de reintento o acción de retorno.
    */
   renderError(container, {
     title = 'No fue posible cargar la información',
     message = 'Ocurrio un problema al comunicarse con el servidor.',
-    onRetry = null
+    onRetry = null,
+    retryText = 'Reintentar',
+    actionText = null,
+    onAction = null
   }) {
     if (!container) return;
     container.innerHTML = `
@@ -313,13 +407,19 @@ export const ui = {
         <div class="alert-content">
           <div class="alert-title">${title}</div>
           <p class="mb-3">${message}</p>
-          ${onRetry ? `<button type="button" class="btn btn-secondary btn--sm btn-retry">Reintentar</button>` : ''}
+          <div class="flex flex-wrap gap-2">
+            ${onRetry ? `<button type="button" class="btn btn-secondary btn--sm btn-retry">${retryText}</button>` : ''}
+            ${actionText && onAction ? `<button type="button" class="btn btn-ghost btn--sm btn-error-action">${actionText}</button>` : ''}
+          </div>
         </div>
       </div>
     `;
 
     if (onRetry) {
-      container.querySelector('.btn-retry').addEventListener('click', onRetry);
+      container.querySelector('.btn-retry')?.addEventListener('click', onRetry);
+    }
+    if (actionText && onAction) {
+      container.querySelector('.btn-error-action')?.addEventListener('click', onAction);
     }
   },
 
