@@ -31,6 +31,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 
@@ -155,7 +156,7 @@ class FollowUpServiceTest {
         CreateFollowUpRequest request = new CreateFollowUpRequest(
                 "CONTROL_MEDICO",
                 "Indicaciones",
-                LocalDate.now().minusDays(1)
+                LocalDate.now(ZoneId.of("America/Bogota")).minusDays(1)
         );
 
         assertThatThrownBy(() -> followUpService.prescribeFollowUp("at-1", request, "usr-prof-1", "127.0.0.1"))
