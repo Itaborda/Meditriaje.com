@@ -57,6 +57,19 @@ public class OperationalController {
     }
 
     /**
+     * O02: Evalúa umbrales de saturación y demora en tiempo real y retorna las alertas activas.
+     */
+    @PostMapping("/alerts/evaluate")
+    @PreAuthorize("hasAnyRole('ROLE_ADMINISTRADOR', 'ROLE_ENFERMERIA', 'ROLE_PROFESIONAL')")
+    public ResponseEntity<List<OperationalAlertResponse>> evaluateAlerts(
+            Authentication auth,
+            HttpServletRequest httpRequest
+    ) {
+        String usuarioPubId = auth != null ? auth.getName() : null;
+        return ResponseEntity.ok(analyticsService.evaluateAndListActiveAlerts(usuarioPubId, extractClientIp(httpRequest)));
+    }
+
+    /**
      * O02: Reconocimiento auditado de una alerta operativa por personal autorizado.
      */
     @PostMapping("/alerts/{alertaPublicId}/acknowledge")

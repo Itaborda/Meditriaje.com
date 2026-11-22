@@ -72,6 +72,28 @@ CREATE OR REPLACE PACKAGE BODY PKG_PATIENTS AS
              WHERE TIPO_DOCUMENTO = p_document_type AND NUMERO_DOCUMENTO = p_document_number;
     END get_patient_by_document;
 
+    PROCEDURE search_patients_by_document(p_document_number IN VARCHAR2, p_document_type IN VARCHAR2,
+                                          o_rows OUT SYS_REFCURSOR) IS
+    BEGIN
+        OPEN o_rows FOR
+            SELECT ID, USUARIO_ID, PUBLIC_ID, TIPO_DOCUMENTO, NUMERO_DOCUMENTO,
+                   NOMBRES, APELLIDOS, FECHA_NACIMIENTO, TELEFONO, CREATED_AT, UPDATED_AT
+              FROM PACIENTE
+             WHERE TRIM(NUMERO_DOCUMENTO) = TRIM(p_document_number)
+               AND (p_document_type IS NULL OR TIPO_DOCUMENTO = p_document_type)
+             ORDER BY CREATED_AT DESC;
+    END search_patients_by_document;
+
+    PROCEDURE link_user_to_patient(p_patient_id IN NUMBER, p_user_id IN NUMBER, o_updated OUT NUMBER) IS
+    BEGIN
+        UPDATE PACIENTE
+           SET USUARIO_ID = p_user_id,
+               UPDATED_AT = CURRENT_TIMESTAMP
+         WHERE ID = p_patient_id
+           AND USUARIO_ID IS NULL;
+        o_updated := SQL%ROWCOUNT;
+    END link_user_to_patient;
+
     -- ---------------------------------------------------------- CONSENTIMIENTO
     PROCEDURE create_consent(p_user_id IN NUMBER, p_text_version IN VARCHAR2, p_accepted IN NUMBER,
                              p_source_ip IN VARCHAR2, o_id OUT NUMBER) IS

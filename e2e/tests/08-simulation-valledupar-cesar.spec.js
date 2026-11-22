@@ -114,8 +114,35 @@ test.describe('Simulación Clínica y Operativa — Valledupar, Cesar (Hospital 
     expect(admisionEnviada.motivoLlegada).toContain('Valledupar');
   });
 
-  test('Paso 2: Valoración presencial de triaje humano Nivel II (Res. 5596) en Urgencias Valledupar', async ({ page }) => {
+  test('Paso 2: Cálculo automático de triaje Nivel II por síntomas (Res. 5596) en Urgencias Valledupar', async ({ page }) => {
     let triajeEnviado = null;
+
+    await page.route('**/api/v1/triage/symptoms', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          { publicId: 'sym-7', codigo: 'FIEBRE', nombre: 'Fiebre', categoria: 'GENERAL', esAlarma: false },
+          { publicId: 'sym-10', codigo: 'DOLOR_CABEZA', nombre: 'Dolor de cabeza', categoria: 'NEUROLOGICO', esAlarma: false },
+          { publicId: 'sym-11', codigo: 'MAREO', nombre: 'Mareo', categoria: 'NEUROLOGICO', esAlarma: false }
+        ])
+      });
+    });
+
+    await page.route('**/api/v1/emergency/triage-assessments/calculate', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          nivel: 'II',
+          rutaSugerida: 'ATENCION_PRIORITARIA',
+          esEmergencia: false,
+          versionReglas: 'v1-prototipo',
+          sintomasAlarma: [],
+          mensaje: 'Se sugiere atención prioritaria.'
+        })
+      });
+    });
 
     await page.route(`**/api/v1/emergency/episodes/${episodioSimuladoId}`, async (route) => {
       await route.fulfill({
@@ -142,11 +169,13 @@ test.describe('Simulación Clínica y Operativa — Valledupar, Cesar (Hospital 
           status: 201,
           contentType: 'application/json',
           body: JSON.stringify({
-            valoracionPublicId: 'trj-valledupar-001',
+            publicId: 'trj-valledupar-001',
             episodioPublicId: episodioSimuladoId,
-            nivelAsignado: 'II',
-            requiereReevaluacion: false,
-            mensaje: 'Triaje Nivel II registrado exitosamente'
+            version: 1,
+            nivel: 'II',
+            sintomas: [
+              { codigo: 'DOLOR_CABEZA', nombre: 'Dolor de cabeza', duracionHoras: 1, intensidad: 9, esAlarma: false }
+            ]
           })
         });
       }
@@ -154,10 +183,12 @@ test.describe('Simulación Clínica y Operativa — Valledupar, Cesar (Hospital 
 
     await page.goto(`/#/nursing/assessment/${episodioSimuladoId}`);
     await expect(page.locator('#formAssessmentTitle')).toContainText('Registro de Valoración de Triaje');
+    await expect(page.locator('input[name="rdoNivel"]')).toHaveCount(0);
 
-    // Nivel II (Urgencia Vital / Prioridad Naranja)
-    const level2Card = page.locator('.select-triage-level[data-level="II"]');
-    await level2Card.click();
+    // Ingresar síntoma intenso para cálculo automático de Nivel II
+    await page.click('#nursingSymptomsList button[data-code="DOLOR_CABEZA"]');
+    await page.click('#selectedSymptomsContainer .scale-btn[data-code="DOLOR_CABEZA"][data-val="9"]');
+    await expect(page.locator('#calculatedPriorityPanel')).toHaveAttribute('data-calculated-level', 'II');
 
     // Signos vitales críticos
     await page.fill('#txtPA', '85/55');
@@ -171,7 +202,10 @@ test.describe('Simulación Clínica y Operativa — Valledupar, Cesar (Hospital 
     await page.click('button[type="submit"]');
 
     expect(triajeEnviado).not.toBeNull();
-    expect(triajeEnviado.nivel).toBe('II');
+    expect(triajeEnviado.nivel).toBeUndefined();
+    expect(triajeEnviado.sintomas).toEqual([
+      { codigo: 'DOLOR_CABEZA', duracionHoras: 1, intensidad: 9 }
+    ]);
     expect(triajeEnviado.presionArterial).toBe('85/55');
     expect(triajeEnviado.escalaGlasgow).toBe(11);
   });

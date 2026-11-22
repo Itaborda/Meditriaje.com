@@ -105,6 +105,18 @@ class PkgPatientsIT {
         PatientProfileResponse perfil = pacientes.findProfileByUserPublicId((String) user[1]).orElseThrow();
         assertThat(perfil.publicId()).isEqualTo(publicId);
         assertThat(perfil.email()).endsWith("@test.co");
+
+        // Paciente presencial sin cuenta MediTriaje (USUARIO_ID nulo) -> búsqueda y vinculación posterior
+        String walkInPub = UUID.randomUUID().toString();
+        Long walkInId = pacientes.create(null, walkInPub, "CC", "900300", "Carlos", "Rojas",
+                LocalDate.of(1988, 3, 12), "3009990000");
+        Patient walkIn = pacientes.findById(walkInId).orElseThrow();
+        assertThat(walkIn.userId()).isNull();
+        assertThat(pacientes.searchByDocument("900300", null)).contains(walkIn);
+
+        Object[] linkedUser = newUser();
+        assertThat(pacientes.linkUserToPatient(walkInId, (Long) linkedUser[0])).isEqualTo(1);
+        assertThat(pacientes.findByUserId((Long) linkedUser[0])).isPresent();
     }
 
     @Test

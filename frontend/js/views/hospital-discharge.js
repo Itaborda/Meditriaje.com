@@ -92,15 +92,18 @@ export async function hospitalDischargeView(container, { params }) {
 
   try {
     const ep = await emergencyApi.obtenerDetalleEpisodio(episodePublicId);
+    const patientName = ep.pacienteNombre || ep.pacienteNombreCompleto || 'Paciente';
+    const epId = ep.episodioPublicId || ep.publicId || episodePublicId;
+    const motivo = ep.motivoConsulta || ep.motivoLlegada || '—';
     document.getElementById('dischargeSummaryCard').innerHTML = `
       <div class="flex items-center justify-between">
         <div>
-          <h1 class="text-xl font-bold m-0">${esc(ep.pacienteNombre || 'Paciente')}</h1>
+          <h1 class="text-xl font-bold m-0">${esc(patientName)}</h1>
           <div class="text-xs text-muted mt-1 font-mono">
-            Episodio: ${esc(ep.episodioPublicId)} · Sede: ${esc(ep.sedeNombre || 'Hospital')}
+            Episodio: ${esc(epId)} · Sede: ${esc(ep.sedeNombre || 'Hospital')}
           </div>
           <div class="text-xs text-muted mt-1">
-            Motivo Ingreso: <strong>${esc(ep.motivoConsulta || '—')}</strong>
+            Motivo Ingreso: <strong>${esc(motivo)}</strong>
           </div>
         </div>
         <span class="badge ${ep.estado === 'HOSPITALIZADO' ? 'badge--in-progress' : 'badge--scheduled'} font-bold">

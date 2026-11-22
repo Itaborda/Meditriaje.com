@@ -294,7 +294,13 @@ export async function renderOperationalDashboard(container) {
             Eventos asistenciales que sobrepasan la capacidad instalada o tiempos máximos de triaje.
           </p>
         </div>
-        <span id="badge-total-alertas" class="badge badge--confirmed">0 alertas activas</span>
+        <div class="flex items-center gap-2">
+          <button type="button" id="btnEvaluateAlerts" class="btn btn-secondary btn--sm" title="Evaluar umbrales actuales de ocupación y demora">
+            ${ui.icon('activity', 'icon icon--sm')}
+            <span>Evaluar Alertas</span>
+          </button>
+          <span id="badge-total-alertas" class="badge badge--confirmed">0 alertas activas</span>
+        </div>
       </div>
 
       <div class="table-container">
@@ -433,6 +439,7 @@ export async function renderOperationalDashboard(container) {
   const warnT3 = container.querySelector('#warn-t3');
 
   const tbodyAlertas = container.querySelector('#tbody-alertas');
+  const btnEvaluateAlerts = container.querySelector('#btnEvaluateAlerts');
 
   let isAutoRefreshActive = true;
 
@@ -440,6 +447,26 @@ export async function renderOperationalDashboard(container) {
 
   // Carga inicial del panel del hospital
   await cargarDatosDashboard();
+
+  btnEvaluateAlerts?.addEventListener('click', async () => {
+    btnEvaluateAlerts.disabled = true;
+    try {
+      const alertas = await operationalApi.evaluarAlertas();
+      await cargarDatosDashboard();
+      const count = Array.isArray(alertas) ? alertas.length : 0;
+      ui.showToast(
+        count > 0
+          ? `Evaluación completada: ${count} alerta(s) operativa(s) activa(s).`
+          : 'Evaluación completada: operación dentro de umbrales normales.',
+        count > 0 ? 'warning' : 'success',
+        3000
+      );
+    } catch (err) {
+      ui.showToast('Error evaluando alertas: ' + (err.message || 'Error de servidor'), 'error');
+    } finally {
+      btnEvaluateAlerts.disabled = false;
+    }
+  });
 
   // Botón manual de refresco
   btnManualRefresh.addEventListener('click', async () => {

@@ -1,6 +1,7 @@
 package com.meditriaje.repository;
 
 import com.meditriaje.dto.emergency.TriageAssessmentResponse;
+import com.meditriaje.dto.triage.SymptomItemResponse;
 import com.meditriaje.model.TriageAssessment;
 import com.meditriaje.repository.plsql.PackageGateway;
 import com.meditriaje.repository.plsql.ProcedureSpec;
@@ -14,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.stereotype.Repository;
@@ -26,6 +28,11 @@ import org.springframework.stereotype.Repository;
 public class TriageAssessmentRepository {
 
     static final String PACKAGE = "PKG_TRIAGE";
+
+    /** Síntoma reportado listo para persistirse en {@code VALORACION_TRIAJE_SINTOMA}. */
+    public record AssessmentSymptomEntry(Long symptomId, BigDecimal durationHours, int intensity) {}
+
+    private record SymptomRow(String assessmentPublicId, SymptomItemResponse symptom) {}
 
     static final RowMapper<TriageAssessment> ROW_MAPPER = (rs, rowNum) -> {
         Timestamp tsCreated = rs.getTimestamp("CREADO_AT");
@@ -70,6 +77,15 @@ public class TriageAssessmentRepository {
                 tsCreated != null ? tsCreated.toInstant() : null);
     };
 
+    static final RowMapper<SymptomRow> SYMPTOM_ROW_MAPPER = (rs, rowNum) -> new SymptomRow(
+            rs.getString("VALORACION_PUBLIC_ID"),
+            new SymptomItemResponse(
+                    rs.getString("SINTOMA_CODIGO"),
+                    rs.getString("SINTOMA_NOMBRE"),
+                    rs.getBigDecimal("DURACION_HORAS"),
+                    rs.getInt("INTENSIDAD"),
+                    rs.getInt("ES_ALARMA") == 1));
+
     static final ProcedureSpec GET_NEXT_ASSESSMENT_VERSION =
             ProcedureSpec.function(PACKAGE, "get_next_assessment_version", "result", Types.NUMERIC)
                     .in("p_episode_id", Types.NUMERIC)
@@ -94,10 +110,23 @@ public class TriageAssessmentRepository {
             .out("o_id", Types.NUMERIC)
             .build();
 
+    static final ProcedureSpec ADD_ASSESSMENT_SYMPTOM = ProcedureSpec.procedure(PACKAGE, "add_assessment_symptom")
+            .in("p_assessment_id", Types.NUMERIC)
+            .in("p_symptom_id", Types.NUMERIC)
+            .in("p_duration_hours", Types.NUMERIC)
+            .in("p_intensity", Types.NUMERIC)
+            .build();
+
     static final ProcedureSpec LIST_ASSESSMENTS_BY_EPISODE =
             ProcedureSpec.procedure(PACKAGE, "list_assessments_by_episode")
                     .in("p_episode_id", Types.NUMERIC)
                     .cursor("o_rows", RESPONSE_MAPPER)
+                    .build();
+
+    static final ProcedureSpec LIST_ASSESSMENT_SYMPTOMS =
+            ProcedureSpec.procedure(PACKAGE, "list_assessment_symptoms")
+                    .in("p_episode_id", Types.NUMERIC)
+                    .cursor("o_rows", SYMPTOM_ROW_MAPPER)
                     .build();
 
     static final ProcedureSpec GET_LATEST_ASSESSMENT = ProcedureSpec.procedure(PACKAGE, "get_latest_assessment")
@@ -159,11 +188,65 @@ public class TriageAssessmentRepository {
                 Instant.now());
     }
 
+    /**
+     * Persiste los síntomas reportados en una valoración presencial de triaje (append-only).
+     */
+    public void saveSymptoms(Long assessmentId, List<AssessmentSymptomEntry> symptoms) {
+        Objects.requireNonNull(assessmentId, "assessmentId no puede ser nulo");
+        if (symptoms == null || symptoms.isEmpty()) {
+            return;
+        }
+        for (AssessmentSymptomEntry s : symptoms) {
+            gateway.execute(ADD_ASSESSMENT_SYMPTOM, new MapSqlParameterSource()
+                    .addValue("p_assessment_id", assessmentId, Types.NUMERIC)
+                    .addValue("p_symptom_id", s.symptomId(), Types.NUMERIC)
+                    .addValue("p_duration_hours", s.durationHours(), Types.NUMERIC)
+                    .addValue("p_intensity", s.intensity(), Types.NUMERIC));
+        }
+    }
+
     public List<TriageAssessmentResponse> listByEpisodeId(Long episodioId) {
-        return gateway.list(
+        List<TriageAssessmentResponse> assessments = gateway.list(
                 LIST_ASSESSMENTS_BY_EPISODE,
                 new MapSqlParameterSource().addValue("p_episode_id", episodioId, Types.NUMERIC),
                 "o_rows");
+        if (assessments.isEmpty()) {
+            return assessments;
+        }
+
+        List<SymptomRow> symptomRows = gateway.list(
+                LIST_ASSESSMENT_SYMPTOMS,
+                new MapSqlParameterSource().addValue("p_episode_id", episodioId, Types.NUMERIC),
+                "o_rows");
+        if (symptomRows.isEmpty()) {
+            return assessments;
+        }
+
+        Map<String, List<SymptomItemResponse>> symptomsByAssessment = symptomRows.stream()
+                .collect(Collectors.groupingBy(
+                        SymptomRow::assessmentPublicId,
+                        Collectors.mapping(SymptomRow::symptom, Collectors.toList())));
+
+        return assessments.stream()
+                .map(a -> new TriageAssessmentResponse(
+                        a.publicId(),
+                        a.episodePublicId(),
+                        a.version(),
+                        a.level(),
+                        a.consultationReason(),
+                        a.clinicalFindings(),
+                        a.bloodPressure(),
+                        a.heartRate(),
+                        a.respiratoryRate(),
+                        a.oxygenSaturation(),
+                        a.temperature(),
+                        a.glasgowScale(),
+                        a.evaluatorName(),
+                        a.isReevaluation(),
+                        a.reevaluationReason(),
+                        a.createdAt(),
+                        symptomsByAssessment.getOrDefault(a.publicId(), List.of())))
+                .toList();
     }
 
     public Optional<TriageAssessment> findLatestByEpisodeId(Long episodioId) {

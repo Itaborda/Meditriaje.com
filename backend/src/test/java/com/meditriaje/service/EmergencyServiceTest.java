@@ -1,12 +1,17 @@
 package com.meditriaje.service;
 
 import com.meditriaje.dto.emergency.AssignTeamRequest;
+import com.meditriaje.dto.emergency.CalculateTriageLevelRequest;
 import com.meditriaje.dto.emergency.EmergencyEpisodeResponse;
+import com.meditriaje.dto.emergency.EmergencyPatientLookupResponse;
 import com.meditriaje.dto.emergency.EmergencyQueueItemResponse;
 import com.meditriaje.dto.emergency.ReconcileIdentityRequest;
 import com.meditriaje.dto.emergency.RegisterEmergencyAdmissionRequest;
 import com.meditriaje.dto.emergency.RegisterTriageAssessmentRequest;
 import com.meditriaje.dto.emergency.TriageAssessmentResponse;
+import com.meditriaje.dto.emergency.TriageCalculationResponse;
+import com.meditriaje.dto.triage.SymptomCatalogResponse;
+import com.meditriaje.dto.triage.SymptomItemRequest;
 import com.meditriaje.exception.UnauthorizedAccessException;
 import com.meditriaje.exception.OperationConflictException;
 import com.meditriaje.exception.InvalidDataException;
@@ -26,12 +31,19 @@ import com.meditriaje.repository.EmergencyAdmissionRepository;
 import com.meditriaje.repository.PatientRepository;
 import com.meditriaje.repository.ProfessionalRepository;
 import com.meditriaje.repository.SiteRepository;
-import com.meditriaje.repository.UserRepository;
 import com.meditriaje.repository.TriageAssessmentRepository;
+import com.meditriaje.repository.TriageRepository;
+import com.meditriaje.repository.UserRepository;
+import com.meditriaje.triage.PriorityLevel;
+import com.meditriaje.triage.RuleBasedTriageEngine;
+import com.meditriaje.triage.TriageEngineFactory;
+import com.meditriaje.triage.TriageRule;
+import com.meditriaje.triage.TriageSymptom;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -41,16 +53,18 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -75,6 +89,10 @@ class EmergencyServiceTest {
     @Mock
     private ProfessionalRepository professionalRepository;
     @Mock
+    private TriageEngineFactory triageEngineFactory;
+    @Mock
+    private TriageRepository triageRepository;
+    @Mock
     private AuditService auditService;
 
     private EmergencyService emergencyService;
@@ -98,6 +116,8 @@ class EmergencyServiceTest {
                 patientRepository,
                 userRepository,
                 professionalRepository,
+                triageEngineFactory,
+                triageRepository,
                 auditService,
                 CLOCK_FIJO
         );
@@ -117,6 +137,45 @@ class EmergencyServiceTest {
                 "Juan", "Gomez", LocalDate.of(1995, 5, 20), "3001234567",
                 AHORA, AHORA
         );
+    }
+
+    private static RuleBasedTriageEngine realEngine() {
+        List<TriageSymptom> catalog = List.of(
+                new TriageSymptom("DOLOR_TORACICO_OPRESIVO", true),
+                new TriageSymptom("FIEBRE", false),
+                new TriageSymptom("CONGESTION_NASAL", false)
+        );
+        List<TriageRule> rules = new ArrayList<>();
+        for (String code : List.of("FIEBRE", "CONGESTION_NASAL")) {
+            rules.add(new TriageRule(code, BigDecimal.ZERO, null, 7, 10, PriorityLevel.II));
+            rules.add(new TriageRule(code, BigDecimal.ZERO, null, 4, 6, PriorityLevel.III));
+            rules.add(new TriageRule(code, BigDecimal.ZERO, null, 0, 3, PriorityLevel.IV));
+        }
+        return new RuleBasedTriageEngine("v1-prototipo", catalog, rules);
+    }
+
+    private void stubCatalogAndAssessmentSave() {
+        when(triageEngineFactory.getEngine()).thenReturn(realEngine());
+        when(triageRepository.getSymptomCodeToIdMap()).thenReturn(Map.of(
+                "DOLOR_TORACICO_OPRESIVO", 1L,
+                "FIEBRE", 7L,
+                "CONGESTION_NASAL", 20L
+        ));
+        when(triageRepository.listActiveSymptomCatalog()).thenReturn(List.of(
+                new SymptomCatalogResponse("s-1", "DOLOR_TORACICO_OPRESIVO", "Dolor torácico opresivo", "CARDIOVASCULAR", true),
+                new SymptomCatalogResponse("s-7", "FIEBRE", "Fiebre", "GENERAL", false),
+                new SymptomCatalogResponse("s-20", "CONGESTION_NASAL", "Congestión nasal", "RESPIRATORIO", false)
+        ));
+        when(assessmentRepository.save(any())).thenAnswer(inv -> {
+            TriageAssessment arg = inv.getArgument(0);
+            return new TriageAssessment(
+                    99L, arg.publicId(), arg.episodeId(), arg.version(), arg.level(),
+                    arg.consultationReason(), arg.clinicalFindings(), arg.bloodPressure(),
+                    arg.heartRate(), arg.respiratoryRate(), arg.oxygenSaturation(),
+                    arg.temperature(), arg.glasgowScale(), arg.evaluatorUserId(),
+                    arg.isReevaluation(), arg.reevaluationReason(), AHORA
+            );
+        });
     }
 
     @Test
@@ -189,6 +248,133 @@ class EmergencyServiceTest {
     }
 
     @Test
+    @DisplayName("U02: Búsqueda de pacientes por documento retorna si tienen o no cuenta web MediTriaje")
+    void searchPatientsByDocument_returnsMappedResults() {
+        Patient walkIn = new Patient(
+                51L, null, "pac-walkin-id", "CC", "1134169348",
+                "Maria", "Lopez", LocalDate.of(1992, 3, 15), "3007654321",
+                AHORA, AHORA
+        );
+        when(patientRepository.searchByDocument("1134169348", "CC"))
+                .thenReturn(List.of(pacienteMock, walkIn));
+
+        List<EmergencyPatientLookupResponse> results = emergencyService.searchPatientsByDocument(" 1134169348 ", "cc");
+
+        assertThat(results).hasSize(2);
+        assertThat(results.get(0).hasAccount()).isTrue();
+        assertThat(results.get(1).publicId()).isEqualTo("pac-walkin-id");
+        assertThat(results.get(1).hasAccount()).isFalse();
+        assertThat(emergencyService.searchPatientsByDocument("   ", null)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("U02: Admisión con cédula en pacientePublicId resuelve paciente registrado mediante fallback por documento")
+    void registerAdmission_rawDocumentInPatientPublicId_fallsBackToSearchByDocument() {
+        Patient pacienteDoc = new Patient(
+                51L, 21L, "pac-uuid-doc", "CC", "1134169348",
+                "Maria", "Lopez", LocalDate.of(1992, 3, 15), "3007654321",
+                AHORA, AHORA
+        );
+        RegisterEmergencyAdmissionRequest req = new RegisterEmergencyAdmissionRequest(
+                "1134169348", false,
+                "ESPONTANEO", "Fiebre alta", null, null, null,
+                null, null, null, null
+        );
+
+        when(userRepository.findByPublicId("enf-pub-id")).thenReturn(Optional.of(enfermeroMock));
+        when(siteRepository.getSingleSite()).thenReturn(sedeMock);
+        when(patientRepository.findByPublicId("1134169348")).thenReturn(Optional.empty());
+        when(patientRepository.searchByDocument("1134169348", null)).thenReturn(List.of(pacienteDoc));
+        when(episodeRepository.save(any())).thenAnswer(inv -> {
+            CareEpisode ep = inv.getArgument(0);
+            assertThat(ep.patientId()).isEqualTo(51L);
+            return new CareEpisode(102L, ep.publicId(), ep.patientId(), ep.type(), ep.siteId(), ep.status(), AHORA, null, ep.admissionReason(), AHORA, AHORA);
+        });
+        EmergencyEpisodeResponse detalleMock = new EmergencyEpisodeResponse(
+                "ep-doc-id", "pac-uuid-doc", "Maria Lopez", "sede-valledupar-pub", "Hospital Rosario Pumarejo",
+                "URGENCIA", "REGISTRADO", false, null, null, "ESPONTANEO", "Fiebre alta",
+                "PENDIENTE_VALORACION", null, AHORA, null, AHORA
+        );
+        when(episodeRepository.findDetailByPublicId(anyString())).thenReturn(Optional.of(detalleMock));
+
+        EmergencyEpisodeResponse resp = emergencyService.registerEmergencyAdmission(req, "enf-pub-id", "127.0.0.1");
+
+        assertThat(resp.patientPublicId()).isEqualTo("pac-uuid-doc");
+        verify(admissionRepository).save(any());
+    }
+
+    @Test
+    @DisplayName("U02: Admisión de paciente presencial sin cuenta MediTriaje crea PACIENTE con USUARIO_ID nulo")
+    void registerAdmission_walkInPatientWithoutAccount_createsPatientWithNullUserId() {
+        RegisterEmergencyAdmissionRequest req = new RegisterEmergencyAdmissionRequest(
+                null, false,
+                "ESPONTANEO", "Dolor abdominal intenso", "Luis Gomez", "3109998877", null,
+                null, null, null, null,
+                "CC", "1134169348", "Maria", "Lopez", LocalDate.of(1992, 3, 15), "3007654321"
+        );
+
+        when(userRepository.findByPublicId("enf-pub-id")).thenReturn(Optional.of(enfermeroMock));
+        when(siteRepository.getSingleSite()).thenReturn(sedeMock);
+        when(patientRepository.findByDocument("CC", "1134169348")).thenReturn(Optional.empty());
+        when(patientRepository.create(
+                eq(null), anyString(), eq("CC"), eq("1134169348"),
+                eq("Maria"), eq("Lopez"), eq(LocalDate.of(1992, 3, 15)), eq("3007654321")
+        )).thenReturn(77L);
+        when(episodeRepository.save(any())).thenAnswer(inv -> {
+            CareEpisode ep = inv.getArgument(0);
+            assertThat(ep.patientId()).isEqualTo(77L);
+            return new CareEpisode(103L, ep.publicId(), ep.patientId(), ep.type(), ep.siteId(), ep.status(), AHORA, null, ep.admissionReason(), AHORA, AHORA);
+        });
+        EmergencyEpisodeResponse detalleMock = new EmergencyEpisodeResponse(
+                "ep-walkin-id", "pac-new-walkin", "Maria Lopez", "sede-valledupar-pub", "Hospital Rosario Pumarejo",
+                "URGENCIA", "REGISTRADO", false, null, null, "ESPONTANEO", "Dolor abdominal intenso",
+                "PENDIENTE_VALORACION", null, AHORA, null, AHORA
+        );
+        when(episodeRepository.findDetailByPublicId(anyString())).thenReturn(Optional.of(detalleMock));
+
+        EmergencyEpisodeResponse resp = emergencyService.registerEmergencyAdmission(req, "enf-pub-id", "127.0.0.1");
+
+        assertThat(resp.isProvisionalIdentity()).isFalse();
+        verify(patientRepository).create(
+                eq(null), anyString(), eq("CC"), eq("1134169348"),
+                eq("Maria"), eq("Lopez"), eq(LocalDate.of(1992, 3, 15)), eq("3007654321")
+        );
+        verify(admissionRepository).save(any());
+    }
+
+    @Test
+    @DisplayName("U02: Admisión con formulario manual para cédula ya registrada reutiliza paciente existente sin duplicarlo")
+    void registerAdmission_walkInDocumentAlreadyExists_reusesExistingPatient() {
+        RegisterEmergencyAdmissionRequest req = new RegisterEmergencyAdmissionRequest(
+                null, false,
+                "ESPONTANEO", "Cefalea intensa", null, null, null,
+                null, null, null, null,
+                "CC", "12345678", "Juan", "Gomez", LocalDate.of(1995, 5, 20), "3001234567"
+        );
+
+        when(userRepository.findByPublicId("enf-pub-id")).thenReturn(Optional.of(enfermeroMock));
+        when(siteRepository.getSingleSite()).thenReturn(sedeMock);
+        when(patientRepository.findByDocument("CC", "12345678")).thenReturn(Optional.of(pacienteMock));
+        when(episodeRepository.save(any())).thenAnswer(inv -> {
+            CareEpisode ep = inv.getArgument(0);
+            assertThat(ep.patientId()).isEqualTo(50L);
+            return new CareEpisode(104L, ep.publicId(), ep.patientId(), ep.type(), ep.siteId(), ep.status(), AHORA, null, ep.admissionReason(), AHORA, AHORA);
+        });
+        EmergencyEpisodeResponse detalleMock = new EmergencyEpisodeResponse(
+                "ep-reuse-id", "pac-pub-id", "Juan Gomez", "sede-valledupar-pub", "Hospital Rosario Pumarejo",
+                "URGENCIA", "REGISTRADO", false, null, null, "ESPONTANEO", "Cefalea intensa",
+                "PENDIENTE_VALORACION", null, AHORA, null, AHORA
+        );
+        when(episodeRepository.findDetailByPublicId(anyString())).thenReturn(Optional.of(detalleMock));
+
+        EmergencyEpisodeResponse resp = emergencyService.registerEmergencyAdmission(req, "enf-pub-id", "127.0.0.1");
+
+        assertThat(resp.patientPublicId()).isEqualTo("pac-pub-id");
+        org.mockito.Mockito.verify(patientRepository, org.mockito.Mockito.never())
+                .create(any(), anyString(), anyString(), anyString(), anyString(), anyString(), any(), any());
+    }
+
+    @Test
     @DisplayName("U03: Reconciliación de identidad provisional hacia paciente verificado")
     void reconcileIdentity_patientNN_linksCorrectly() {
         ReconcileIdentityRequest req = new ReconcileIdentityRequest("pac-pub-id", "Llego familiar con cedula original");
@@ -238,10 +424,11 @@ class EmergencyServiceTest {
     }
 
     @Test
-    @DisplayName("U04: Registro de valoración de triaje presencial actualiza estado a EN_ATENCION para Nivel I")
-    void registerAssessmentTriage_levelI_updatesStatusToInAttention() {
+    @DisplayName("U04: Síntoma de alarma calcula Nivel I automáticamente, persiste síntomas y pasa episodio a EN_ATENCION")
+    void registerAssessmentTriage_alarmSymptom_calculatesLevelIAndUpdatesStatusToInAttention() {
         RegisterTriageAssessmentRequest req = new RegisterTriageAssessmentRequest(
-                "I", "Paro cardiorrespiratorio inminente", "Cianosis severa",
+                List.of(new SymptomItemRequest("DOLOR_TORACICO_OPRESIVO", new BigDecimal("1"), 9)),
+                "Dolor precordial opresivo", "Diaforesis severa",
                 "70/40", 140, 35, 82, new BigDecimal("35.5"), 5, false, null
         );
 
@@ -249,6 +436,7 @@ class EmergencyServiceTest {
         when(userRepository.findByPublicId("enf-pub-id")).thenReturn(Optional.of(enfermeroMock));
         when(episodeRepository.findByPublicId("ep-pub-id")).thenReturn(Optional.of(ep));
         when(assessmentRepository.getNextVersion(100L)).thenReturn(1);
+        stubCatalogAndAssessmentSave();
 
         TriageAssessmentResponse resp = emergencyService.recordTriageAssessment(
                 "ep-pub-id", req, "enf-pub-id", List.of(new SimpleGrantedAuthority("ROLE_ENFERMERIA")), "127.0.0.1"
@@ -256,15 +444,130 @@ class EmergencyServiceTest {
 
         assertThat(resp).isNotNull();
         assertThat(resp.level()).isEqualTo("I");
-        verify(assessmentRepository).save(any());
+        assertThat(resp.symptoms()).hasSize(1);
+        assertThat(resp.symptoms().get(0).code()).isEqualTo("DOLOR_TORACICO_OPRESIVO");
+        assertThat(resp.symptoms().get(0).isAlarm()).isTrue();
+
+        ArgumentCaptor<TriageAssessment> assessmentCaptor = ArgumentCaptor.forClass(TriageAssessment.class);
+        verify(assessmentRepository).save(assessmentCaptor.capture());
+        assertThat(assessmentCaptor.getValue().level()).isEqualTo("I");
+
+        verify(assessmentRepository).saveSymptoms(eq(99L), any());
         verify(episodeRepository).updateStatus(100L, "EN_ATENCION");
+    }
+
+    @Test
+    @DisplayName("U04: Síntoma no alarma con intensidad alta (8) calcula Nivel II y actualiza a EN_ATENCION")
+    void registerAssessmentTriage_highIntensitySymptom_calculatesLevelIIAndUpdatesStatusToInAttention() {
+        RegisterTriageAssessmentRequest req = new RegisterTriageAssessmentRequest(
+                List.of(new SymptomItemRequest("FIEBRE", new BigDecimal("4"), 8)),
+                "Fiebre alta", "Escalofríos",
+                "120/80", 110, 22, 95, new BigDecimal("39.2"), 15, false, null
+        );
+
+        CareEpisode ep = new CareEpisode(100L, "ep-pub-id", 50L, "URGENCIA", 1L, "REGISTRADO", AHORA, null, "Motivo", AHORA, AHORA);
+        when(userRepository.findByPublicId("enf-pub-id")).thenReturn(Optional.of(enfermeroMock));
+        when(episodeRepository.findByPublicId("ep-pub-id")).thenReturn(Optional.of(ep));
+        when(assessmentRepository.getNextVersion(100L)).thenReturn(1);
+        stubCatalogAndAssessmentSave();
+
+        TriageAssessmentResponse resp = emergencyService.recordTriageAssessment(
+                "ep-pub-id", req, "enf-pub-id", List.of(new SimpleGrantedAuthority("ROLE_ENFERMERIA")), "127.0.0.1"
+        );
+
+        assertThat(resp.level()).isEqualTo("II");
+        verify(assessmentRepository).saveSymptoms(eq(99L), any());
+        verify(episodeRepository).updateStatus(100L, "EN_ATENCION");
+    }
+
+    @Test
+    @DisplayName("U04: Síntoma con intensidad moderada (5) calcula Nivel III y actualiza episodio REGISTRADO a EN_TRIAJE")
+    void registerAssessmentTriage_moderateIntensitySymptom_calculatesLevelIIIAndUpdatesStatusToInTriage() {
+        RegisterTriageAssessmentRequest req = new RegisterTriageAssessmentRequest(
+                List.of(new SymptomItemRequest("FIEBRE", new BigDecimal("6"), 5)),
+                "Fiebre moderada", null, null, null, null, null, null, null, false, null
+        );
+
+        CareEpisode ep = new CareEpisode(100L, "ep-pub-id", 50L, "URGENCIA", 1L, "REGISTRADO", AHORA, null, "Motivo", AHORA, AHORA);
+        when(userRepository.findByPublicId("enf-pub-id")).thenReturn(Optional.of(enfermeroMock));
+        when(episodeRepository.findByPublicId("ep-pub-id")).thenReturn(Optional.of(ep));
+        when(assessmentRepository.getNextVersion(100L)).thenReturn(1);
+        stubCatalogAndAssessmentSave();
+
+        TriageAssessmentResponse resp = emergencyService.recordTriageAssessment(
+                "ep-pub-id", req, "enf-pub-id", List.of(new SimpleGrantedAuthority("ROLE_ENFERMERIA")), "127.0.0.1"
+        );
+
+        assertThat(resp.level()).isEqualTo("III");
+        verify(episodeRepository).updateStatus(100L, "EN_TRIAJE");
+    }
+
+    @Test
+    @DisplayName("U04: Síntoma leve (intensidad 2) calcula Nivel IV y actualiza episodio REGISTRADO a EN_TRIAJE")
+    void registerAssessmentTriage_mildSymptom_calculatesLevelIVAndUpdatesStatusToInTriage() {
+        RegisterTriageAssessmentRequest req = new RegisterTriageAssessmentRequest(
+                List.of(new SymptomItemRequest("CONGESTION_NASAL", new BigDecimal("12"), 2)),
+                "Congestión nasal leve", null, null, null, null, null, null, null, false, null
+        );
+
+        CareEpisode ep = new CareEpisode(100L, "ep-pub-id", 50L, "URGENCIA", 1L, "REGISTRADO", AHORA, null, "Motivo", AHORA, AHORA);
+        when(userRepository.findByPublicId("enf-pub-id")).thenReturn(Optional.of(enfermeroMock));
+        when(episodeRepository.findByPublicId("ep-pub-id")).thenReturn(Optional.of(ep));
+        when(assessmentRepository.getNextVersion(100L)).thenReturn(1);
+        stubCatalogAndAssessmentSave();
+
+        TriageAssessmentResponse resp = emergencyService.recordTriageAssessment(
+                "ep-pub-id", req, "enf-pub-id", List.of(new SimpleGrantedAuthority("ROLE_ENFERMERIA")), "127.0.0.1"
+        );
+
+        assertThat(resp.level()).isEqualTo("IV");
+        verify(episodeRepository).updateStatus(100L, "EN_TRIAJE");
+    }
+
+    @Test
+    @DisplayName("U04: Síntoma desconocido lanza InvalidDataException y no persiste valoración")
+    void registerAssessmentTriage_unknownSymptom_throwsInvalidDataException() {
+        RegisterTriageAssessmentRequest req = new RegisterTriageAssessmentRequest(
+                List.of(new SymptomItemRequest("SINTOMA_INEXISTENTE", new BigDecimal("2"), 5)),
+                "Motivo", null, null, null, null, null, null, null, false, null
+        );
+
+        CareEpisode ep = new CareEpisode(100L, "ep-pub-id", 50L, "URGENCIA", 1L, "REGISTRADO", AHORA, null, "Motivo", AHORA, AHORA);
+        when(userRepository.findByPublicId("enf-pub-id")).thenReturn(Optional.of(enfermeroMock));
+        when(episodeRepository.findByPublicId("ep-pub-id")).thenReturn(Optional.of(ep));
+        when(triageEngineFactory.getEngine()).thenReturn(realEngine());
+
+        assertThatThrownBy(() -> emergencyService.recordTriageAssessment(
+                "ep-pub-id", req, "enf-pub-id", List.of(new SimpleGrantedAuthority("ROLE_ENFERMERIA")), "127.0.0.1"
+        ))
+                .isInstanceOf(InvalidDataException.class)
+                .hasMessageContaining("Síntoma desconocido");
+    }
+
+    @Test
+    @DisplayName("U04: Previsualización de cálculo por síntomas retorna nivel sin persistir datos")
+    void calculateTriageLevel_returnsCalculatedLevelWithoutPersisting() {
+        when(triageEngineFactory.getEngine()).thenReturn(realEngine());
+
+        TriageCalculationResponse alarmCalc = emergencyService.calculateTriageLevel(
+                new CalculateTriageLevelRequest(List.of(
+                        new SymptomItemRequest("FIEBRE", new BigDecimal("4"), 3),
+                        new SymptomItemRequest("DOLOR_TORACICO_OPRESIVO", new BigDecimal("1"), 8)
+                ))
+        );
+
+        assertThat(alarmCalc.level()).isEqualTo("I");
+        assertThat(alarmCalc.isEmergency()).isTrue();
+        assertThat(alarmCalc.alarmSymptoms()).containsExactly("DOLOR_TORACICO_OPRESIVO");
+        verifyNoInteractions(assessmentRepository, episodeRepository);
     }
 
     @Test
     @DisplayName("U04: Usuario sin rol clínico (ej. ADMIN o PACIENTE) es rechazado con 403 al intentar triaje presencial")
     void registerAssessmentTriage_unauthorizedRole_throwsUnauthorizedAccess() {
         RegisterTriageAssessmentRequest req = new RegisterTriageAssessmentRequest(
-                "III", "Cefalea", null, null, null, null, null, null, null, false, null
+                List.of(new SymptomItemRequest("FIEBRE", new BigDecimal("6"), 5)),
+                "Cefalea", null, null, null, null, null, null, null, false, null
         );
 
         assertThatThrownBy(() -> emergencyService.recordTriageAssessment(

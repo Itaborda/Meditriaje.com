@@ -53,6 +53,21 @@ export async function hospitalCensusView(container) {
           <!-- Hospital único: el servidor resuelve la sede; solo se muestra su nombre -->
           <span id="censusHospitalName" class="text-sm font-semibold text-muted"></span>
 
+          ${auth.isAdmin ? `
+            <button type="button" id="btnAddHospitalArea" class="btn btn-primary btn--sm flex items-center gap-1" title="Crear nueva área o pabellón hospitalario">
+              ${ui.icon('plus', 'icon icon--sm')}
+              <span>Nueva Área</span>
+            </button>
+            <button type="button" id="btnAddHospitalRoom" class="btn btn-secondary btn--sm flex items-center gap-1" title="Crear nueva habitación o sala">
+              ${ui.icon('plus', 'icon icon--sm')}
+              <span>Nueva Habitación</span>
+            </button>
+            <button type="button" id="btnAddHospitalBed" class="btn btn-secondary btn--sm flex items-center gap-1" title="Registrar nuevas camas en una habitación">
+              ${ui.icon('bed', 'icon icon--sm')}
+              <span>Nuevas Camas</span>
+            </button>
+          ` : ''}
+
           <button type="button" id="btnCensusScanQr" class="btn btn-secondary btn--sm flex items-center gap-1" title="Escanear código QR con cámara o imagen">
             ${ui.icon('camera', 'icon icon--sm')}
             <span>Escanear QR</span>
@@ -165,6 +180,221 @@ export async function hospitalCensusView(container) {
   document.getElementById('filterBedArea').addEventListener('change', (e) => {
     censusState.filterArea = e.target.value;
     renderBeds();
+  });
+
+  if (auth.isAdmin) {
+    document.getElementById('btnAddHospitalArea')?.addEventListener('click', openCreateAreaModal);
+    document.getElementById('btnAddHospitalRoom')?.addEventListener('click', openCreateRoomModal);
+    document.getElementById('btnAddHospitalBed')?.addEventListener('click', openCreateBedsModal);
+  }
+}
+
+function openCreateAreaModal() {
+  const body = `
+    <form id="formCreateArea" class="flex flex-col gap-3">
+      <div class="form-group">
+        <label for="txtAreaCodigo" class="form-label font-semibold">Código <span class="text-danger">*</span></label>
+        <input type="text" id="txtAreaCodigo" class="form-input" maxlength="30" placeholder="Ej. HOSP-P4" required autofocus>
+      </div>
+      <div class="form-group">
+        <label for="txtAreaNombre" class="form-label font-semibold">Nombre del Área / Pabellón <span class="text-danger">*</span></label>
+        <input type="text" id="txtAreaNombre" class="form-input" maxlength="100" placeholder="Ej. Hospitalización Piso 4" required>
+      </div>
+      <div class="form-group">
+        <label for="selAreaTipo" class="form-label font-semibold">Tipo de Servicio <span class="text-danger">*</span></label>
+        <select id="selAreaTipo" class="form-select" required>
+          <option value="URGENCIAS">Urgencias</option>
+          <option value="OBSERVACION">Observación</option>
+          <option value="HOSPITALIZACION_GENERAL" selected>Hospitalización General</option>
+          <option value="UCI_ADULTOS">UCI Adultos</option>
+          <option value="UCI_PEDIATRICA">UCI Pediátrica</option>
+          <option value="QUIROFANO">Quirófano</option>
+          <option value="RECUPERACION">Recuperación</option>
+          <option value="SALA_PARTOS">Sala de Partos</option>
+        </select>
+      </div>
+      <div class="form-group m-0">
+        <label for="txtAreaPiso" class="form-label font-semibold">Piso / Ubicación</label>
+        <input type="text" id="txtAreaPiso" class="form-input" maxlength="20" placeholder="Ej. Piso 4">
+      </div>
+    </form>
+  `;
+
+  ui.showModal({
+    title: 'Crear Área o Pabellón Hospitalario',
+    body,
+    confirmText: 'Crear Área',
+    cancelText: 'Cancelar',
+    onConfirm: async () => {
+      const codigo = document.getElementById('txtAreaCodigo')?.value.trim();
+      const nombre = document.getElementById('txtAreaNombre')?.value.trim();
+      const tipo = document.getElementById('selAreaTipo')?.value;
+      const piso = document.getElementById('txtAreaPiso')?.value.trim();
+      if (!codigo || !nombre || !tipo) {
+        ui.showToast('Código, nombre y tipo son obligatorios.', 'warning');
+        return false;
+      }
+      try {
+        await hospitalApi.crearArea({ codigo, nombre, tipo, piso: piso || null });
+        ui.showToast(`Área "${nombre}" creada con éxito.`, 'success');
+        await loadData();
+      } catch (err) {
+        ui.showToast('Error creando área: ' + (err.message || 'Error de servidor'), 'error');
+        return false;
+      }
+    }
+  });
+}
+
+async function openCreateRoomModal() {
+  let areas = [];
+  try {
+    areas = await hospitalApi.listarAreas();
+  } catch (err) {
+    ui.showToast('No se pudieron cargar las áreas: ' + (err.message || 'Error'), 'error');
+    return;
+  }
+  if (!Array.isArray(areas) || areas.length === 0) {
+    ui.showToast('Primero cree al menos un área hospitalaria.', 'warning');
+    return;
+  }
+
+  const body = `
+    <form id="formCreateRoom" class="flex flex-col gap-3">
+      <div class="form-group">
+        <label for="selRoomAreaId" class="form-label font-semibold">Área Hospitalaria <span class="text-danger">*</span></label>
+        <select id="selRoomAreaId" class="form-select" required autofocus>
+          ${areas.map(a => `<option value="${esc(a.publicId)}">${esc(a.nombre)} (${esc(a.codigo)})</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="txtRoomCodigo" class="form-label font-semibold">Código de Habitación / Sala <span class="text-danger">*</span></label>
+        <input type="text" id="txtRoomCodigo" class="form-input" maxlength="30" placeholder="Ej. HAB-401" required>
+      </div>
+      <div class="form-group m-0">
+        <label for="selRoomTipo" class="form-label font-semibold">Tipo <span class="text-danger">*</span></label>
+        <select id="selRoomTipo" class="form-select" required>
+          <option value="INDIVIDUAL">Individual</option>
+          <option value="COMPARTIDA" selected>Compartida</option>
+          <option value="AISLAMIENTO">Aislamiento</option>
+          <option value="QUIROFANO">Quirófano</option>
+          <option value="SALA_COMUN">Sala Común</option>
+        </select>
+      </div>
+    </form>
+  `;
+
+  ui.showModal({
+    title: 'Crear Habitación o Sala',
+    body,
+    confirmText: 'Crear Habitación',
+    cancelText: 'Cancelar',
+    onConfirm: async () => {
+      const areaPublicId = document.getElementById('selRoomAreaId')?.value;
+      const codigo = document.getElementById('txtRoomCodigo')?.value.trim();
+      const tipo = document.getElementById('selRoomTipo')?.value;
+      if (!areaPublicId || !codigo || !tipo) {
+        ui.showToast('Debe seleccionar área y especificar código y tipo.', 'warning');
+        return false;
+      }
+      try {
+        await hospitalApi.crearHabitacion(areaPublicId, { codigo, tipo });
+        ui.showToast(`Habitación "${codigo}" creada con éxito.`, 'success');
+        await loadData();
+      } catch (err) {
+        ui.showToast('Error creando habitación: ' + (err.message || 'Error de servidor'), 'error');
+        return false;
+      }
+    }
+  });
+}
+
+async function openCreateBedsModal() {
+  let areas = [];
+  try {
+    areas = await hospitalApi.listarAreas();
+  } catch (err) {
+    ui.showToast('No se pudieron cargar las áreas y habitaciones: ' + (err.message || 'Error'), 'error');
+    return;
+  }
+  const areasConHab = (areas || []).filter(a => Array.isArray(a.habitaciones) && a.habitaciones.length > 0);
+  if (areasConHab.length === 0) {
+    ui.showToast('Primero cree un área y una habitación para poder registrar camas.', 'warning');
+    return;
+  }
+
+  const renderRoomOptions = (areaPubId) => {
+    const area = areas.find(a => a.publicId === areaPubId);
+    const rooms = area?.habitaciones || [];
+    if (rooms.length === 0) {
+      return '<option value="">Sin habitaciones en esta área</option>';
+    }
+    return rooms.map(r => `<option value="${esc(r.publicId)}">${esc(r.codigo)} (${esc(r.tipo)})</option>`).join('');
+  };
+
+  const firstAreaId = areasConHab[0].publicId;
+  const body = `
+    <form id="formCreateBeds" class="flex flex-col gap-3">
+      <div class="form-group">
+        <label for="selBedAreaId" class="form-label font-semibold">Área Hospitalaria <span class="text-danger">*</span></label>
+        <select id="selBedAreaId" class="form-select" required autofocus>
+          ${areas.map(a => `<option value="${esc(a.publicId)}" ${a.publicId === firstAreaId ? 'selected' : ''}>${esc(a.nombre)} (${esc(a.codigo)})</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="selBedRoomId" class="form-label font-semibold">Habitación / Sala <span class="text-danger">*</span></label>
+        <select id="selBedRoomId" class="form-select" required>
+          ${renderRoomOptions(firstAreaId)}
+        </select>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div class="form-group m-0">
+          <label for="txtBedCodigo" class="form-label font-semibold">Código / Prefijo <span class="text-danger">*</span></label>
+          <input type="text" id="txtBedCodigo" class="form-input" maxlength="25" placeholder="Ej. CAMA-401" required>
+        </div>
+        <div class="form-group m-0">
+          <label for="txtBedCantidad" class="form-label font-semibold">Cantidad (1-20)</label>
+          <input type="number" id="txtBedCantidad" class="form-input" min="1" max="20" value="1" required>
+        </div>
+      </div>
+      <p class="text-xs text-muted m-0">Si ingresa una cantidad mayor a 1, se generarán códigos numerados automáticamente (ej. CAMA-401-01, CAMA-401-02).</p>
+    </form>
+  `;
+
+  ui.showModal({
+    title: 'Registrar Camas Hospitalarias',
+    body,
+    confirmText: 'Crear Camas',
+    cancelText: 'Cancelar',
+    onConfirm: async () => {
+      const roomPublicId = document.getElementById('selBedRoomId')?.value;
+      const codigo = document.getElementById('txtBedCodigo')?.value.trim();
+      const cantidad = parseInt(document.getElementById('txtBedCantidad')?.value || '1', 10);
+      if (!roomPublicId) {
+        ui.showToast('Debe seleccionar una habitación válida.', 'warning');
+        return false;
+      }
+      if (!codigo) {
+        ui.showToast('El código o prefijo de la cama es obligatorio.', 'warning');
+        return false;
+      }
+      try {
+        const created = await hospitalApi.crearCamas(roomPublicId, { codigo, cantidad });
+        const totalCreated = Array.isArray(created) ? created.length : cantidad;
+        ui.showToast(`Se registraron ${totalCreated} cama(s) disponibles con éxito.`, 'success');
+        await loadData();
+      } catch (err) {
+        ui.showToast('Error creando camas: ' + (err.message || 'Error de servidor'), 'error');
+        return false;
+      }
+    }
+  });
+
+  document.getElementById('selBedAreaId')?.addEventListener('change', (e) => {
+    const selRoom = document.getElementById('selBedRoomId');
+    if (selRoom) {
+      selRoom.innerHTML = renderRoomOptions(e.target.value);
+    }
   });
 }
 
@@ -307,7 +537,19 @@ function renderBeds() {
           ` : ''}
         </div>
 
-        <div class="mt-3 pt-2 border-t flex items-center justify-end gap-1">
+        <div class="mt-3 pt-2 border-t flex flex-wrap items-center justify-end gap-1">
+          ${isOcupada && b.episodioPublicId && (auth.isEnfermeria || auth.isProfesional) ? `
+            <a href="#/hospital/beds/${esc(b.episodioPublicId)}" class="btn btn--xs btn-secondary" title="Trasladar paciente a otra cama">
+              <span>Trasladar</span>
+            </a>
+          ` : ''}
+
+          ${isOcupada && b.episodioPublicId && auth.isProfesional ? `
+            <a href="#/hospital/discharge/${esc(b.episodioPublicId)}" class="btn btn--xs btn-primary" title="Registrar egreso y alta hospitalaria">
+              <span>Egreso</span>
+            </a>
+          ` : ''}
+
           ${isLimpieza ? `
             <button type="button" class="btn btn--xs btn-primary btn-bed-action" data-id="${esc(b.publicId)}" data-status="DISPONIBLE" title="Liberar cama a Disponible tras desinfección">
               ${ui.icon('check', 'icon icon--xs')}

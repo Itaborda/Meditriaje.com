@@ -1,11 +1,12 @@
 /**
  * MediTriaje 2.0 — Admisión Presencial de Urgencias (nursing-admission.js)
- * Formulario para el ingreso expedito de pacientes a la sala de urgencias (U02, U03).
- * Soporte completo para pacientes identificados civilmente y pacientes no identificados (NN)
- * con código provisional opaco y no estigmatizante (ADR-027).
+ * Registro expedito de ingreso de urgencias para:
+ * - Pacientes buscados por documento (registrados o atendidos previamente),
+ * - Pacientes sin cuenta web previa en MediTriaje (registro de datos civiles básicos),
+ * - Pacientes no identificados (NN) con código provisional opaco (U02, U03).
  */
 
-import { emergencyApi, api } from '../api.js';
+import { emergencyApi } from '../api.js';
 import { router } from '../router.js';
 import { ui, esc } from '../ui.js';
 
@@ -41,15 +42,71 @@ export async function nursingAdmissionView(container) {
               </label>
             </div>
 
-            <!-- Bloque Paciente Identificado -->
+            <!-- Bloque Paciente Identificado (búsqueda por cédula o registro sin cuenta web) -->
             <div id="bloquePacienteCivil">
-              <label for="txtBuscarPaciente" class="form-label text-sm font-semibold">Buscar Paciente por Documento / Nombre</label>
-              <div class="flex gap-2">
-                <input type="text" id="txtBuscarPaciente" class="form-input" placeholder="Ej. 12345678 o Carlos Perez">
+              <label for="txtBuscarPaciente" class="form-label text-sm font-semibold">Buscar Paciente por Cédula / Documento</label>
+              <div class="flex flex-wrap gap-2">
+                <select id="selTipoDocBuscar" class="form-select" style="width: auto; min-width: 110px;" aria-label="Tipo de documento">
+                  <option value="">Todos</option>
+                  <option value="CC">CC</option>
+                  <option value="TI">TI</option>
+                  <option value="RC">RC</option>
+                  <option value="CE">CE</option>
+                  <option value="PA">PA</option>
+                </select>
+                <input type="text" id="txtBuscarPaciente" class="form-input" style="flex: 1; min-width: 180px;" placeholder="Ej. 1134169348">
                 <button type="button" id="btnBuscarPaciente" class="btn btn-secondary btn--sm">Buscar</button>
               </div>
               <div id="resultadoBusquedaPaciente" class="mt-2 text-sm"></div>
               <input type="hidden" id="hdnPacientePublicId" value="">
+
+              <div class="mt-3 pt-3 border-t flex flex-wrap items-center justify-between gap-2">
+                <span class="text-xs text-muted">¿El paciente no está registrado en MediTriaje?</span>
+                <button type="button" id="btnTogglePacienteManual" class="btn btn-ghost btn--xs">
+                  ${ui.icon('user-plus', 'icon icon--xs')}
+                  <span>Ingresar datos del paciente (sin cuenta en MediTriaje)</span>
+                </button>
+              </div>
+
+              <!-- Bloque Registro Presencial Sin Cuenta Web -->
+              <div id="bloquePacienteManual" style="display: none;" class="mt-3 p-3 rounded border bg-white">
+                <div class="flex items-center justify-between mb-3">
+                  <span class="font-bold text-sm">Datos Civiles del Paciente (Sin Cuenta MediTriaje)</span>
+                  <span class="badge badge--info text-xs">Ingreso presencial directo</span>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                  <div class="form-group m-0">
+                    <label for="selManualTipoDoc" class="form-label text-xs font-semibold">Tipo de Documento <span class="text-danger">*</span></label>
+                    <select id="selManualTipoDoc" class="form-select">
+                      <option value="CC">Cédula de Ciudadanía (CC)</option>
+                      <option value="TI">Tarjeta de Identidad (TI)</option>
+                      <option value="RC">Registro Civil (RC)</option>
+                      <option value="CE">Cédula de Extranjería (CE)</option>
+                      <option value="PA">Pasaporte (PA)</option>
+                    </select>
+                  </div>
+                  <div class="form-group m-0">
+                    <label for="txtManualNumDoc" class="form-label text-xs font-semibold">Número de Documento <span class="text-danger">*</span></label>
+                    <input type="text" id="txtManualNumDoc" class="form-input" placeholder="Ej. 1134169348">
+                  </div>
+                  <div class="form-group m-0">
+                    <label for="txtManualNombres" class="form-label text-xs font-semibold">Nombres <span class="text-danger">*</span></label>
+                    <input type="text" id="txtManualNombres" class="form-input" placeholder="Ej. Laura Sofía">
+                  </div>
+                  <div class="form-group m-0">
+                    <label for="txtManualApellidos" class="form-label text-xs font-semibold">Apellidos <span class="text-danger">*</span></label>
+                    <input type="text" id="txtManualApellidos" class="form-input" placeholder="Ej. Morales Ruiz">
+                  </div>
+                  <div class="form-group m-0">
+                    <label for="txtManualFechaNac" class="form-label text-xs font-semibold">Fecha de Nacimiento <span class="text-danger">*</span></label>
+                    <input type="date" id="txtManualFechaNac" class="form-input">
+                  </div>
+                  <div class="form-group m-0">
+                    <label for="txtManualTelefono" class="form-label text-xs font-semibold">Teléfono Celular</label>
+                    <input type="tel" id="txtManualTelefono" class="form-input" placeholder="Ej. 3001234567">
+                  </div>
+                </div>
+              </div>
             </div>
 
             <!-- Bloque Paciente Sin Identificación (NN) -->
@@ -138,52 +195,134 @@ export async function nursingAdmissionView(container) {
     </div>
   `;
 
-  // Lógica switch NN
   const chkNN = document.getElementById('chkEsNN');
   const bloqueCivil = document.getElementById('bloquePacienteCivil');
   const bloqueNN = document.getElementById('bloquePacienteNN');
+  const bloqueManual = document.getElementById('bloquePacienteManual');
+  const btnToggleManual = document.getElementById('btnTogglePacienteManual');
+  const btnBuscar = document.getElementById('btnBuscarPaciente');
+  const txtBuscar = document.getElementById('txtBuscarPaciente');
+  const selTipoBuscar = document.getElementById('selTipoDocBuscar');
+  const divResultado = document.getElementById('resultadoBusquedaPaciente');
+  const hdnPacienteId = document.getElementById('hdnPacientePublicId');
+
+  const setManualOpen = (open) => {
+    bloqueManual.style.display = open ? 'block' : 'none';
+    if (open) {
+      hdnPacienteId.value = '';
+    }
+  };
 
   chkNN.addEventListener('change', () => {
     if (chkNN.checked) {
       bloqueCivil.style.display = 'none';
       bloqueNN.style.display = 'block';
-      document.getElementById('hdnPacientePublicId').value = '';
+      hdnPacienteId.value = '';
+      setManualOpen(false);
     } else {
       bloqueCivil.style.display = 'block';
       bloqueNN.style.display = 'none';
     }
   });
 
-  // Búsqueda de paciente civil
-  const btnBuscar = document.getElementById('btnBuscarPaciente');
-  const txtBuscar = document.getElementById('txtBuscarPaciente');
-  const divResultado = document.getElementById('resultadoBusquedaPaciente');
-  const hdnPacienteId = document.getElementById('hdnPacientePublicId');
+  btnToggleManual.addEventListener('click', () => {
+    const willOpen = bloqueManual.style.display === 'none';
+    setManualOpen(willOpen);
+    if (willOpen) {
+      divResultado.innerHTML = `<span class="text-xs text-muted">Modo de registro presencial directo activo.</span>`;
+      const q = txtBuscar.value.trim();
+      const manualDoc = document.getElementById('txtManualNumDoc');
+      if (q && manualDoc && !manualDoc.value.trim()) {
+        manualDoc.value = q;
+      }
+      if (selTipoBuscar.value) {
+        document.getElementById('selManualTipoDoc').value = selTipoBuscar.value;
+      }
+    } else {
+      divResultado.innerHTML = '';
+    }
+  });
+
+  const showSelectedPatient = (label) => {
+    divResultado.innerHTML = `
+      <div class="p-3 border rounded bg-white flex flex-wrap items-center justify-between gap-2">
+        <div class="text-success font-semibold">✓ Paciente seleccionado: ${esc(label)}</div>
+        <button type="button" id="btnCambiarPaciente" class="btn btn-ghost btn--xs">Cambiar</button>
+      </div>
+    `;
+    document.getElementById('btnCambiarPaciente')?.addEventListener('click', () => {
+      hdnPacienteId.value = '';
+      divResultado.innerHTML = '';
+      txtBuscar.focus();
+    });
+  };
 
   btnBuscar.addEventListener('click', async () => {
     const q = txtBuscar.value.trim();
+    const tipoDoc = selTipoBuscar.value;
     if (!q) {
-      divResultado.innerHTML = `<span class="text-warning">Ingrese un documento o nombre a buscar.</span>`;
+      divResultado.innerHTML = `<span class="text-warning">Ingrese un número de documento a buscar.</span>`;
       return;
     }
 
-    divResultado.innerHTML = `Buscando paciente...`;
+    hdnPacienteId.value = '';
+    divResultado.innerHTML = `<span class="text-muted">Buscando paciente por documento...</span>`;
     try {
-      const res = await api.get('/admin/appointments', { query: q, page: 0, size: 5 });
-      // Si la búsqueda devuelve pacientes o usamos el endpoint de pacientes
-      divResultado.innerHTML = `
-        <div class="p-2 border rounded bg-white mt-1">
-          <span class="font-semibold">Búsqueda directa:</span> Se asociará paciente con documento de referencia.
-          <button type="button" class="btn btn-xs btn-primary mt-1" id="btnSeleccionarPacienteManual">Usar documento ingresado</button>
-        </div>
-      `;
-      document.getElementById('btnSeleccionarPacienteManual')?.addEventListener('click', () => {
-        hdnPacienteId.value = q;
-        divResultado.innerHTML = `<div class="text-success font-semibold">✓ Paciente referenciado: ${esc(q)}</div>`;
-      });
-    } catch {
-      hdnPacienteId.value = q;
-      divResultado.innerHTML = `<div class="text-success font-semibold">✓ Documento referenciado: ${esc(q)}</div>`;
+      const pacientes = await emergencyApi.buscarPacientesPorDocumento(q, tipoDoc);
+      if (Array.isArray(pacientes) && pacientes.length > 0) {
+        setManualOpen(false);
+        divResultado.innerHTML = `
+          <div class="flex flex-col gap-2 mt-2">
+            ${pacientes.map(p => `
+              <div class="p-3 border rounded bg-white flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div class="font-bold text-sm">${esc(p.nombreCompleto || `${p.nombres || ''} ${p.apellidos || ''}`.trim())}</div>
+                  <div class="text-xs text-muted font-mono">
+                    ${esc(p.tipoDocumento)} ${esc(p.numeroDocumento)}${p.telefono ? ` · Tel: ${esc(p.telefono)}` : ''}
+                  </div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="badge ${p.tieneCuentaMediTriaje ? 'badge--confirmed' : 'badge--info'} text-xs">
+                    ${p.tieneCuentaMediTriaje ? 'Registrado en MediTriaje' : 'Sin cuenta web'}
+                  </span>
+                  <button
+                    type="button"
+                    class="btn btn-xs btn-primary btn-seleccionar-paciente"
+                    data-public-id="${esc(p.publicId)}"
+                    data-label="${esc(`${p.nombreCompleto || ''} (${p.tipoDocumento} ${p.numeroDocumento})`)}"
+                  >
+                    Seleccionar
+                  </button>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+
+        divResultado.querySelectorAll('.btn-seleccionar-paciente').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const pubId = btn.getAttribute('data-public-id') || '';
+            const label = btn.getAttribute('data-label') || pubId;
+            hdnPacienteId.value = pubId;
+            setManualOpen(false);
+            showSelectedPatient(label);
+          });
+        });
+      } else {
+        divResultado.innerHTML = `
+          <div class="p-3 border rounded bg-amber-50 text-xs text-amber-900">
+            No se encontró un paciente registrado con el documento <strong>${esc(q)}</strong>.
+            Complete los datos a continuación para admitirlo sin necesidad de cuenta en MediTriaje.
+          </div>
+        `;
+        setManualOpen(true);
+        document.getElementById('txtManualNumDoc').value = q;
+        if (tipoDoc) {
+          document.getElementById('selManualTipoDoc').value = tipoDoc;
+        }
+      }
+    } catch (err) {
+      divResultado.innerHTML = `<span class="text-danger">Error buscando paciente: ${esc(err.message || 'Error de servidor')}</span>`;
     }
   });
 
@@ -193,7 +332,8 @@ export async function nursingAdmissionView(container) {
     e.preventDefault();
 
     const esNN = chkNN.checked;
-    const pacientePubId = document.getElementById('hdnPacientePublicId').value.trim();
+    const pacientePubId = hdnPacienteId.value.trim();
+    const manualActivo = bloqueManual.style.display !== 'none';
     const viaIngreso = document.getElementById('selViaIngreso').value;
     const motivoConsulta = document.getElementById('txtMotivoConsulta').value.trim();
     const acompananteNombre = document.getElementById('txtAcompananteNombre').value.trim();
@@ -205,25 +345,65 @@ export async function nursingAdmissionView(container) {
       return;
     }
 
-    if (!esNN && !pacientePubId) {
-      ui.showToast('Debe seleccionar un paciente o activar el modo Paciente No Identificado (NN).', 'warning');
+    let payload;
+    if (esNN) {
+      payload = {
+        pacientePublicId: null,
+        esIdentidadProvisional: true,
+        medioLlegada: viaIngreso,
+        motivoLlegada: motivoConsulta,
+        acompananteNombre: acompananteNombre || null,
+        acompananteContacto: acompananteTelefono || null,
+        observaciones: observaciones || null,
+        descripcionFisica: document.getElementById('txtDescripcionFisica').value.trim() || null,
+        edadAparente: document.getElementById('txtEdadAparente').value
+          ? parseInt(document.getElementById('txtEdadAparente').value, 10)
+          : null,
+        generoAparente: document.getElementById('selGeneroAparente').value || null,
+        condicionLlegada: document.getElementById('selCondicionLlegada').value || null
+      };
+    } else if (pacientePubId) {
+      payload = {
+        pacientePublicId: pacientePubId,
+        esIdentidadProvisional: false,
+        medioLlegada: viaIngreso,
+        motivoLlegada: motivoConsulta,
+        acompananteNombre: acompananteNombre || null,
+        acompananteContacto: acompananteTelefono || null,
+        observaciones: observaciones || null
+      };
+    } else if (manualActivo) {
+      const tipoDoc = document.getElementById('selManualTipoDoc').value;
+      const numDoc = document.getElementById('txtManualNumDoc').value.trim();
+      const nombres = document.getElementById('txtManualNombres').value.trim();
+      const apellidos = document.getElementById('txtManualApellidos').value.trim();
+      const fechaNac = document.getElementById('txtManualFechaNac').value;
+      const telefono = document.getElementById('txtManualTelefono').value.trim();
+
+      if (!numDoc || !nombres || !apellidos || !fechaNac) {
+        ui.showToast('Complete documento, nombres, apellidos y fecha de nacimiento del paciente.', 'warning');
+        return;
+      }
+
+      payload = {
+        pacientePublicId: null,
+        esIdentidadProvisional: false,
+        tipoDocumentoPaciente: tipoDoc,
+        numeroDocumentoPaciente: numDoc,
+        nombresPaciente: nombres,
+        apellidosPaciente: apellidos,
+        fechaNacimientoPaciente: fechaNac,
+        telefonoPaciente: telefono || null,
+        medioLlegada: viaIngreso,
+        motivoLlegada: motivoConsulta,
+        acompananteNombre: acompananteNombre || null,
+        acompananteContacto: acompananteTelefono || null,
+        observaciones: observaciones || null
+      };
+    } else {
+      ui.showToast('Busque y seleccione un paciente por cédula, ingrese sus datos sin cuenta o active el modo NN.', 'warning');
       return;
     }
-
-    // Nombres de campo del contrato RegistrarAdmisionUrgenciaRequest del backend
-    const payload = {
-      pacientePublicId: esNN ? null : pacientePubId,
-      esIdentidadProvisional: esNN,
-      medioLlegada: viaIngreso,
-      motivoLlegada: motivoConsulta,
-      acompananteNombre: acompananteNombre || null,
-      acompananteContacto: acompananteTelefono || null,
-      observaciones: observaciones || null,
-      descripcionFisica: esNN ? document.getElementById('txtDescripcionFisica').value.trim() : null,
-      edadAparente: esNN && document.getElementById('txtEdadAparente').value ? parseInt(document.getElementById('txtEdadAparente').value, 10) : null,
-      generoAparente: esNN ? document.getElementById('selGeneroAparente').value : null,
-      condicionLlegada: esNN ? document.getElementById('selCondicionLlegada').value : null
-    };
 
     const submitBtn = document.getElementById('btnSubmitAdmission');
     submitBtn.disabled = true;
@@ -232,7 +412,6 @@ export async function nursingAdmissionView(container) {
     try {
       const resp = await emergencyApi.registrarAdmision(payload);
       ui.showToast('Admisión de urgencias registrada con éxito.', 'success');
-      // Redirigir a la valoración de triaje del episodio
       router.navigate(`/nursing/assessment/${resp.episodioPublicId}`);
     } catch (err) {
       submitBtn.disabled = false;

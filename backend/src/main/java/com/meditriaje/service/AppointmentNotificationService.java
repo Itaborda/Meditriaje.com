@@ -175,6 +175,7 @@ public class AppointmentNotificationService {
             return null;
         }
         return patientRepository.findById(pacienteId)
+                .filter(paciente -> paciente.userId() != null)
                 .flatMap(paciente -> userRepository.findById(paciente.userId()))
                 .map(com.meditriaje.model.User::email)
                 .orElse(null);

@@ -179,12 +179,14 @@ export async function hospitalBedManagementView(container, { params }) {
 
 function renderSummary(ep) {
   const card = document.getElementById('bedEpSummaryCard');
+  const patientName = ep.pacienteNombre || ep.pacienteNombreCompleto || 'Paciente No Identificado';
+  const episodeId = ep.episodioPublicId || ep.publicId || '—';
   card.innerHTML = `
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-xl font-bold m-0">${esc(ep.pacienteNombre || 'Paciente No Identificado')}</h1>
+        <h1 class="text-xl font-bold m-0">${esc(patientName)}</h1>
         <div class="text-xs text-muted mt-1 font-mono">
-          Episodio: ${esc(ep.episodioPublicId)} · Sede: ${esc(ep.sedeNombre || 'Valledupar')}
+          Episodio: ${esc(episodeId)} · Sede: ${esc(ep.sedeNombre || 'Valledupar')}
         </div>
       </div>
       <span class="badge ${ep.estado === 'HOSPITALIZADO' ? 'badge--in-progress' : 'badge--scheduled'} font-bold">

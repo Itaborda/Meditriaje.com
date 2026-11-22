@@ -759,7 +759,7 @@ public class AppointmentService {
 
         if (appointmentNotificationService != null) {
             Patient paciente = patientRepository.findById(citaOriginal.patientId()).orElse(null);
-            if (paciente != null) {
+            if (paciente != null && paciente.userId() != null) {
                 User uPac = userRepository.findById(paciente.userId()).orElse(null);
                 if (uPac != null) {
                     appointmentNotificationService.sendBookingConfirmation(nuevaCitaId, paciente.id(), uPac.email(), response);

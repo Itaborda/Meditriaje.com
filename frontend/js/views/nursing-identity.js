@@ -107,16 +107,30 @@ export async function nursingIdentityView(container, { params }) {
 
     divRes.innerHTML = `Buscando paciente civil...`;
     try {
-      divRes.innerHTML = `
-        <div class="p-3 border rounded bg-white mt-1">
-          <div class="font-bold">Documento ingresado: ${esc(doc)}</div>
-          <div class="text-xs text-muted mt-1">El sistema vinculará el episodio a este registro de paciente.</div>
-          <button type="button" class="btn btn-xs btn-primary mt-2" id="btnConfirmarSeleccion">Usar este paciente</button>
+      const pacientes = await emergencyApi.buscarPacientesPorDocumento(doc);
+      if (!Array.isArray(pacientes) || pacientes.length === 0) {
+        hdnId.value = '';
+        divRes.innerHTML = `<span class="text-warning">No se encontró un paciente registrado con el documento ${esc(doc)}.</span>`;
+        return;
+      }
+
+      divRes.innerHTML = pacientes.map(p => `
+        <div class="p-3 border rounded bg-white mt-1 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div class="font-bold">${esc(p.nombreCompleto || `${p.nombres || ''} ${p.apellidos || ''}`.trim())}</div>
+            <div class="text-xs text-muted font-mono">${esc(p.tipoDocumento)} ${esc(p.numeroDocumento)}</div>
+          </div>
+          <button type="button" class="btn btn-xs btn-primary btn-confirmar-seleccion" data-public-id="${esc(p.publicId)}">
+            Usar este paciente
+          </button>
         </div>
-      `;
-      document.getElementById('btnConfirmarSeleccion')?.addEventListener('click', () => {
-        hdnId.value = doc;
-        divRes.innerHTML = `<div class="text-success font-semibold mt-1">✓ Paciente civil seleccionado para vinculación.</div>`;
+      `).join('');
+
+      divRes.querySelectorAll('.btn-confirmar-seleccion').forEach(btn => {
+        btn.addEventListener('click', () => {
+          hdnId.value = btn.getAttribute('data-public-id') || '';
+          divRes.innerHTML = `<div class="text-success font-semibold mt-1">✓ Paciente civil seleccionado para vinculación.</div>`;
+        });
       });
     } catch (err) {
       divRes.innerHTML = `<span class="text-danger">Error buscando paciente: ${esc(err.message)}</span>`;
@@ -169,10 +183,10 @@ function renderSummary(ep) {
     </div>
     <div class="text-xl font-mono font-bold text-indigo-700">${esc(ep.codigoProvisional || 'NN-SIN-CODIGO')}</div>
     <div class="text-sm mt-2 text-muted">
-      Motivo de Ingreso: <strong>${esc(ep.motivoConsulta || '—')}</strong>
+      Motivo de Ingreso: <strong>${esc(ep.motivoConsulta || ep.motivoLlegada || '—')}</strong>
     </div>
     <div class="text-xs text-muted mt-1">
-      Vía de Ingreso: ${esc(ep.viaIngreso || 'ESPONTANEO')} · Sede: ${esc(ep.sedeNombre || 'Hospital')}
+      Vía de Ingreso: ${esc(ep.viaIngreso || ep.medioLlegada || 'ESPONTANEO')} · Sede: ${esc(ep.sedeNombre || 'Hospital')}
     </div>
   `;
 }

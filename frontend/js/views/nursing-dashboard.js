@@ -286,6 +286,11 @@ function renderQueue() {
               <span>Triaje</span>
             </a>
 
+            <a href="#/hospital/beds/${esc(epId)}" class="btn btn-ghost btn--xs" title="Asignar o trasladar cama hospitalaria">
+              ${ui.icon('bed', 'icon icon--sm')}
+              <span>Cama</span>
+            </a>
+
             ${isNN ? `
               <a href="#/nursing/identity/${esc(epId)}" class="btn btn-ghost btn--xs" title="Reconciliar identidad NN">
                 ${ui.icon('user-check', 'icon icon--sm')}
