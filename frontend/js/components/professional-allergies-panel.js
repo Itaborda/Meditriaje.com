@@ -164,7 +164,7 @@ function mostrarModalRegistrarAlergia(targetEl, { patientPublicId, atencionPubli
 
   ui.showModal({
     title: 'Registrar Alergia / Hipersensibilidad',
-    body: modalHtml,
+    message: modalHtml,
     confirmText: 'Registrar alergia',
     cancelText: 'Cancelar',
     onConfirm: async () => {
@@ -214,7 +214,7 @@ function mostrarModalInactivarAlergia(targetEl, publicId, sustancia, { patientPu
 
   ui.showModal({
     title: 'Inactivar Registro de Alergia',
-    body: modalHtml,
+    message: modalHtml,
     confirmText: 'Inactivar',
     cancelText: 'Cancelar',
     onConfirm: async () => {

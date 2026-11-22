@@ -140,12 +140,14 @@ export const ui = {
   showModal({
     title = '¿Confirmar acción?',
     message = '¿Estás seguro de continuar con esta operación?',
+    body = undefined,
     confirmText = 'Confirmar',
     cancelText = 'Cancelar',
     isDanger = false,
     onConfirm = () => {},
     onCancel = () => {}
   }) {
+    const content = body !== undefined ? body : message;
     let container = document.getElementById('modal-container');
     if (!container) {
       container = document.createElement('div');
@@ -168,7 +170,7 @@ export const ui = {
           </button>
         </header>
         <div class="modal-body">
-          ${typeof message === 'string' && message.trim().startsWith('<') ? message : `<p>${message}</p>`}
+          ${typeof content === 'string' && content.trim().startsWith('<') ? content : `<p>${content}</p>`}
         </div>
         <footer class="modal-footer">
           ${cancelText ? `<button type="button" class="btn btn-secondary btn-cancel-modal">${cancelText}</button>` : ''}
@@ -199,6 +201,11 @@ export const ui = {
       onCancel();
     });
 
+    backdrop.querySelector('.modal-body form')?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      backdrop.querySelector('.btn-confirm-modal')?.click();
+    });
+
     backdrop.querySelector('.btn-confirm-modal')?.addEventListener('click', async () => {
       try {
         const result = await onConfirm();
@@ -220,8 +227,10 @@ export const ui = {
     document.addEventListener('keydown', handleKeyDown);
     container.appendChild(backdrop);
 
-    // Foco accesible al botón de confirmación o volver
-    backdrop.querySelector(isDanger ? '.btn-cancel-modal' : '.btn-confirm-modal').focus();
+    // Foco accesible al campo con autofocus si existe, o al botón de acción
+    const focusTarget = backdrop.querySelector('.modal-body [autofocus]')
+      || backdrop.querySelector(isDanger ? '.btn-cancel-modal' : '.btn-confirm-modal');
+    focusTarget?.focus();
   },
 
   /**
