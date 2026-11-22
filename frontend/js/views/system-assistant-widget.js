@@ -24,7 +24,7 @@ function getAssistantRoleConfig() {
       subtitulo: 'Información y Registro',
       bienvenidaHtml: `
         <p class="m-0 mb-2">
-          👋 <strong>¡Hola!</strong> Te damos la bienvenida a <strong>MediTriaje 2.0</strong>.
+          👋 <strong>¡Hola!</strong> Te damos la bienvenida a <strong>MediTriaje</strong>.
         </p>
         <p class="m-0 text-xs text-muted">
           Soy tu asistente informativo. Puedo contarte cómo funciona nuestra plataforma de <strong>triaje clínico</strong>,
@@ -134,7 +134,7 @@ function getAssistantRoleConfig() {
     subtitulo: 'Orientación al Paciente 24/7',
     bienvenidaHtml: `
       <p class="m-0 mb-2">
-        👋 <strong>¡Hola!</strong> Soy tu asistente de orientación en <strong>MediTriaje 2.0</strong>.
+        👋 <strong>¡Hola!</strong> Soy tu asistente de orientación en <strong>MediTriaje</strong>.
       </p>
       <p class="m-0 text-xs text-muted">
         Puedo guiarte en cómo realizar tu <strong>triaje de síntomas</strong>, agendar o cancelar <strong>citas médicas</strong>,

@@ -44,7 +44,7 @@ public class BrevoApiEmailTransport implements EmailTransport {
         this.apiUrl = (apiUrl != null && !apiUrl.isBlank()) ? apiUrl.trim() : "https://api.brevo.com/v3/smtp/email";
         this.apiKey = (apiKey != null) ? apiKey.trim() : "";
         this.mailFrom = (mailFrom != null && !mailFrom.isBlank()) ? mailFrom.trim() : "no-reply@meditriaje.com";
-        this.mailFromName = (mailFromName != null && !mailFromName.isBlank()) ? mailFromName.trim() : "MediTriaje 2.0";
+        this.mailFromName = (mailFromName != null && !mailFromName.isBlank()) ? mailFromName.trim() : "MediTriaje";
         this.httpClient = (httpClient != null) ? httpClient : HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
                 .build();

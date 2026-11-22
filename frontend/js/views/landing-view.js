@@ -117,7 +117,7 @@ export async function landingView(container) {
                   <aside class="hero-laptop-sidebar">
                     <div class="hero-laptop-brand">
                       <span class="hero-laptop-dot"></span>
-                      <span>MediTriaje <strong class="text-primary">2.0</strong></span>
+                      <span>MediTriaje</span>
                     </div>
                     <ul class="hero-laptop-nav">
                       <li class="is-active">${ui.icon('home', 'icon icon--xs')}<span>Inicio</span></li>
@@ -185,7 +185,7 @@ export async function landingView(container) {
                 <div class="hero-phone-notch"></div>
                 <div class="hero-phone-header">
                   ${ui.icon('activity', 'icon icon--xs text-primary')}
-                  <span>MediTriaje <strong class="text-primary">2.0</strong></span>
+                  <span>MediTriaje</span>
                 </div>
                 <div class="hero-phone-body">
                   <div class="hero-phone-badge">
@@ -409,7 +409,7 @@ export async function landingView(container) {
                   <span class="badge badge--confirmed mb-3">Farmacia &amp; Trazabilidad Criptográfica</span>
                   <h3 class="text-2xl font-bold mb-3">Recetas Digitales con Snapshot Farmacológico</h3>
                   <p class="text-muted text-sm mb-4" style="line-height: 1.6;">
-                    En MediTriaje 2.0, una receta médica emitida congela de manera inmutable el principio activo, concentración y posología del medicamento (ADR-007 / ADR-008). Además, cada paciente cuenta con su <strong>Ficha de Emergencia con Código QR</strong> accesible en situaciones críticas para socorristas y paramédicos.
+                    En MediTriaje, una receta médica emitida congela de manera inmutable el principio activo, concentración y posología del medicamento (ADR-007 / ADR-008). Además, cada paciente cuenta con su <strong>Ficha de Emergencia con Código QR</strong> accesible en situaciones críticas para socorristas y paramédicos.
                   </p>
                   <div class="flex flex-col gap-2 text-xs">
                     <div class="flex items-center gap-2 font-medium">
@@ -602,7 +602,7 @@ export async function landingView(container) {
                   <svg class="icon icon-hospital text-primary" viewBox="0 0 24 24" style="width: 24px; height: 24px;" aria-hidden="true">
                     <path d="M12 6v4"/><path d="M14 14h-4"/><path d="M14 18h-4"/><path d="M14 8h-4"/><path d="M18 12h-4"/><path d="M6 12h4"/><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M10 22v-4h4v4"/>
                   </svg>
-                  <span class="font-bold text-lg" style="color: var(--text);">MediTriaje 2.0</span>
+                  <span class="font-bold text-lg" style="color: var(--text);">MediTriaje</span>
                 </div>
                 <p class="text-sm text-muted mb-4" style="max-width: 32ch;">
                   Plataforma asistencial web para la orientación de triaje, agendamiento de citas, historia clínica inmutable y recetas digitales en Colombia.
@@ -645,7 +645,7 @@ export async function landingView(container) {
 
             <div class="flex flex-wrap justify-between items-center gap-4 pt-6" style="border-top: 1px solid var(--border);">
               <div class="text-xs text-muted">
-                © 2026 MediTriaje 2.0 · Plataforma de Demostración Asistencial y Académica.
+                © 2026 MediTriaje · Plataforma de Demostración Asistencial y Académica.
               </div>
               <div class="flex flex-wrap items-center gap-2 text-xs text-muted">
                 <span>Diseño UI/UX con Tokens CSS</span>
@@ -684,7 +684,7 @@ const LEGAL_MODAL_INFO = {
   },
   upc: {
     title: 'UPC Valledupar',
-    message: 'Universidad Popular del Cesar · Programa de Ingeniería de Sistemas · Proyecto académico y asistencial MediTriaje 2.0.'
+    message: 'Universidad Popular del Cesar · Programa de Ingeniería de Sistemas · Proyecto académico y asistencial MediTriaje.'
   },
   stack: {
     title: 'Stack Tecnológico',

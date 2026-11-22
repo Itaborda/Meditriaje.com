@@ -474,7 +474,7 @@ function renderResumenClinico(container, data) {
           Este acceso temporal registra un evento inmutable en el repositorio de auditoría institucional (ADR-011, §5.18).
         </p>
         <p style="margin: 0;">
-          MediTriaje 2.0 · Plataforma de Triaje, Citas e Historia Clínica
+          MediTriaje · Plataforma de Triaje, Citas e Historia Clínica
         </p>
       </div>
     </div>
@@ -519,7 +519,7 @@ function renderAccesoInvalido(container, verificacion) {
         <div class="card p-4 text-xs text-muted mb-6 text-left" style="background-color: var(--surface-2);">
           <strong>¿Por qué ocurre esto?</strong>
           <p class="mt-1" style="margin-bottom: 0;">
-            Por estricta protección de la privacidad y confidencialidad de los datos de salud del paciente, los códigos de emergencia de MediTriaje 2.0 son efímeros y se auto-destruyen tras su vencimiento o agotamiento.
+            Por estricta protección de la privacidad y confidencialidad de los datos de salud del paciente, los códigos de emergencia de MediTriaje son efímeros y se auto-destruyen tras su vencimiento o agotamiento.
           </p>
         </div>
 

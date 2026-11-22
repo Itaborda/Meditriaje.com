@@ -151,7 +151,7 @@ class AssistantServiceTest {
         AssistantAnswerResponse res = assistantService.processQuery(req);
 
         assertThat(res.category()).isEqualTo("GENERAL_GUEST");
-        assertThat(res.answer()).contains("MediTriaje 2.0");
+        assertThat(res.answer()).contains("MediTriaje");
         assertThat(res.suggestions()).anyMatch(s -> s.spaRoute().equals("#/login"));
         assertThat(res.suggestions()).anyMatch(s -> s.spaRoute().equals("#/register"));
     }

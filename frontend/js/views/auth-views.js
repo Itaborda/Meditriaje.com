@@ -339,7 +339,7 @@ function renderMfaChallengeStep(container, challengeToken, email, queryParams) {
  * Texto oficial del consentimiento informado v1.0 (Ley 1581 de 2012)
  */
 export const TEXTO_CONSENTIMIENTO_V1 = `
-En cumplimiento de la Ley Estatutaria 1581 de 2012 de Protección de Datos Personales y el Decreto 1377 de 2013 de la República de Colombia, autorizo de manera libre, previa, expresa e informada a MediTriaje 2.0 para recolectar, almacenar, usar y tratar mis datos personales y de salud (categoría sensible).
+En cumplimiento de la Ley Estatutaria 1581 de 2012 de Protección de Datos Personales y el Decreto 1377 de 2013 de la República de Colombia, autorizo de manera libre, previa, expresa e informada a MediTriaje para recolectar, almacenar, usar y tratar mis datos personales y de salud (categoría sensible).
 
 Finalidades asistenciales y clínicas:
 1. Valoración y clasificación de riesgo mediante el sistema automatizado de triaje clínico.

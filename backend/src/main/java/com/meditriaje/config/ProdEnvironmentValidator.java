@@ -69,7 +69,7 @@ public class ProdEnvironmentValidator {
 
             String mailFromName = environment.getProperty("MAIL_FROM_NAME",
                     environment.getProperty("SMTP_FROM_NAME",
-                    environment.getProperty("meditriaje.mail.from-name", "MediTriaje 2.0")));
+                    environment.getProperty("meditriaje.mail.from-name", "MediTriaje")));
             if (mailFromName == null || mailFromName.isBlank() || mailFromName.startsWith("${")) {
                 String errorMsg = "Configuracion de produccion invalida: La variable obligatoria 'MAIL_FROM_NAME' no esta definida o esta vacia.";
                 log.error("FAIL-FAST EN PRODUCCION: {}", errorMsg);

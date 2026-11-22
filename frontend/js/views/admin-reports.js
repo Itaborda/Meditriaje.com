@@ -439,7 +439,7 @@ export function sanitizeCsvCell(val) {
  */
 function exportarReporteCsv(data, fechaDesde, fechaHasta) {
   const rows = [];
-  rows.push(['REPORTE OPERATIVO AGREGADO — MEDITRIAJE 2.0']);
+  rows.push(['REPORTE OPERATIVO AGREGADO — MEDITRIAJE']);
   rows.push(['Rango Desde', fechaDesde || 'Inicio Historico']);
   rows.push(['Rango Hasta', fechaHasta || 'Actualidad']);
   rows.push(['Fecha de Generacion (Bogota)', new Intl.DateTimeFormat('es-CO', {

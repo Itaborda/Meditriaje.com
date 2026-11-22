@@ -27,7 +27,7 @@ class ProdSecretsFailFastTest {
         props.put("FLYWAY_ENABLED", "false");
         props.put("BREVO_API_KEY", "xkeysib-test-fake-key-for-unit-tests-1234567890");
         props.put("MAIL_FROM", "notificaciones@meditriaje.com");
-        props.put("MAIL_FROM_NAME", "MediTriaje 2.0");
+        props.put("MAIL_FROM_NAME", "MediTriaje");
         // Evita intentos de conexión de red reales de Hikari en el arranque del test
         props.put("spring.datasource.hikari.initialization-fail-timeout", "-1");
         return props;

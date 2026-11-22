@@ -162,7 +162,7 @@ function updateNavbar() {
 
     if (brandLink) {
       brandLink.href = dashboardLink;
-      brandLink.setAttribute('aria-label', `Ir a mi panel de MediTriaje 2.0 (${roleName})`);
+      brandLink.setAttribute('aria-label', `Ir a mi panel de MediTriaje (${roleName})`);
     }
 
     if (navContainer) {
@@ -201,7 +201,7 @@ function updateNavbar() {
   } else {
     if (brandLink) {
       brandLink.href = '#/';
-      brandLink.setAttribute('aria-label', 'Ir al inicio de MediTriaje 2.0');
+      brandLink.setAttribute('aria-label', 'Ir al inicio de MediTriaje');
     }
 
     if (navContainer) {

@@ -367,7 +367,7 @@ export async function renderAudit(container) {
     }
 
     const rows = [
-      ['BITACORA DE AUDITORIA DE SEGURIDAD — MEDITRIAJE 2.0'],
+      ['BITACORA DE AUDITORIA DE SEGURIDAD — MEDITRIAJE'],
       ['Politica de Privacidad', 'ADR-007: Cero acceso a datos clinicos'],
       [],
       ['ID', 'FECHA_HORA_BOGOTA', 'USUARIO', 'ACCION', 'TIPO_RECURSO', 'ID_RECURSO', 'RESULTADO', 'IP_ORIGEN']
