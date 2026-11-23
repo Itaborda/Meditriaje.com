@@ -159,5 +159,28 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRIAGE AS
              ORDER BY VERSION DESC
              FETCH FIRST 1 ROWS ONLY;
     END get_latest_assessment;
+
+    PROCEDURE add_assessment_symptom(p_assessment_id IN NUMBER, p_symptom_id IN NUMBER,
+                                     p_duration_hours IN NUMBER, p_intensity IN NUMBER) IS
+    BEGIN
+        INSERT INTO VALORACION_TRIAJE_SINTOMA (VALORACION_ID, SINTOMA_ID, DURACION_HORAS, INTENSIDAD)
+        VALUES (p_assessment_id, p_symptom_id, p_duration_hours, p_intensity);
+    END add_assessment_symptom;
+
+    PROCEDURE list_assessment_symptoms(p_episode_id IN NUMBER, o_rows OUT SYS_REFCURSOR) IS
+    BEGIN
+        OPEN o_rows FOR
+            SELECT vt.PUBLIC_ID AS VALORACION_PUBLIC_ID,
+                   s.CODIGO AS SINTOMA_CODIGO,
+                   s.NOMBRE AS SINTOMA_NOMBRE,
+                   vts.DURACION_HORAS,
+                   vts.INTENSIDAD,
+                   s.ES_ALARMA
+              FROM VALORACION_TRIAJE_SINTOMA vts
+              JOIN VALORACION_TRIAJE vt ON vts.VALORACION_ID = vt.ID
+              JOIN SINTOMA s ON vts.SINTOMA_ID = s.ID
+             WHERE vt.EPISODIO_ID = p_episode_id
+             ORDER BY vt.VERSION ASC, s.NOMBRE ASC;
+    END list_assessment_symptoms;
 END PKG_TRIAGE;
 /

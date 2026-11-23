@@ -5,6 +5,7 @@
  */
 
 import { api } from '../api.js';
+import { motion } from '../motion.js';
 import { router } from '../router.js';
 import { ui, esc } from '../ui.js';
 import { openUniversalQrScanner } from '../components/qr-scanner-modal.js';
@@ -51,7 +52,7 @@ export async function emergencySummaryView(container, { params }) {
 
   // 1. Mostrar skeleton de verificación
   container.innerHTML = `
-    <div class="sg-section" style="max-width: 900px; margin: 0 auto; padding-top: var(--space-6); padding-bottom: var(--space-12);">
+    <div style="max-width: 900px; margin: 0 auto; padding-top: var(--space-6); padding-bottom: var(--space-12);">
       <div class="card p-6 text-center">
         <div class="skeleton skeleton-title" style="width: 60%; height: 32px; margin: 0 auto 16px auto;"></div>
         <div class="skeleton skeleton-text" style="width: 80%; height: 16px; margin: 0 auto 8px auto;"></div>
@@ -77,7 +78,11 @@ export async function emergencySummaryView(container, { params }) {
       await consultarYCargarResumen(container, token, null);
     }
   } catch (err) {
-    renderError(container, err.message || 'No fue posible validar el código QR de emergencia.');
+    renderError(
+      container,
+      err.message || 'No fue posible validar el código QR de emergencia.',
+      () => emergencySummaryView(container, { params })
+    );
   }
 }
 
@@ -88,10 +93,10 @@ export async function emergencySummaryView(container, { params }) {
  */
 function renderFormularioPin(container, token) {
   container.innerHTML = `
-    <div class="sg-section" style="max-width: 520px; margin: 0 auto; padding-top: var(--space-8); padding-bottom: var(--space-12);">
+    <div style="max-width: 520px; margin: 0 auto; padding-top: var(--space-8); padding-bottom: var(--space-12);">
       <div class="card" style="border-top: 4px solid var(--primary); box-shadow: var(--shadow-lg);">
         <div class="card-header text-center pb-2">
-          <div style="background-color: var(--teal-50); color: var(--primary); width: 56px; height: 56px; border-radius: var(--radius-full); display: flex; align-items: center; justify-content: center; margin: 0 auto var(--space-3) auto;">
+          <div style="background-color: var(--primary-soft); border: 1px solid var(--primary-soft-border); color: var(--primary); width: 56px; height: 56px; border-radius: var(--radius-full); display: flex; align-items: center; justify-content: center; margin: 0 auto var(--space-3) auto;">
             ${ui.icon('shield', 'icon icon--lg')}
           </div>
           <h1 class="card-title text-2xl font-bold">Código Protegido con PIN</h1>
@@ -101,7 +106,7 @@ function renderFormularioPin(container, token) {
         </div>
 
         <div class="card-body">
-          <div id="pinErrorAlert" class="mb-4" style="display: none;"></div>
+          <div id="pinErrorAlert" class="mb-4" style="display: none;" role="alert" aria-live="assertive"></div>
 
           <form id="formPinEmergencia" novalidate>
             <div class="mb-6 text-center">
@@ -145,10 +150,20 @@ function renderFormularioPin(container, token) {
     </div>
   `;
 
+  motion.stepTransition(container.querySelector('.card'), 'forward');
+  motion.drawSvg(container.querySelector('.card-header svg'), { duration: 480, root: container });
+
   const form = container.querySelector('#formPinEmergencia');
   const inputPin = container.querySelector('#inputPin');
   const pinErrorAlert = container.querySelector('#pinErrorAlert');
   const btnSubmit = container.querySelector('#btnSubmitPin');
+
+  inputPin?.addEventListener('input', () => {
+    if (pinErrorAlert.style.display !== 'none') {
+      pinErrorAlert.style.display = 'none';
+      pinErrorAlert.innerHTML = '';
+    }
+  });
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -161,17 +176,12 @@ function renderFormularioPin(container, token) {
     }
 
     try {
-      btnSubmit.disabled = true;
-      btnSubmit.innerHTML = `<span>Validando credenciales...</span>`;
+      ui.setButtonLoading(btnSubmit, true);
       pinErrorAlert.style.display = 'none';
 
       await consultarYCargarResumen(container, token, pin);
     } catch (err) {
-      btnSubmit.disabled = false;
-      btnSubmit.innerHTML = `
-        ${ui.icon('check', 'icon icon--md')}
-        <span>Consultar Resumen Clínico</span>
-      `;
+      ui.setButtonLoading(btnSubmit, false);
       mostrarErrorPin(err.message || 'El PIN ingresado es incorrecto.');
       inputPin.value = '';
       inputPin.focus();
@@ -181,11 +191,14 @@ function renderFormularioPin(container, token) {
   function mostrarErrorPin(mensaje) {
     pinErrorAlert.style.display = 'block';
     pinErrorAlert.innerHTML = `
-      <div class="card p-3 flex items-center gap-2" style="background-color: var(--danger-bg); border-color: var(--danger); color: var(--danger);">
-        ${ui.icon('alert-circle', 'icon icon--sm')}
-        <span class="text-sm font-medium">${esc(mensaje)}</span>
+      <div class="alert alert--danger mb-0">
+        ${ui.icon('alert-circle', 'icon alert-icon')}
+        <div class="alert-content">
+          <span class="text-sm font-medium">${esc(mensaje)}</span>
+        </div>
       </div>
     `;
+    motion.pulseSubtle(pinErrorAlert);
   }
 }
 
@@ -212,13 +225,13 @@ function renderResumenClinico(container, data) {
   const atenciones = data.atencionesRecientes || [];
 
   container.innerHTML = `
-    <div class="sg-section" style="max-width: 960px; margin: 0 auto; padding-top: var(--space-4); padding-bottom: var(--space-12);">
+    <div style="max-width: 960px; margin: 0 auto; padding-top: var(--space-4); padding-bottom: var(--space-12);">
       
       <!-- Encabezado de Emergencia -->
       <div class="card mb-6" style="border: 2px solid var(--danger); background: linear-gradient(90deg, var(--danger-bg) 0%, var(--surface) 100%);">
         <div class="card-body flex flex-wrap items-center justify-between gap-4 py-4">
           <div class="flex items-center gap-3">
-            <div style="background-color: var(--danger); color: #FFFFFF; width: 48px; height: 48px; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center;">
+            <div class="emergency-hero-icon" style="background-color: #DC2626; color: #FFFFFF; width: 48px; height: 48px; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
               ${ui.icon('activity', 'icon icon--lg')}
             </div>
             <div>
@@ -227,7 +240,7 @@ function renderResumenClinico(container, data) {
             </div>
           </div>
 
-          <div class="text-right text-xs text-muted">
+          <div class="text-left text-xs text-muted" style="min-width: 0;">
             <div><strong>Consulta auditada:</strong> ${formatDate(data.generadoAt || new Date().toISOString())}</div>
             <div class="text-success font-medium">Lectura autorizada por el paciente</div>
           </div>
@@ -235,7 +248,7 @@ function renderResumenClinico(container, data) {
       </div>
 
       <!-- Advertencia Legal Obligatoria (ADR-010, §5.18) -->
-      <div class="card mb-6" style="border-left: 4px solid var(--warning); background-color: var(--warning-bg); color: var(--warning-text, #854D0E);">
+      <div class="card mb-6" style="border-left: 4px solid var(--warning); background-color: var(--warning-bg); color: var(--on-warning-bg);">
         <div class="card-body flex items-start gap-3 py-3">
           <div style="flex-shrink: 0; padding-top: 2px;">
             ${ui.icon('alert-triangle', 'icon icon--md')}
@@ -249,7 +262,7 @@ function renderResumenClinico(container, data) {
 
       <!-- Tarjeta Principal del Paciente -->
       <div class="card mb-6" style="box-shadow: var(--shadow-md);">
-        <div class="card-header flex items-center justify-between">
+        <div class="card-header flex flex-wrap items-center justify-between gap-2">
           <h2 class="card-title text-xl flex items-center gap-2">
             ${ui.icon('user', 'icon icon--sm text-primary')}
             <span>Identificación del Paciente</span>
@@ -265,12 +278,12 @@ function renderResumenClinico(container, data) {
 
             <div>
               <span class="text-xs text-muted block uppercase tracking-wider font-semibold">Documento de Identidad:</span>
-              <span class="text-base font-semibold font-mono">${esc(paciente.tipoDocumento)} ${esc(paciente.numeroDocumento)}</span>
+              <span class="text-base font-semibold font-mono">${esc(paciente.tipoDocumento || '')} ${esc(paciente.numeroDocumento || 'No informado')}</span>
             </div>
 
             <div>
               <span class="text-xs text-muted block uppercase tracking-wider font-semibold">Edad y Nacimiento:</span>
-              <span class="text-base font-semibold">${paciente.edad} años</span>
+              <span class="text-base font-semibold">${paciente.edad != null ? `${esc(paciente.edad)} años` : 'Edad no informada'}</span>
               <span class="text-xs text-muted block">(${formatDate(paciente.fechaNacimiento, false)})</span>
             </div>
           </div>
@@ -278,18 +291,18 @@ function renderResumenClinico(container, data) {
           <!-- Contacto si fue autorizado -->
           <div class="mt-4 pt-4 border-t flex flex-wrap gap-6 items-center text-sm">
             <div>
-              <span class="text-xs text-muted uppercase font-semibold">Teléfono de Contacto:</span>
+              <span class="text-xs text-muted uppercase font-semibold block">Teléfono de Contacto:</span>
               ${paciente.telefono ? `
-                <a href="tel:${esc(paciente.telefono)}" class="font-bold text-primary flex items-center gap-1 mt-0.5" style="text-decoration: underline;">
-                  ${ui.icon('phone', 'icon icon--sm')}
+                <a href="tel:${esc(paciente.telefono)}" class="btn btn-secondary btn--sm inline-flex items-center gap-2 mt-1" style="min-height: var(--touch-target);">
+                  ${ui.icon('phone', 'icon icon--sm text-primary')}
                   <span>${esc(paciente.telefono)}</span>
                 </a>
               ` : `<span class="text-muted italic block">No autorizado o sin registro</span>`}
             </div>
 
             <div>
-              <span class="text-xs text-muted uppercase font-semibold">Correo Electrónico:</span>
-              <span class="font-medium block text-muted">${esc(paciente.email || 'No autorizado o sin registro')}</span>
+              <span class="text-xs text-muted uppercase font-semibold block">Correo Electrónico:</span>
+              <span class="font-medium block text-muted mt-1">${esc(paciente.email || 'No autorizado o sin registro')}</span>
             </div>
           </div>
         </div>
@@ -297,7 +310,7 @@ function renderResumenClinico(container, data) {
 
       <!-- Sección de Alergias (Prioridad Crítica en Urgencias) -->
       <div class="card mb-6" style="border-top: 4px solid var(--danger);">
-        <div class="card-header flex items-center justify-between">
+        <div class="card-header flex flex-wrap items-center justify-between gap-2">
           <h2 class="card-title text-xl flex items-center gap-2" style="color: var(--danger);">
             ${ui.icon('alert-circle', 'icon icon--sm text-danger')}
             <span>Alergias e Hipersensibilidades Reportadas</span>
@@ -314,10 +327,10 @@ function renderResumenClinico(container, data) {
           ` : `
             <div class="grid grid-cols-1 grid-cols-2-md gap-4">
               ${alergias.map(a => `
-                <div class="card p-4" style="background-color: var(--danger-bg); border-color: var(--danger-border, #FECACA);">
-                  <div class="flex items-center justify-between mb-2">
+                <div class="card p-4" style="background-color: var(--danger-bg); border-color: var(--danger-border);">
+                  <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
                     <strong class="text-base font-bold text-danger">${esc(a.sustancia)}</strong>
-                    <div class="flex items-center gap-1">
+                    <div class="flex flex-wrap items-center gap-1">
                       ${a.origen === 'PACIENTE' ? '<span class="badge badge--scheduled text-xs">Autorreportada</span>' : '<span class="badge badge--confirmed text-xs">Diagnóstico</span>'}
                       <span class="badge badge--danger">${esc(a.severidad || 'NO ESPECIFICADA')}</span>
                     </div>
@@ -334,7 +347,7 @@ function renderResumenClinico(container, data) {
 
       <!-- Sección de Medicamentos Activos -->
       <div class="card mb-6">
-        <div class="card-header flex items-center justify-between">
+        <div class="card-header flex flex-wrap items-center justify-between gap-2">
           <h2 class="card-title text-xl flex items-center gap-2">
             ${ui.icon('pill', 'icon icon--sm text-primary')}
             <span>Medicamentos Activos Prescritos</span>
@@ -350,7 +363,7 @@ function renderResumenClinico(container, data) {
             </div>
           ` : `
             <div class="table-container" style="overflow-x: auto;">
-              <table class="table" style="width: 100%;">
+              <table class="table table--stacked" style="width: 100%;">
                 <thead>
                   <tr>
                     <th>Medicamento / Principio Activo</th>
@@ -363,21 +376,25 @@ function renderResumenClinico(container, data) {
                 <tbody>
                   ${medicamentos.map(m => `
                     <tr>
-                      <td>
-                        <strong class="text-sm block" style="color: var(--text);">${esc(m.nombre)}</strong>
-                        <span class="text-xs text-muted font-mono">${esc(m.principioActivo)}</span>
+                      <td data-label="Medicamento">
+                        <div>
+                          <strong class="text-sm block" style="color: var(--text);">${esc(m.nombre || 'Medicamento')}</strong>
+                          <span class="text-xs text-muted font-mono">${esc(m.principioActivo || '—')}</span>
+                        </div>
                       </td>
-                      <td class="text-sm">
-                        <div><strong>${esc(m.dosis)}</strong></div>
-                        <div class="text-xs text-muted">${esc(m.frecuencia)}</div>
+                      <td data-label="Dosis y frecuencia" class="text-sm">
+                        <div>
+                          <div><strong>${esc(m.dosis || '—')}</strong></div>
+                          <div class="text-xs text-muted">${esc(m.frecuencia || '—')}</div>
+                        </div>
                       </td>
-                      <td class="text-xs text-muted">
-                        ${esc(m.presentacion || '')} ${esc(m.concentracion || '')}
+                      <td data-label="Presentación" class="text-xs text-muted">
+                        ${esc([m.presentacion, m.concentracion].filter(Boolean).join(' ') || 'No especificada')}
                       </td>
-                      <td class="text-xs font-medium">
-                        ${m.duracionDias} días (${m.cantidad} uds)
+                      <td data-label="Duración" class="text-xs font-medium">
+                        ${m.duracionDias != null ? `${esc(m.duracionDias)} días` : 'Según orden'}${m.cantidad != null ? ` (${esc(m.cantidad)} uds)` : ''}
                       </td>
-                      <td class="text-xs text-muted" style="max-width: 250px;">
+                      <td data-label="Indicaciones" class="text-xs text-muted">
                         ${esc(m.indicaciones || 'Según orden médica')}
                       </td>
                     </tr>
@@ -391,7 +408,7 @@ function renderResumenClinico(container, data) {
 
       <!-- Sección de Atenciones Recientes y Diagnósticos CIE-10 -->
       <div class="card mb-6">
-        <div class="card-header flex items-center justify-between">
+        <div class="card-header flex flex-wrap items-center justify-between gap-2">
           <h2 class="card-title text-xl flex items-center gap-2">
             ${ui.icon('file-text', 'icon icon--sm text-primary')}
             <span>Atenciones Médicas Recientes</span>
@@ -439,17 +456,40 @@ function renderResumenClinico(container, data) {
         </div>
       </div>
 
+      <!-- Acciones operativas del resumen -->
+      <div class="flex flex-wrap items-center justify-center gap-3 mb-6">
+        <button type="button" id="btnPrintEmergencySummary" class="btn btn-secondary">
+          ${ui.icon('printer', 'icon icon--sm')}
+          <span>Imprimir resumen</span>
+        </button>
+        <button type="button" id="btnScanAnotherEmergencyQr" class="btn btn-primary">
+          ${ui.icon('camera', 'icon icon--sm')}
+          <span>Escanear otro QR</span>
+        </button>
+      </div>
+
       <!-- Pie de Seguridad y Auditoría -->
       <div class="text-center text-xs text-muted pt-4 border-t">
         <p class="mb-1">
           Este acceso temporal registra un evento inmutable en el repositorio de auditoría institucional (ADR-011, §5.18).
         </p>
         <p style="margin: 0;">
-          MediTriaje 2.0 · Plataforma de Triaje, Citas e Historia Clínica
+          MediTriaje · Plataforma de Triaje, Citas e Historia Clínica
         </p>
       </div>
     </div>
   `;
+
+  container.querySelector('#btnPrintEmergencySummary')?.addEventListener('click', () => {
+    window.print();
+  });
+  container.querySelector('#btnScanAnotherEmergencyQr')?.addEventListener('click', () => {
+    openUniversalQrScanner();
+  });
+
+  motion.stepTransition(container.firstElementChild, 'forward');
+  motion.staggerCards(container.querySelectorAll('.card'), { delayStep: 25, root: container });
+  motion.drawSvg(container.querySelector('.emergency-hero-icon svg'), { duration: 480, root: container });
 }
 
 /**
@@ -464,9 +504,9 @@ function renderAccesoInvalido(container, verificacion) {
   if (verificacion.estado === 'AGOTADO') badgeClass = 'badge--rescheduled';
 
   container.innerHTML = `
-    <div class="sg-section" style="max-width: 600px; margin: 0 auto; padding-top: var(--space-8); padding-bottom: var(--space-12);">
+    <div style="max-width: 600px; margin: 0 auto; padding-top: var(--space-8); padding-bottom: var(--space-12);">
       <div class="card p-8 text-center" style="border-top: 4px solid var(--danger); box-shadow: var(--shadow-lg);">
-        <div style="background-color: var(--danger-bg); color: var(--danger); width: 64px; height: 64px; border-radius: var(--radius-full); display: flex; align-items: center; justify-content: center; margin: 0 auto var(--space-4) auto;">
+        <div class="emergency-invalid-icon" style="background-color: var(--danger-bg); color: var(--danger); width: 64px; height: 64px; border-radius: var(--radius-full); display: flex; align-items: center; justify-content: center; margin: 0 auto var(--space-4) auto;">
           ${ui.icon('alert-triangle', 'icon icon--lg')}
         </div>
 
@@ -479,7 +519,7 @@ function renderAccesoInvalido(container, verificacion) {
         <div class="card p-4 text-xs text-muted mb-6 text-left" style="background-color: var(--surface-2);">
           <strong>¿Por qué ocurre esto?</strong>
           <p class="mt-1" style="margin-bottom: 0;">
-            Por estricta protección de la privacidad y confidencialidad de los datos de salud del paciente, los códigos de emergencia de MediTriaje 2.0 son efímeros y se auto-destruyen tras su vencimiento o agotamiento.
+            Por estricta protección de la privacidad y confidencialidad de los datos de salud del paciente, los códigos de emergencia de MediTriaje son efímeros y se auto-destruyen tras su vencimiento o agotamiento.
           </p>
         </div>
 
@@ -496,6 +536,9 @@ function renderAccesoInvalido(container, verificacion) {
     </div>
   `;
 
+  motion.stepTransition(container.querySelector('.card'), 'forward');
+  motion.drawSvg(container.querySelector('.emergency-invalid-icon svg'), { duration: 480, root: container });
+
   container.querySelector('#btnScanAnotherEmergencyQr')?.addEventListener('click', () => {
     openUniversalQrScanner();
   });
@@ -505,17 +548,24 @@ function renderAccesoInvalido(container, verificacion) {
  * Renderiza error general
  * @param {HTMLElement} container
  * @param {string} mensaje
+ * @param {Function|null} onRetry
  */
-function renderError(container, mensaje) {
+function renderError(container, mensaje, onRetry = null) {
   container.innerHTML = `
-    <div class="sg-section" style="max-width: 500px; margin: 0 auto; padding-top: var(--space-8); padding-bottom: var(--space-12);">
+    <div style="max-width: 500px; margin: 0 auto; padding-top: var(--space-8); padding-bottom: var(--space-12);">
       <div class="card p-6 text-center">
-        <div style="color: var(--danger); margin-bottom: var(--space-3); display: flex; justify-content: center;">
+        <div class="emergency-error-icon" style="color: var(--danger); margin-bottom: var(--space-3); display: flex; justify-content: center;">
           ${ui.icon('alert-circle', 'icon icon--lg')}
         </div>
         <h2 class="text-xl font-bold mb-2">Error de Acceso</h2>
         <p class="text-muted text-sm mb-4">${esc(mensaje)}</p>
         <div class="flex flex-wrap items-center justify-center gap-3">
+          ${onRetry ? `
+            <button type="button" id="btnRetryEmergencySummary" class="btn btn-primary btn--sm">
+              ${ui.icon('refresh-cw', 'icon icon--sm')}
+              <span>Reintentar</span>
+            </button>
+          ` : ''}
           <button type="button" id="btnScanAnotherEmergencyQr" class="btn btn-secondary btn--sm">
             ${ui.icon('camera', 'icon icon--sm')}
             <span>Escanear otro QR</span>
@@ -528,6 +578,12 @@ function renderError(container, mensaje) {
     </div>
   `;
 
+  motion.stepTransition(container.querySelector('.card'), 'forward');
+  motion.drawSvg(container.querySelector('.emergency-error-icon svg'), { duration: 480, root: container });
+
+  if (onRetry) {
+    container.querySelector('#btnRetryEmergencySummary')?.addEventListener('click', onRetry);
+  }
   container.querySelector('#btnScanAnotherEmergencyQr')?.addEventListener('click', () => {
     openUniversalQrScanner();
   });

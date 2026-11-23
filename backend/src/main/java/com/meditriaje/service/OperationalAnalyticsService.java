@@ -167,6 +167,26 @@ public class OperationalAnalyticsService {
     }
 
     /**
+     * O02: Evalúa umbrales operativos actuales (ocupación >= 85% o demora Triaje II > 30 min),
+     * registra de forma idempotente las alertas nuevas y retorna las alertas activas.
+     */
+    @Transactional
+    public List<OperationalAlertResponse> evaluateAndListActiveAlerts(
+            String usuarioAutenticadoPublicId,
+            String ipOrigen
+    ) {
+        Site sede = siteRepository.getSingleSite();
+        HospitalDashboardResponse dash = getHospitalDashboard(usuarioAutenticadoPublicId, ipOrigen);
+        evaluateAutomaticAlerts(
+                sede,
+                dash.occupancyRatePercentage(),
+                dash.episodesByTriageLevel(),
+                dash.averageWaitMinutes()
+        );
+        return alertRepository.listBySite(sede.id(), "ACTIVA");
+    }
+
+    /**
      * O02: Lista las alertas operativas del hospital.
      */
     public List<OperationalAlertResponse> listAlerts(String estado) {

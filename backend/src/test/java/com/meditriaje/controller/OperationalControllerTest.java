@@ -140,4 +140,20 @@ class OperationalControllerTest {
                 .andExpect(jsonPath("$.codigoIdentidadProvisional").value("NN-001"))
                 .andExpect(jsonPath("$.ubicacionActual").value("PABELLON SAN ROQUE"));
     }
+
+    @Test
+    @DisplayName("O02: Evaluar alertas operativas bajo demanda retorna 200 OK con alertas activas")
+    void evaluateAlerts_nursing_returns200() throws Exception {
+        OperationalAlertResponse alerta = new OperationalAlertResponse(
+                "alt-1", "sede-1", "Sede Central", "SATURACION_CAMAS", "CRITICA", "Ocupación crítica", "ACTIVA", null, null, null, now
+        );
+        when(analyticsService.evaluateAndListActiveAlerts(eq("usr-enf-uuid"), anyString()))
+                .thenReturn(List.of(alerta));
+
+        mockMvc.perform(post("/api/v1/operational/alerts/evaluate")
+                        .cookie(cookie(TOKEN_ENFERMERIA))
+                        .header("X-Requested-With", "XMLHttpRequest"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].tipoAlerta").value("SATURACION_CAMAS"));
+    }
 }

@@ -8,6 +8,7 @@ import java.sql.Date;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -25,12 +26,14 @@ public class PatientRepository {
     static final String PACKAGE = "PKG_PATIENTS";
 
     static final RowMapper<Patient> PATIENT_MAPPER = (rs, rowNum) -> {
+        long rawUserId = rs.getLong("USUARIO_ID");
+        Long userId = rs.wasNull() ? null : rawUserId;
         Date fNac = rs.getDate("FECHA_NACIMIENTO");
         Timestamp tsCreated = rs.getTimestamp("CREATED_AT");
         Timestamp tsUpdated = rs.getTimestamp("UPDATED_AT");
         return new Patient(
                 rs.getLong("ID"),
-                rs.getLong("USUARIO_ID"),
+                userId,
                 rs.getString("PUBLIC_ID"),
                 rs.getString("TIPO_DOCUMENTO"),
                 rs.getString("NUMERO_DOCUMENTO"),
@@ -101,6 +104,19 @@ public class PatientRepository {
             .cursor("o_row", PATIENT_MAPPER)
             .build();
 
+    static final ProcedureSpec SEARCH_PATIENTS_BY_DOCUMENT = ProcedureSpec.procedure(
+                    PACKAGE, "search_patients_by_document")
+            .in("p_document_number", Types.VARCHAR)
+            .in("p_document_type", Types.VARCHAR)
+            .cursor("o_rows", PATIENT_MAPPER)
+            .build();
+
+    static final ProcedureSpec LINK_USER_TO_PATIENT = ProcedureSpec.procedure(PACKAGE, "link_user_to_patient")
+            .in("p_patient_id", Types.NUMERIC)
+            .in("p_user_id", Types.NUMERIC)
+            .out("o_updated", Types.NUMERIC)
+            .build();
+
     private final PackageGateway gateway;
 
     public PatientRepository(PackageGateway gateway) {
@@ -123,9 +139,8 @@ public class PatientRepository {
             String apellidos,
             LocalDate fechaNacimiento,
             String telefono) {
-        Objects.requireNonNull(usuarioId, "usuarioId no puede ser nulo");
         Map<String, Object> out = gateway.execute(CREATE_PATIENT, new MapSqlParameterSource()
-                .addValue("p_user_id", usuarioId)
+                .addValue("p_user_id", usuarioId, Types.NUMERIC)
                 .addValue("p_public_id", publicId)
                 .addValue("p_document_type", tipoDocumento)
                 .addValue("p_document_number", numeroDocumento)
@@ -161,5 +176,24 @@ public class PatientRepository {
         return gateway.single(GET_PATIENT_BY_DOCUMENT, new MapSqlParameterSource()
                 .addValue("p_document_type", tipoDocumento)
                 .addValue("p_document_number", numeroDocumento), "o_row");
+    }
+
+    public List<Patient> searchByDocument(String documentNumber, String documentType) {
+        if (documentNumber == null || documentNumber.isBlank()) {
+            return List.of();
+        }
+        return gateway.list(SEARCH_PATIENTS_BY_DOCUMENT, new MapSqlParameterSource()
+                .addValue("p_document_number", documentNumber.trim(), Types.VARCHAR)
+                .addValue("p_document_type", documentType, Types.VARCHAR), "o_rows");
+    }
+
+    public int linkUserToPatient(Long patientId, Long userId) {
+        Objects.requireNonNull(patientId, "patientId no puede ser nulo");
+        Objects.requireNonNull(userId, "userId no puede ser nulo");
+        Map<String, Object> out = gateway.execute(LINK_USER_TO_PATIENT, new MapSqlParameterSource()
+                .addValue("p_patient_id", patientId, Types.NUMERIC)
+                .addValue("p_user_id", userId, Types.NUMERIC));
+        Number affected = (Number) out.get("o_updated");
+        return affected != null ? affected.intValue() : 0;
     }
 }

@@ -98,7 +98,7 @@ class AppointmentNotificationServiceTest {
 
         verify(emailService).sendHtmlEmail(
                 eq("carlos@example.com"),
-                eq("MediTriaje 2.0 — Confirmación de Cita Médica (Medicina General)"),
+                eq("MediTriaje — Confirmación de Cita Médica (Medicina General)"),
                 eq("<html>Confirmacion</html>")
         );
 
@@ -159,7 +159,7 @@ class AppointmentNotificationServiceTest {
 
         verify(emailService).sendHtmlEmail(
                 eq("carlos@example.com"),
-                eq("MediTriaje 2.0 — Cancelación de Cita Médica (Medicina General)"),
+                eq("MediTriaje — Cancelación de Cita Médica (Medicina General)"),
                 eq("<html>Cancelacion</html>")
         );
 
@@ -204,7 +204,7 @@ class AppointmentNotificationServiceTest {
 
         verify(emailService).sendHtmlEmail(
                 eq("carlos@example.com"),
-                eq("MediTriaje 2.0 — Plan de Cuidado y Seguimiento Post-Atención"),
+                eq("MediTriaje — Plan de Cuidado y Seguimiento Post-Atención"),
                 eq("<html>Resumen</html>")
         );
     }

@@ -15,6 +15,7 @@ import java.sql.Date;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -97,5 +98,40 @@ class PatientRepositoryTest {
 
         assertThatThrownBy(() -> repository.create(1L, "pub", "CC", "1", "Ana", "Diaz", LocalDate.now(), null))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void create_withoutUserId_sendsNullAndReturnsId() {
+        Map<String, Object> out = new HashMap<>();
+        out.put("o_id", new BigDecimal("88"));
+        when(gateway.execute(eq(PatientRepository.CREATE_PATIENT),
+                        argThat(p -> p.getValue("p_user_id") == null && "1134169348".equals(p.getValue("p_document_number")))))
+                .thenReturn(out);
+
+        Long id = repository.create(null, "pub-walkin", "CC", "1134169348", "Laura", "Morales", LocalDate.of(1992, 3, 15), "3001234567");
+
+        assertThat(id).isEqualTo(88L);
+    }
+
+    @Test
+    void searchByDocument_returnsPatientsAndHandlesBlank() {
+        when(gateway.<Patient>list(eq(PatientRepository.SEARCH_PATIENTS_BY_DOCUMENT),
+                        argThat(p -> "12345678".equals(p.getValue("p_document_number")) && "CC".equals(p.getValue("p_document_type"))),
+                        eq("o_rows")))
+                .thenReturn(List.of(paciente()));
+
+        assertThat(repository.searchByDocument("  ", "CC")).isEmpty();
+        List<Patient> encontrados = repository.searchByDocument(" 12345678 ", "CC");
+        assertThat(encontrados).hasSize(1);
+        assertThat(encontrados.get(0).documentNumber()).isEqualTo("12345678");
+    }
+
+    @Test
+    void linkUserToPatient_callsGatewayAndReturnsUpdatedCount() {
+        when(gateway.execute(eq(PatientRepository.LINK_USER_TO_PATIENT),
+                        argThat(p -> Long.valueOf(10L).equals(p.getValue("p_patient_id")) && Long.valueOf(5L).equals(p.getValue("p_user_id")))))
+                .thenReturn(Map.of("o_updated", BigDecimal.ONE));
+
+        assertThat(repository.linkUserToPatient(10L, 5L)).isEqualTo(1);
     }
 }

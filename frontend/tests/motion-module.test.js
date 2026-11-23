@@ -41,5 +41,21 @@ test('Helpers de movimiento toleran entradas nulas o vacías de forma segura', a
     motion.stepTransition(null);
     motion.drawSvg(null);
     motion.pulseSubtle(null);
+    motion.springPop([]);
+    motion.animateProgress([]);
+    motion.revealPanel(null);
+    motion.pulseUrgency([]);
+    motion.spinOnce(null);
+    motion.animateModalOpen(null);
+    motion.animateToastIn(null);
   });
+});
+
+test('animateProgress, springPop y spinOnce están exportados y son seguros sin DOM', async () => {
+  const { motion, springPop, animateProgress, revealPanel, pulseUrgency, spinOnce } = await import('../js/motion.js');
+  for (const fn of [springPop, animateProgress, revealPanel, pulseUrgency, spinOnce]) {
+    assert.equal(typeof fn, 'function');
+  }
+  assert.equal(typeof motion.animateModalOpen, 'function');
+  assert.equal(typeof motion.animateToastIn, 'function');
 });

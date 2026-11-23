@@ -180,4 +180,28 @@ class OperationalAnalyticsServiceTest {
         assertEquals("EN_PABELLON", resp.episodeStatus());
         verify(auditService).audit(any(AuditEvent.class));
     }
+
+    @Test
+    @DisplayName("O02: evaluateAndListActiveAlerts evalúa umbrales bajo demanda y retorna alertas activas")
+    void evaluateAndListActiveAlerts_evaluatesThresholdsAndReturnsActiveAlerts() {
+        Site sede = new Site(1L, 10L, "sede-1", "Sede Central", "Dir", "Valledupar", "ACTIVO");
+        when(siteRepository.getSingleSite()).thenReturn(sede);
+
+        BedCensusResponse censo = new BedCensusResponse(
+                "sede-1", "Sede Central", 20, 18, 2, 0, 0, 90.0, List.of()
+        );
+        when(hospitalService.getBedCensus()).thenReturn(censo);
+        when(episodeRepository.listEmergencyQueueBySite(1L, null)).thenReturn(List.of());
+
+        OperationalAlertResponse alertaActiva = new OperationalAlertResponse(
+                "alt-1", "sede-1", "Sede Central", "SATURACION_CAMAS", "CRITICA", "Ocupación al 90%", "ACTIVA", null, null, null, now
+        );
+        when(alertRepository.listBySite(1L, "ACTIVA")).thenReturn(List.of(), List.of(), List.of(alertaActiva));
+
+        List<OperationalAlertResponse> alertas = service.evaluateAndListActiveAlerts("usr-admin", "127.0.0.1");
+
+        verify(alertRepository, atLeastOnce()).save(any(OperationalAlert.class));
+        assertEquals(1, alertas.size());
+        assertEquals("SATURACION_CAMAS", alertas.get(0).alertType());
+    }
 }

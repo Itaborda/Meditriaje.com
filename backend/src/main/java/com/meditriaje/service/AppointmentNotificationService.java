@@ -90,7 +90,7 @@ public class AppointmentNotificationService {
         );
 
         String cuerpoHtml = templateService.render(CONFIRMATION_TEMPLATE, variables);
-        String asunto = "MediTriaje 2.0 — Confirmación de Cita Médica (" + cita.specialtyName() + ")";
+        String asunto = "MediTriaje — Confirmación de Cita Médica (" + cita.specialtyName() + ")";
 
         dispatchAndRecord(citaId, pacienteId, emailDestinatario, "CONFIRMACION_RESERVA", asunto, cuerpoHtml);
     }
@@ -119,7 +119,7 @@ public class AppointmentNotificationService {
         );
 
         String cuerpoHtml = templateService.render(CANCELLATION_TEMPLATE, variables);
-        String asunto = "MediTriaje 2.0 — Cancelación de Cita Médica (" + cita.specialtyName() + ")";
+        String asunto = "MediTriaje — Cancelación de Cita Médica (" + cita.specialtyName() + ")";
 
         dispatchAndRecord(citaId, pacienteId, emailDestinatario, "CANCELACION", asunto, cuerpoHtml);
     }
@@ -153,7 +153,7 @@ public class AppointmentNotificationService {
         );
 
         String cuerpoHtml = templateService.render(FOLLOW_UP_SUMMARY_TEMPLATE, variables);
-        String asunto = "MediTriaje 2.0 — Plan de Cuidado y Seguimiento Post-Atención";
+        String asunto = "MediTriaje — Plan de Cuidado y Seguimiento Post-Atención";
 
         try {
             EmailSendResult resultado = emailService.sendHtmlEmail(emailDestinatario, asunto, cuerpoHtml);
@@ -175,6 +175,7 @@ public class AppointmentNotificationService {
             return null;
         }
         return patientRepository.findById(pacienteId)
+                .filter(paciente -> paciente.userId() != null)
                 .flatMap(paciente -> userRepository.findById(paciente.userId()))
                 .map(com.meditriaje.model.User::email)
                 .orElse(null);

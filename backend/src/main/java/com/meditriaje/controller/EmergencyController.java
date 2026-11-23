@@ -1,12 +1,15 @@
 package com.meditriaje.controller;
 
 import com.meditriaje.dto.emergency.AssignTeamRequest;
+import com.meditriaje.dto.emergency.CalculateTriageLevelRequest;
 import com.meditriaje.dto.emergency.EmergencyEpisodeResponse;
+import com.meditriaje.dto.emergency.EmergencyPatientLookupResponse;
 import com.meditriaje.dto.emergency.EmergencyQueueItemResponse;
 import com.meditriaje.dto.emergency.ReconcileIdentityRequest;
 import com.meditriaje.dto.emergency.RegisterEmergencyAdmissionRequest;
 import com.meditriaje.dto.emergency.RegisterTriageAssessmentRequest;
 import com.meditriaje.dto.emergency.TriageAssessmentResponse;
+import com.meditriaje.dto.emergency.TriageCalculationResponse;
 import com.meditriaje.service.EmergencyService;
 import com.meditriaje.util.IpUtil;
 import jakarta.servlet.http.HttpServletRequest;
@@ -43,6 +46,18 @@ public class EmergencyController {
     }
 
     /**
+     * Busca pacientes por número de documento para admisión o reconciliación presencial.
+     */
+    @GetMapping("/patients/search")
+    @PreAuthorize("hasAnyAuthority('ROLE_ENFERMERIA', 'ROLE_PROFESIONAL', 'ROLE_ADMINISTRADOR')")
+    public ResponseEntity<List<EmergencyPatientLookupResponse>> searchPatients(
+            @RequestParam("numeroDocumento") String documentNumber,
+            @RequestParam(value = "tipoDocumento", required = false) String documentType
+    ) {
+        return ResponseEntity.ok(emergencyService.searchPatientsByDocument(documentNumber, documentType));
+    }
+
+    /**
      * Endpoint para registrar el ingreso presencial de urgencias (U02).
      * Retorna 201 Created con cabecera Location.
      */
@@ -65,7 +80,7 @@ public class EmergencyController {
     /**
      * Endpoint para consultar el detalle de un episodio de urgencias (U02).
      */
-    @GetMapping("/admissions/{episodePublicId}")
+    @GetMapping({"/admissions/{episodePublicId}", "/episodes/{episodePublicId}"})
     public ResponseEntity<EmergencyEpisodeResponse> getEpisodeDetail(
             @PathVariable("episodePublicId") String episodePublicId,
             Authentication authentication
@@ -81,7 +96,7 @@ public class EmergencyController {
     /**
      * Endpoint para reconciliar una identidad provisional con un paciente civil verificado (U03).
      */
-    @PostMapping("/episodes/{episodePublicId}/reconcile")
+    @PostMapping({"/episodes/{episodePublicId}/reconcile", "/episodes/{episodePublicId}/reconcile-identity"})
     @PreAuthorize("hasAnyAuthority('ROLE_ENFERMERIA', 'ROLE_PROFESIONAL', 'ROLE_ADMINISTRADOR')")
     public ResponseEntity<EmergencyEpisodeResponse> reconcileIdentity(
             @PathVariable("episodePublicId") String episodePublicId,
@@ -94,6 +109,17 @@ public class EmergencyController {
 
         EmergencyEpisodeResponse response = emergencyService.reconcileIdentity(episodePublicId, request, usuarioPublicId, sourceIp);
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Endpoint de solo cálculo para previsualizar el nivel de prioridad a partir de los síntomas ingresados.
+     */
+    @PostMapping("/triage-assessments/calculate")
+    @PreAuthorize("hasAnyAuthority('ROLE_ENFERMERIA', 'ROLE_PROFESIONAL')")
+    public ResponseEntity<TriageCalculationResponse> calculateTriageLevel(
+            @Valid @RequestBody CalculateTriageLevelRequest request
+    ) {
+        return ResponseEntity.ok(emergencyService.calculateTriageLevel(request));
     }
 
     /**

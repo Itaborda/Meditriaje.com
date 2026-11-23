@@ -43,12 +43,12 @@ function formatDate(isoString, includeTime = true) {
 export async function patientDashboardView(container) {
   // 1. Estructura base inicial con skeletons de carga
   container.innerHTML = `
-    <div class="sg-section" style="padding-top: var(--space-6); padding-bottom: var(--space-12);">
+    <div style="padding-top: var(--space-4); padding-bottom: var(--space-12);">
       <!-- Saludo y bienvenida -->
       <div id="patientGreetingHeader" class="flex flex-wrap items-center justify-between gap-4 mb-6">
         <div>
-          <div class="skeleton skeleton-title" style="width: 240px; height: 32px; margin-bottom: 8px;"></div>
-          <div class="skeleton skeleton-text" style="width: 320px; height: 16px;"></div>
+          <div class="skeleton skeleton-title" style="width: min(240px, 85%); height: 32px; margin-bottom: 8px;"></div>
+          <div class="skeleton skeleton-text" style="width: min(320px, 100%); height: 16px;"></div>
         </div>
         <span class="badge badge--confirmed">
           ${ui.icon('check', 'icon icon--sm')}
@@ -82,7 +82,7 @@ export async function patientDashboardView(container) {
       <div class="grid grid-cols-1 grid-cols-2-md gap-6 mb-8">
         <!-- Próxima Cita -->
         <div class="card" id="cardNextAppointment">
-          <div class="card-header flex items-center justify-between">
+          <div class="card-header flex flex-wrap items-center justify-between gap-2">
             <h3 class="card-title text-lg flex items-center gap-2">
               ${ui.icon('calendar', 'icon icon--sm text-primary')}
               <span>Próxima Cita</span>
@@ -96,7 +96,7 @@ export async function patientDashboardView(container) {
 
         <!-- Resumen de Atenciones Recientes -->
         <div class="card" id="cardRecentHistory">
-          <div class="card-header flex items-center justify-between">
+          <div class="card-header flex flex-wrap items-center justify-between gap-2">
             <h3 class="card-title text-lg flex items-center gap-2">
               ${ui.icon('file-text', 'icon icon--sm text-primary')}
               <span>Últimas Atenciones</span>
@@ -111,7 +111,7 @@ export async function patientDashboardView(container) {
 
       <!-- Recetas Médicas Recientes -->
       <div class="card mb-8" id="cardRecentPrescriptions">
-        <div class="card-header flex items-center justify-between">
+        <div class="card-header flex flex-wrap items-center justify-between gap-2">
           <h3 class="card-title text-lg flex items-center gap-2">
             ${ui.icon('pill', 'icon icon--sm text-primary')}
             <span>Mis Recetas Médicas</span>
@@ -125,7 +125,7 @@ export async function patientDashboardView(container) {
 
       <!-- Seguimiento Post-Atención (F2.2.4) -->
       <div class="card mb-8" id="cardRecentFollowUps">
-        <div class="card-header flex items-center justify-between">
+        <div class="card-header flex flex-wrap items-center justify-between gap-2">
           <h3 class="card-title text-lg flex items-center gap-2">
             ${ui.icon('shield', 'icon icon--sm text-primary')}
             <span>Seguimiento Post-Atención</span>
@@ -141,11 +141,11 @@ export async function patientDashboardView(container) {
       <div class="card mb-8" id="cardEmergencyQr" style="border-left: 4px solid var(--danger); background: linear-gradient(90deg, var(--danger-bg) 0%, var(--surface) 100%);">
         <div class="card-body flex flex-wrap items-center justify-between gap-4">
           <div class="flex items-center gap-3">
-            <div style="background-color: var(--danger); color: #FFFFFF; width: 44px; height: 44px; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            <div style="background-color: #DC2626; color: #FFFFFF; width: 44px; height: 44px; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
               ${ui.icon('shield', 'icon icon--md')}
             </div>
             <div>
-              <div class="flex items-center gap-2 mb-1">
+              <div class="flex flex-wrap items-center gap-2 mb-1">
                 <h3 class="text-lg font-bold" style="color: var(--text);">Resumen de Salud y Código QR de Emergencia</h3>
                 <span class="badge badge--danger text-xs font-semibold">15 Minutos · Seguro</span>
               </div>
@@ -155,7 +155,7 @@ export async function patientDashboardView(container) {
             </div>
           </div>
           <div>
-            <a href="#/patient/emergency-qr" class="btn btn-primary btn--md">
+            <a href="#/patient/emergency-qr" class="btn btn-primary">
               ${ui.icon('shield', 'icon icon--sm')}
               <span>Gestionar Código QR</span>
             </a>
@@ -181,7 +181,7 @@ export async function patientDashboardView(container) {
             </div>
           </div>
           <div>
-            <a href="#/patient/allergies" class="btn btn-secondary btn--md">
+            <a href="#/patient/allergies" class="btn btn-secondary">
               ${ui.icon('alert-circle', 'icon icon--sm')}
               <span>Ver mis alergias</span>
             </a>
@@ -191,10 +191,7 @@ export async function patientDashboardView(container) {
     </div>
   `;
 
-  motion.staggerCards(
-    container.querySelectorAll('.card--highlight, #cardNextAppointment, #cardRecentHistory'),
-    { root: container }
-  );
+  motion.staggerCards(container.querySelectorAll('.card'), { root: container });
 
   // 2. Carga en paralelo de datos del paciente
   const [perfilResult, appointmentsResult, historyResult, prescriptionsResult, followUpsResult] = await Promise.allSettled([
@@ -206,45 +203,63 @@ export async function patientDashboardView(container) {
   ]);
 
   // 3. Renderizar Saludo
-  const greetingEl = document.getElementById('patientGreetingHeader');
-  if (perfilResult.status === 'fulfilled' && perfilResult.value) {
-    const p = perfilResult.value;
-    const nombreCompleto = `${p.nombres || ''} ${p.apellidos || ''}`.trim() || auth.user?.email || 'Paciente';
-    greetingEl.querySelector('div').innerHTML = `
-      <h1 class="text-2xl font-bold mb-1">¡Hola, ${esc(nombreCompleto)}!</h1>
-      <p class="text-muted text-sm">Documento: ${esc(p.tipoDocumento)} ${esc(p.numeroDocumento)} · Portal personal de salud</p>
-    `;
-  } else {
-    greetingEl.querySelector('div').innerHTML = `
-      <h1 class="text-2xl font-bold mb-1">¡Bienvenido a MediTriaje!</h1>
-      <p class="text-muted text-sm">${esc(auth.user?.email || 'Portal del paciente')}</p>
-    `;
+  const greetingEl = container.querySelector('#patientGreetingHeader');
+  if (greetingEl) {
+    if (perfilResult.status === 'fulfilled' && perfilResult.value) {
+      const p = perfilResult.value;
+      const nombreCompleto = `${p.nombres || ''} ${p.apellidos || ''}`.trim() || auth.user?.email || 'Paciente';
+      greetingEl.querySelector('div').innerHTML = `
+        <h1 class="text-2xl font-bold mb-1">¡Hola, ${esc(nombreCompleto)}!</h1>
+        <p class="text-muted text-sm">Documento: ${esc(p.tipoDocumento)} ${esc(p.numeroDocumento)} · Portal personal de salud</p>
+      `;
+    } else {
+      greetingEl.querySelector('div').innerHTML = `
+        <h1 class="text-2xl font-bold mb-1">¡Bienvenido a MediTriaje!</h1>
+        <p class="text-muted text-sm">${esc(auth.user?.email || 'Portal del paciente')}</p>
+      `;
+    }
   }
 
+  const appointmentContainer = container.querySelector('#appointmentContainer');
+  const historyContainer = container.querySelector('#historyContainer');
+  const prescriptionsContainer = container.querySelector('#prescriptionsContainer');
+  const followUpsContainer = container.querySelector('#followUpsContainer');
+
+  const retrySection = async (el, endpoint, renderer, errorMessage) => {
+    if (!el) return;
+    el.innerHTML = `<div class="skeleton skeleton-card" style="height: 100px;"></div>`;
+    try {
+      const data = await api.get(endpoint);
+      renderer(data);
+      motion.revealPanel(el, { duration: 220, y: 6, root: container });
+    } catch {
+      renderCardError(el, errorMessage, () => retrySection(el, endpoint, renderer, errorMessage));
+    }
+  };
+
   // 4. Renderizar Próxima Cita
-  const appointmentContainer = document.getElementById('appointmentContainer');
-  if (appointmentsResult.status === 'fulfilled' && appointmentsResult.value?.content) {
-    const citas = appointmentsResult.value.content;
-    // Buscar la cita activa más próxima (PROGRAMADA o CONFIRMADA)
+  const renderAppointmentsSection = (data) => {
+    if (!appointmentContainer) return;
+    const citas = data?.content || [];
     const proximaCita = citas.find(c => c.estado === 'PROGRAMADA' || c.estado === 'CONFIRMADA');
 
     if (proximaCita) {
       const badgeClass = proximaCita.estado === 'CONFIRMADA' ? 'badge--confirmed' : 'badge--scheduled';
       appointmentContainer.innerHTML = `
         <div style="background-color: var(--surface-2); border-radius: var(--radius-md); padding: var(--space-4); border-left: 4px solid var(--primary);">
-          <div class="flex items-center justify-between mb-2">
-            <span class="badge ${badgeClass}">${proximaCita.estado}</span>
-            <span class="text-xs text-muted font-medium">${proximaCita.modalidad || 'PRESENCIAL'}</span>
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <span class="badge ${badgeClass}">${esc(proximaCita.estado)}</span>
+            <span class="text-xs text-muted font-medium">${esc(proximaCita.modalidad || 'PRESENCIAL')}</span>
           </div>
 
           <div class="font-semibold text-base mb-1" style="color: var(--text);">
-            ${proximaCita.especialidadNombre || 'Consulta General'}
+            ${esc(proximaCita.especialidadNombre || 'Consulta General')}
           </div>
 
           <div class="text-sm text-muted mb-3">
             <div><strong>Fecha:</strong> ${formatDate(proximaCita.fechaHoraInicio)}</div>
-            <div><strong>Profesional:</strong> ${proximaCita.profesionalNombre || 'Por asignar'}</div>
-            <div><strong>Sede:</strong> ${proximaCita.sedeNombre || 'Sede Principal'} · ${proximaCita.sedeDireccion || ''}</div>
+            <div><strong>Profesional:</strong> ${esc(proximaCita.profesionalNombre || 'Por asignar')}</div>
+            <div><strong>Sede:</strong> ${esc(proximaCita.sedeNombre || 'Sede Principal')}${proximaCita.sedeDireccion ? ` · ${esc(proximaCita.sedeDireccion)}` : ''}</div>
           </div>
 
           <div class="flex gap-2">
@@ -255,7 +270,6 @@ export async function patientDashboardView(container) {
         </div>
       `;
     } else {
-      // Estado vacío de citas
       appointmentContainer.innerHTML = `
         <div class="empty-state text-center py-4">
           <div class="empty-state-icon" style="margin: 0 auto 8px auto; width: 40px; height: 40px;">
@@ -263,38 +277,41 @@ export async function patientDashboardView(container) {
           </div>
           <p class="text-sm font-medium mb-1">Aún no tienes citas agendadas</p>
           <p class="text-xs text-muted mb-4">Puedes consultar horarios disponibles o realizar un triaje previo.</p>
-          <a href="#/patient/triage" class="btn btn-secondary btn--sm">
-            ${ui.icon('search', 'icon icon--sm')}
+          <a href="#/patient/book" class="btn btn-secondary btn--sm">
+            ${ui.icon('calendar', 'icon icon--sm')}
             <span>Agendar nueva cita</span>
           </a>
         </div>
       `;
     }
+  };
+
+  if (appointmentsResult.status === 'fulfilled' && appointmentsResult.value?.content) {
+    renderAppointmentsSection(appointmentsResult.value);
   } else {
-    appointmentContainer.innerHTML = `
-      <div class="alert alert--warning text-xs">
-        ${ui.icon('alert-triangle', 'icon alert-icon')}
-        <div>No fue posible cargar tus citas en este momento.</div>
-      </div>
-    `;
+    renderCardError(
+      appointmentContainer,
+      'No fue posible cargar tus citas en este momento.',
+      () => retrySection(appointmentContainer, '/patients/me/appointments?page=0&size=5', renderAppointmentsSection, 'No fue posible cargar tus citas en este momento.')
+    );
   }
 
   // 5. Renderizar Últimas Atenciones
-  const historyContainer = document.getElementById('historyContainer');
-  if (historyResult.status === 'fulfilled' && historyResult.value?.content) {
-    const atenciones = historyResult.value.content;
+  const renderHistorySection = (data) => {
+    if (!historyContainer) return;
+    const atenciones = data?.content || [];
     if (atenciones.length > 0) {
       historyContainer.innerHTML = `
         <div class="flex flex-col gap-3">
           ${atenciones.map(a => `
             <div style="border-bottom: 1px solid var(--border); padding-bottom: var(--space-3);" class="last-no-border">
-              <div class="flex justify-between items-center text-xs text-muted mb-1">
+              <div class="flex flex-wrap justify-between items-center gap-2 text-xs text-muted mb-1">
                 <span>${formatDate(a.fechaAtencion || a.createdAt, false)}</span>
-                <span class="badge badge--neutral">${a.profesionalEspecialidad || 'Atención'}</span>
+                <span class="badge badge--neutral">${esc(a.profesionalEspecialidad || 'Atención')}</span>
               </div>
-              <div class="font-medium text-sm mb-1">${a.motivoConsulta || 'Consulta médica'}</div>
+              <div class="font-medium text-sm mb-1">${esc(a.motivoConsulta || 'Consulta médica')}</div>
               <div class="text-xs text-muted">
-                ${a.diagnosticos?.length ? `<strong>Diag:</strong> ${a.diagnosticos[0].codigoCie10} - ${a.diagnosticos[0].descripcion}` : 'Diagnóstico registrado en historia clínica'}
+                ${a.diagnosticos?.length ? `<strong>Diag:</strong> ${esc(a.diagnosticos[0].codigoCie10)} - ${esc(a.diagnosticos[0].descripcion)}` : 'Diagnóstico registrado en historia clínica'}
               </div>
             </div>
           `).join('')}
@@ -311,37 +328,40 @@ export async function patientDashboardView(container) {
         </div>
       `;
     }
+  };
+
+  if (historyResult.status === 'fulfilled' && historyResult.value?.content) {
+    renderHistorySection(historyResult.value);
   } else {
-    historyContainer.innerHTML = `
-      <div class="alert alert--warning text-xs">
-        ${ui.icon('alert-triangle', 'icon alert-icon')}
-        <div>No fue posible cargar tu historial clínico.</div>
-      </div>
-    `;
+    renderCardError(
+      historyContainer,
+      'No fue posible cargar tu historial clínico.',
+      () => retrySection(historyContainer, '/patients/me/history?page=0&size=3', renderHistorySection, 'No fue posible cargar tu historial clínico.')
+    );
   }
 
   // 6. Renderizar Recetas Recientes
-  const prescriptionsContainer = document.getElementById('prescriptionsContainer');
-  if (prescriptionsResult.status === 'fulfilled' && prescriptionsResult.value?.content) {
-    const recetas = prescriptionsResult.value.content;
+  const renderPrescriptionsSection = (data) => {
+    if (!prescriptionsContainer) return;
+    const recetas = data?.content || [];
     if (recetas.length > 0) {
       prescriptionsContainer.innerHTML = `
         <div class="grid grid-cols-1 grid-cols-2-md gap-4">
           ${recetas.map(r => `
             <div class="card" style="background-color: var(--surface-2); padding: var(--space-4); border: 1px solid var(--border);">
-              <div class="flex justify-between items-start mb-2">
+              <div class="flex flex-wrap justify-between items-start gap-2 mb-2">
                 <div>
-                  <span class="badge badge--confirmed mb-1">Vigente (${r.vigenciaDias} días)</span>
+                  <span class="badge badge--confirmed mb-1">Vigente (${esc(r.vigenciaDias)} días)</span>
                   <div class="text-xs text-muted">Expedida: ${formatDate(r.createdAt, false)}</div>
                 </div>
-                <span class="text-xs font-medium text-muted">${r.profesionalNombre || 'Médico tratante'}</span>
+                <span class="text-xs font-medium text-muted">${esc(r.profesionalNombre || 'Médico tratante')}</span>
               </div>
 
               <div class="text-sm mt-3">
                 <div class="font-medium mb-1 text-xs text-muted">Medicamentos prescritos:</div>
                 <ul style="padding-left: var(--space-4); margin: 0;" class="text-xs">
                   ${r.detalles?.map(d => `
-                    <li><strong>${d.nombreComercial}</strong> (${d.principioActivo} ${d.concentracion}) - ${d.dosis}, ${d.frecuencia}</li>
+                    <li><strong>${esc(d.nombreComercial)}</strong> (${esc(d.principioActivo)} ${esc(d.concentracion)}) - ${esc(d.dosis)}, ${esc(d.frecuencia)}</li>
                   `).join('') || '<li>Detalles disponibles en receta</li>'}
                 </ul>
               </div>
@@ -360,19 +380,22 @@ export async function patientDashboardView(container) {
         </div>
       `;
     }
+  };
+
+  if (prescriptionsResult.status === 'fulfilled' && prescriptionsResult.value?.content) {
+    renderPrescriptionsSection(prescriptionsResult.value);
   } else {
-    prescriptionsContainer.innerHTML = `
-      <div class="alert alert--warning text-xs">
-        ${ui.icon('alert-triangle', 'icon alert-icon')}
-        <div>No fue posible cargar tus recetas médicas.</div>
-      </div>
-    `;
+    renderCardError(
+      prescriptionsContainer,
+      'No fue posible cargar tus recetas médicas.',
+      () => retrySection(prescriptionsContainer, '/patients/me/prescriptions?page=0&size=3', renderPrescriptionsSection, 'No fue posible cargar tus recetas médicas.')
+    );
   }
 
   // 7. Renderizar Seguimientos Post-Atención Recientes (F2.2.4)
-  const followUpsContainer = document.getElementById('followUpsContainer');
-  if (followUpsResult.status === 'fulfilled' && followUpsResult.value?.content) {
-    const seguimientos = followUpsResult.value.content;
+  const renderFollowUpsSection = (data) => {
+    if (!followUpsContainer) return;
+    const seguimientos = data?.content || [];
     if (seguimientos.length > 0) {
       followUpsContainer.innerHTML = `
         <div class="grid grid-cols-1 grid-cols-2-md gap-4">
@@ -382,14 +405,14 @@ export async function patientDashboardView(container) {
             const tipoLabel = s.tipo ? s.tipo.replace(/_/g, ' ') : 'SEGUIMIENTO';
             return `
               <div class="card" style="background-color: var(--surface-2); padding: var(--space-4); border: 1px solid var(--border); border-left: 3px solid ${isPending ? 'var(--primary)' : 'var(--success)'};">
-                <div class="flex justify-between items-start mb-2">
-                  <span class="badge ${badgeClass}">${s.estado}</span>
-                  <span class="text-xs text-muted uppercase font-medium">${tipoLabel}</span>
+                <div class="flex flex-wrap justify-between items-start gap-2 mb-2">
+                  <span class="badge ${badgeClass}">${esc(s.estado)}</span>
+                  <span class="text-xs text-muted uppercase font-medium">${esc(tipoLabel)}</span>
                 </div>
-                <div class="font-medium text-sm mb-1">${s.profesionalNombre || 'Médico tratante'} · <span class="text-xs text-muted">${s.profesionalEspecialidad || ''}</span></div>
-                <p class="text-xs text-muted mb-3" style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${s.indicaciones || ''}</p>
-                <div class="flex justify-between items-center text-xs">
-                  <span class="text-muted">${s.fechaSugeridaControl ? 'Control: ' + s.fechaSugeridaControl : ''}</span>
+                <div class="font-medium text-sm mb-1">${esc(s.profesionalNombre || 'Médico tratante')}${s.profesionalEspecialidad ? ` · <span class="text-xs text-muted">${esc(s.profesionalEspecialidad)}</span>` : ''}</div>
+                <p class="text-xs text-muted mb-3" style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${esc(s.indicaciones || '')}</p>
+                <div class="flex flex-wrap justify-between items-center gap-2 text-xs">
+                  <span class="text-muted">${s.fechaSugeridaControl ? 'Control: ' + esc(s.fechaSugeridaControl) : ''}</span>
                   <a href="#/patient/follow-ups" class="font-medium text-primary">${isPending ? 'Reportar evolución' : 'Ver detalle'}</a>
                 </div>
               </div>
@@ -408,13 +431,38 @@ export async function patientDashboardView(container) {
         </div>
       `;
     }
+  };
+
+  if (followUpsResult.status === 'fulfilled' && followUpsResult.value?.content) {
+    renderFollowUpsSection(followUpsResult.value);
   } else {
-    followUpsContainer.innerHTML = `
-      <div class="alert alert--warning text-xs">
-        ${ui.icon('alert-triangle', 'icon alert-icon')}
-        <div>No fue posible cargar tus tareas de seguimiento.</div>
-      </div>
-    `;
+    renderCardError(
+      followUpsContainer,
+      'No fue posible cargar tus tareas de seguimiento.',
+      () => retrySection(followUpsContainer, '/patients/me/follow-ups?page=0&size=3', renderFollowUpsSection, 'No fue posible cargar tus tareas de seguimiento.')
+    );
   }
+
+  // Revelado suave de contenedores cargados en paralelo
+  [appointmentContainer, historyContainer, prescriptionsContainer, followUpsContainer].forEach((el) => {
+    if (el) motion.revealPanel(el, { duration: 220, y: 6, root: container });
+  });
+}
+
+function renderCardError(containerEl, message, onRetry) {
+  if (!containerEl) return;
+  containerEl.innerHTML = `
+    <div class="alert alert--warning text-xs flex-wrap items-center justify-between gap-2 mb-0" role="alert">
+      <div class="flex items-center gap-2">
+        ${ui.icon('alert-triangle', 'icon alert-icon')}
+        <span>${esc(message)}</span>
+      </div>
+      <button type="button" class="btn btn-secondary btn--xs btn-card-retry">
+        ${ui.icon('refresh-cw', 'icon icon--xs')}
+        <span>Reintentar</span>
+      </button>
+    </div>
+  `;
+  containerEl.querySelector('.btn-card-retry')?.addEventListener('click', onRetry);
 }
 

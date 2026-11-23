@@ -1,22 +1,28 @@
 package com.meditriaje.dto.emergency;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.meditriaje.dto.triage.SymptomItemRequest;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * Petición para registrar una valoración de triaje presencial o reevaluación clínica (Fase U, ADR-027, U04).
+ * El nivel de prioridad se calcula automáticamente en el servidor a partir de los síntomas reportados.
  */
 public record RegisterTriageAssessmentRequest(
-        @JsonProperty("nivel")
-        @NotBlank(message = "El nivel de triaje es obligatorio (I, II, III, IV, V o PENDIENTE_VALORACION).")
-        String level,
+        @JsonProperty("sintomas")
+        @NotEmpty(message = "Debe reportar al menos un síntoma para calcular el nivel de prioridad.")
+        @Size(max = 20, message = "No se admiten más de 20 síntomas por valoración.")
+        List<@Valid SymptomItemRequest> symptoms,
 
         @JsonProperty("motivoConsulta")
         @NotBlank(message = "El motivo de consulta clínica es obligatorio.")

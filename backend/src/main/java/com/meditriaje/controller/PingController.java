@@ -18,7 +18,7 @@ public class PingController {
     public ResponseEntity<Map<String, String>> ping() {
         return ResponseEntity.ok(Map.of(
                 "status", "UP",
-                "service", "MediTriaje 2.0 API",
+                "service", "MediTriaje API",
                 "timestamp", Instant.now().toString()
         ));
     }
@@ -27,7 +27,7 @@ public class PingController {
     public ResponseEntity<Map<String, String>> root() {
         return ResponseEntity.ok(Map.of(
                 "status", "UP",
-                "service", "MediTriaje 2.0 API",
+                "service", "MediTriaje API",
                 "frontend", "https://meditraje.vercel.app"
         ));
     }

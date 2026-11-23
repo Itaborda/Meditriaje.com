@@ -171,4 +171,59 @@ public class HospitalController {
         List<ProcedureResponse> resp = hospitalService.listEpisodeProcedures(episodeId);
         return ResponseEntity.ok(resp);
     }
+
+    /**
+     * H01: Lista las áreas hospitalarias con sus habitaciones y salas.
+     */
+    @GetMapping("/areas")
+    @PreAuthorize("hasAnyRole('ROLE_ADMINISTRADOR', 'ROLE_ENFERMERIA', 'ROLE_PROFESIONAL')")
+    public ResponseEntity<List<HospitalAreaResponse>> listAreas() {
+        return ResponseEntity.ok(hospitalService.listAreasWithRooms());
+    }
+
+    /**
+     * H01: Crea una nueva área o pabellón hospitalario (solo Administrador).
+     */
+    @PostMapping("/areas")
+    @PreAuthorize("hasRole('ROLE_ADMINISTRADOR')")
+    public ResponseEntity<HospitalAreaResponse> createArea(
+            @Valid @RequestBody CreateHospitalAreaRequest request,
+            Authentication auth,
+            HttpServletRequest httpRequest
+    ) {
+        HospitalAreaResponse resp = hospitalService.createArea(request, auth.getName(), extractClientIp(httpRequest));
+        return ResponseEntity.status(HttpStatus.CREATED).body(resp);
+    }
+
+    /**
+     * H01: Crea una habitación o sala dentro de un área hospitalaria (solo Administrador).
+     */
+    @PostMapping("/areas/{areaPublicId}/rooms")
+    @PreAuthorize("hasRole('ROLE_ADMINISTRADOR')")
+    public ResponseEntity<HospitalRoomResponse> createRoom(
+            @PathVariable("areaPublicId") String areaPublicId,
+            @Valid @RequestBody CreateHospitalRoomRequest request,
+            Authentication auth,
+            HttpServletRequest httpRequest
+    ) {
+        HospitalRoomResponse resp = hospitalService.createRoom(
+                areaPublicId, request, auth.getName(), extractClientIp(httpRequest));
+        return ResponseEntity.status(HttpStatus.CREATED).body(resp);
+    }
+
+    /**
+     * H01: Crea una o varias camas disponibles dentro de una habitación o sala (solo Administrador).
+     */
+    @PostMapping("/rooms/{roomPublicId}/beds")
+    @PreAuthorize("hasRole('ROLE_ADMINISTRADOR')")
+    public ResponseEntity<List<BedDetailResponse>> createBeds(
+            @PathVariable("roomPublicId") String roomPublicId,
+            @Valid @RequestBody CreateHospitalBedRequest request,
+            Authentication auth,
+            HttpServletRequest httpRequest
+    ) {
+        List<BedDetailResponse> resp = hospitalService.createBeds(
+                roomPublicId, request, auth.getName(), extractClientIp(httpRequest));
+        return ResponseEntity.status(HttpStatus.CREATED).body(resp);
+    }
 }

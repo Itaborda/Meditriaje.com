@@ -190,12 +190,13 @@ public class EmergencySummaryService {
         Patient paciente = patientRepository.findById(acceso.patientId())
                 .orElseThrow(() -> new ResourceNotFoundException("Paciente no encontrado."));
 
-        User usuario = userRepository.findById(paciente.userId())
-                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
+        User usuario = paciente.userId() != null
+                ? userRepository.findById(paciente.userId()).orElse(null)
+                : null;
 
         // Auditoría obligatoria inmutable (ADR-010, ADR-011)
         auditService.audit(new AuditEvent(
-                usuario.id(),
+                usuario != null ? usuario.id() : null,
                 AuditableAction.ACCESO_EMERGENCIA_QR,
                 "RESUMEN_SALUD",
                 acceso.publicId(),
@@ -210,7 +211,7 @@ public class EmergencySummaryService {
                 : 0;
 
         String telefono = acceso.includeContact() ? paciente.phone() : null;
-        String email = acceso.includeContact() ? usuario.email() : null;
+        String email = (acceso.includeContact() && usuario != null) ? usuario.email() : null;
 
         EmergencyPatientDto pacienteDto = new EmergencyPatientDto(
                 paciente.firstNames() + " " + paciente.lastNames(),

@@ -220,16 +220,22 @@ public class AuthService {
             throw new InvalidDataException("El correo electronico ya se encuentra registrado.");
         }
 
-        // 3. Verificar documento duplicado
-        if (patientRepository.existsByDocument(request.documentType(), request.documentNumber().trim())) {
-            auditService.recordEvent(
-                    AuditableAction.REGISTRO_PACIENTE,
-                    "PACIENTE",
-                    null,
-                    AuditResult.FALLO,
-                    ipOrigen
-            );
-            throw new InvalidDataException("El documento de identidad ya se encuentra registrado.");
+        // 3. Verificar documento duplicado o vincular cuenta a paciente presencial previo sin usuario web
+        String docNumber = request.documentNumber().trim();
+        Optional<Patient> walkInPatient = Optional.empty();
+        if (patientRepository.existsByDocument(request.documentType(), docNumber)) {
+            Optional<Patient> existing = patientRepository.findByDocument(request.documentType(), docNumber);
+            if (existing.isEmpty() || existing.get().userId() != null) {
+                auditService.recordEvent(
+                        AuditableAction.REGISTRO_PACIENTE,
+                        "PACIENTE",
+                        null,
+                        AuditResult.FALLO,
+                        ipOrigen
+                );
+                throw new InvalidDataException("El documento de identidad ya se encuentra registrado.");
+            }
+            walkInPatient = existing;
         }
 
         // 4. Hashear contraseña con Argon2id
@@ -244,18 +250,25 @@ public class AuthService {
                 .orElseThrow(() -> new IllegalStateException("El rol ROLE_PACIENTE no existe en el sistema."));
         userRepository.assignRole(usuarioId, rolId);
 
-        // 7. Crear PACIENTE
-        String pacientePublicId = UUID.randomUUID().toString();
-        patientRepository.create(
-                usuarioId,
-                pacientePublicId,
-                request.documentType(),
-                request.documentNumber().trim(),
-                request.firstNames().trim(),
-                request.lastNames().trim(),
-                request.birthDate(),
-                request.phone() != null ? request.phone().trim() : null
-        );
+        // 7. Crear o vincular PACIENTE
+        String pacientePublicId;
+        if (walkInPatient.isPresent()) {
+            Patient existing = walkInPatient.get();
+            patientRepository.linkUserToPatient(existing.id(), usuarioId);
+            pacientePublicId = existing.publicId();
+        } else {
+            pacientePublicId = UUID.randomUUID().toString();
+            patientRepository.create(
+                    usuarioId,
+                    pacientePublicId,
+                    request.documentType(),
+                    docNumber,
+                    request.firstNames().trim(),
+                    request.lastNames().trim(),
+                    request.birthDate(),
+                    request.phone() != null ? request.phone().trim() : null
+            );
+        }
 
         // 8. Registrar CONSENTIMIENTO
         consentRepository.record(

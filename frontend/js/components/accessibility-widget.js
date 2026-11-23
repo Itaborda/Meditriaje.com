@@ -375,6 +375,12 @@ function update(changedKey) {
 function openPanel() {
   panel.hidden = false;
   fab.setAttribute('aria-expanded', 'true');
+  if (!state.pauseMotion && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches && typeof panel.animate === 'function') {
+    panel.animate(
+      [{ opacity: 0, transform: 'translateX(18px)' }, { opacity: 1, transform: 'translateX(0)' }],
+      { duration: 180, easing: 'cubic-bezier(0.2, 0, 0, 1)' }
+    );
+  }
   const first = panel.querySelector('.a11y-tile:not([disabled])');
   if (first) first.focus();
 }
@@ -388,6 +394,12 @@ function closePanel() {
 function bindEvents() {
   fab.addEventListener('click', () => (panel.hidden ? openPanel() : closePanel()));
   host.querySelector('#a11y-close').addEventListener('click', closePanel);
+
+  document.addEventListener('click', (event) => {
+    if (!panel.hidden && !host.contains(event.target)) {
+      closePanel();
+    }
+  });
 
   panel.addEventListener('click', (event) => {
     const control = event.target.closest('[data-key]');
@@ -436,7 +448,7 @@ function injectStyles() {
 
     .a11y-fab {
       position: fixed; right: 0; top: 45%; transform: translateY(-50%);
-      z-index: 980; width: 42px; height: 50px; padding: 0 0 0 3px;
+      z-index: 960; width: 42px; height: 50px; padding: 0 0 0 3px;
       border: 1px solid var(--surface, #fff); border-right: 0;
       border-radius: 25px 0 0 25px;
       background: var(--primary, #0f766e); color: var(--on-primary, #fff);
@@ -453,7 +465,7 @@ function injectStyles() {
     }
 
     .a11y-panel {
-      position: fixed; top: 16px; right: 16px; bottom: 16px; z-index: 1100;
+      position: fixed; top: 16px; right: 16px; bottom: 16px; z-index: 1040;
       width: min(400px, calc(100vw - 32px));
       display: flex; flex-direction: column;
       background: var(--surface, #fff); color: var(--text, #0f172a);
@@ -569,9 +581,15 @@ function injectStyles() {
     html.a11y-filtered ${SCOPE} { filter: var(--a11y-filter, none); }
 
     html.a11y-contrast, html.a11y-contrast[data-theme="dark"] {
-      --bg: #000; --surface: #000; --surface-2: #0d0d0d; --border: #fff; --border-strong: #fff;
+      --bg: #000; --surface: #000; --surface-1: #000; --surface-2: #0d0d0d; --surface-subtle: #0d0d0d;
+      --border: #fff; --border-color: #fff; --border-strong: #fff;
       --text: #fff; --text-muted: #fff; --primary: #ffe600; --primary-hover: #fff27a; --on-primary: #000;
-      --primary-soft: #000; --primary-soft-border: #ffe600;
+      --primary-soft: #000; --primary-soft-border: #ffe600; --glass-bg: #000; --glass-border: #fff; --glass-border-subtle: #fff;
+      --danger-bg: #000; --on-danger-bg: #ff8080; --warning-bg: #000; --on-warning-bg: #ffe600;
+      --success-bg: #000; --on-success-bg: #66ff99; --info-bg: #000; --on-info-bg: #7dd3fc;
+      --triage-1-bg: #000; --triage-1-fg: #ff8080; --triage-2-bg: #000; --triage-2-fg: #ffad66;
+      --triage-3-bg: #000; --triage-3-fg: #ffe600; --triage-4-bg: #000; --triage-4-fg: #66ff99;
+      --triage-5-bg: #000; --triage-5-fg: #7dd3fc;
     }
     html.a11y-contrast ${SCOPE} a { color: #ffe600 !important; text-decoration: underline; }
 

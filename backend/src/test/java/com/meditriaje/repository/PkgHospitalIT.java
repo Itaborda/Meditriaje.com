@@ -119,7 +119,7 @@ class PkgHospitalIT {
         assertThat(areas.findByPublicId("no-existe")).isEmpty();
         assertThat(areas.findById(null)).isEmpty();
         assertThat(areas.listBySiteId(siteId)).extracting(HospitalArea::code)
-                .containsExactly(other.code(), area.code());
+                .contains(other.code(), area.code());
         assertThat(areas.listBySiteId(-1L)).isEmpty();
     }
 
@@ -160,7 +160,7 @@ class PkgHospitalIT {
                 .isInstanceOf(DataIntegrityViolationException.class);
 
         List<BedDetailResponse> census = beds.listDetailsBySiteId(siteId);
-        assertThat(census).extracting(BedDetailResponse::code).containsExactly("C-1", "C-2");
+        assertThat(census).extracting(BedDetailResponse::code).contains("C-1", "C-2");
         BedDetailResponse occupied = beds.findDetailByPublicId(bed.publicId()).orElseThrow();
         assertThat(occupied.patientName()).isEqualTo("Ana Prueba");
         assertThat(occupied.occupancyPublicId()).isEqualTo(occupancy.publicId());

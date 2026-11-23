@@ -4,87 +4,95 @@
  */
 
 import { affiliationApi } from '../api.js';
+import { motion } from '../motion.js';
 import { ui } from '../ui.js';
+
+const formatEnumLabel = (value, fallback) => String(value || fallback).replace(/_/g, ' ');
 
 export async function renderAffiliationSearch(container) {
   container.innerHTML = `
     <div class="view-header">
-      <div class="breadcrumb">Admisiones &gt; Aseguramiento EPS &gt; Verificación de Derechos</div>
+      <nav class="breadcrumb" aria-label="Ruta de navegación">Admisiones <span aria-hidden="true">/</span> Aseguramiento EPS <span aria-hidden="true">/</span> Verificación de Derechos</nav>
       <h1 class="view-title">Consulta de Aseguramiento EPS</h1>
       <p class="view-subtitle">Verifique los derechos de aseguramiento en salud del paciente en Valledupar.</p>
     </div>
 
     <!-- Banner normativo de no bloqueo asistencial -->
-    <div class="alert alert-info" style="margin-top: 1rem; border-left: 4px solid var(--primary);">
-      <strong>Aviso de Cumplimiento Legal (Ley 1751 de 2015):</strong> La comprobación de derechos de aseguramiento es estrictamente administrativa.
-      Bajo ninguna circunstancia la falta de carné, afiliación inactiva o condición de no asegurado puede suspender o demorar la valoración médica inicial de urgencias.
+    <div class="alert alert--info alert-info mb-4" role="note" style="max-width: 720px;">
+      <span class="alert-icon" aria-hidden="true">${ui.icon('info', 'icon icon--sm')}</span>
+      <div class="alert-content">
+        <strong class="alert-title">Aviso de Cumplimiento Legal (Ley 1751 de 2015)</strong>
+        La comprobación de derechos de aseguramiento es estrictamente administrativa.
+        Bajo ninguna circunstancia la falta de carné, afiliación inactiva o condición de no asegurado puede suspender o demorar la valoración médica inicial de urgencias.
+      </div>
     </div>
 
-    <div class="card" style="margin-top: 1.5rem; max-width: 600px;">
-      <h2 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem;">Buscar Paciente por Documento</h2>
-      <form id="form-consulta-eps" style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
-        <div style="flex: 1; min-width: 120px;">
-          <label for="tipo-doc-eps" class="label-required">Tipo Doc.</label>
-          <select id="tipo-doc-eps" class="form-control" required aria-label="Tipo de documento">
-            <option value="CC">CC - Cédula</option>
-            <option value="TI">TI - Tarjeta Id</option>
+    <div class="card mb-4" style="max-width: 720px;">
+      <form id="form-consulta-eps" class="grid grid-cols-1 grid-cols-2-md gap-4">
+        <div class="form-group mb-0">
+          <label for="tipo-doc-eps" class="form-label label-required">Tipo Documento</label>
+          <select id="tipo-doc-eps" class="form-select" required aria-label="Tipo de documento">
+            <option value="CC">CC - Cédula Ciudadanía</option>
+            <option value="TI">TI - Tarjeta Identidad</option>
             <option value="RC">RC - Registro Civil</option>
             <option value="CE">CE - Extranjería</option>
             <option value="PA">PA - Pasaporte</option>
             <option value="PPT">PPT - Permiso Protección</option>
           </select>
         </div>
-        <div style="flex: 2; min-width: 180px;">
-          <label for="num-doc-eps" class="label-required">Número Documento</label>
-          <input type="text" id="num-doc-eps" class="form-control" placeholder="Ej: 1065123456" required aria-label="Número de documento de identificación" />
+        <div class="form-group mb-0">
+          <label for="num-doc-eps" class="form-label label-required">Número Documento</label>
+          <input type="text" id="num-doc-eps" class="form-input" placeholder="Ej: 1065123456" required autocomplete="off" aria-label="Número de documento de identificación" />
         </div>
-        <div style="width: 100%; margin-top: 0.5rem;">
-          <button type="submit" id="btn-consultar" class="btn btn-primary" style="width: 100%;" aria-label="Consultar estado de afiliación en EPS">
-            Consultar Estado de Afiliación
+        <div class="col-span-full">
+          <button type="submit" id="btn-consultar" class="btn btn-primary w-full" aria-label="Consultar estado de afiliación en EPS">
+            ${ui.icon('search', 'icon icon--sm')} Consultar Estado de Afiliación
           </button>
         </div>
       </form>
     </div>
 
     <!-- Tarjeta con el Resultado -->
-    <div class="card" id="card-resultado-eps" style="margin-top: 1.5rem; display: none; max-width: 600px;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-        <h2 style="font-size: 1.25rem; font-weight: 600; margin: 0;">Estado de Aseguramiento</h2>
-        <span id="badge-estado-eps" class="badge">ACTIVO</span>
+    <div class="card" id="card-resultado-eps" aria-live="polite" style="display: none; max-width: 720px;">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+        <h2 class="card-title m-0">Estado de Aseguramiento</h2>
+        <span id="badge-estado-eps" class="badge badge--neutral">-</span>
       </div>
 
-      <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+      <div class="flex flex-col gap-3">
         <div>
-          <span style="color: var(--text-muted); font-size: 0.85rem; display: block;">Paciente</span>
-          <strong id="res-paciente-nombre" style="font-size: 1.05rem;">-</strong>
-          <span id="res-paciente-doc" style="color: var(--text-muted); font-size: 0.9rem;">-</span>
+          <span class="text-xs text-muted block">Paciente</span>
+          <strong id="res-paciente-nombre" class="text-base">-</strong>
+          <span id="res-paciente-doc" class="text-sm text-muted block">-</span>
         </div>
 
         <div class="grid grid-cols-1 grid-cols-2-md gap-3 pt-3 border-t">
           <div>
-            <span style="color: var(--text-muted); font-size: 0.85rem; display: block;">Aseguradora (EPS)</span>
+            <span class="text-xs text-muted block">Aseguradora (EPS)</span>
             <strong id="res-eps-nombre">-</strong>
-            <div id="res-eps-codigo" style="font-size: 0.8rem; color: var(--text-muted);">-</div>
+            <div id="res-eps-codigo" class="text-xs text-muted">-</div>
           </div>
           <div>
-            <span style="color: var(--text-muted); font-size: 0.85rem; display: block;">Régimen</span>
+            <span class="text-xs text-muted block">Régimen</span>
             <strong id="res-regimen">-</strong>
           </div>
         </div>
 
         <div class="grid grid-cols-1 grid-cols-2-md gap-3 pt-3 border-t">
           <div>
-            <span style="color: var(--text-muted); font-size: 0.85rem; display: block;">Tipo Afiliado</span>
-            <span id="res-tipo-afiliado">-</span>
+            <span class="text-xs text-muted block">Tipo Afiliado</span>
+            <span id="res-tipo-afiliado" class="font-medium">-</span>
           </div>
           <div>
-            <span style="color: var(--text-muted); font-size: 0.85rem; display: block;">Fuente Verificación</span>
-            <span id="res-fuente-verif" style="font-size: 0.85rem; color: var(--text-muted);">-</span>
+            <span class="text-xs text-muted block">Fuente Verificación</span>
+            <span id="res-fuente-verif" class="text-xs text-muted">-</span>
           </div>
         </div>
       </div>
     </div>
   `;
+
+  motion.staggerCards(container.querySelectorAll('.card, .alert'), { root: container });
 
   const form = container.querySelector('#form-consulta-eps');
   const cardRes = container.querySelector('#card-resultado-eps');
@@ -105,8 +113,8 @@ export async function renderAffiliationSearch(container) {
 
     if (!tipoDoc || !numDoc) return;
 
-    btnConsultar.disabled = true;
-    btnConsultar.textContent = 'Consultando...';
+    cardRes.style.display = 'none';
+    ui.setButtonLoading(btnConsultar, true, 'Consultando...');
 
     try {
       const res = await affiliationApi.consultarAfiliacion(tipoDoc, numDoc);
@@ -116,25 +124,27 @@ export async function renderAffiliationSearch(container) {
       resDoc.textContent = `${res.tipoDocumento} ${res.numeroDocumento}`;
       resEpsNombre.textContent = res.epsNombre || 'PARTICULAR / NO ASEGURADO';
       resEpsCodigo.textContent = res.epsCodigo ? `Código: ${res.epsCodigo}` : '';
-      resRegimen.textContent = res.regimen || 'NO_ASEGURADO';
-      resTipoAfiliado.textContent = res.tipoAfiliado || 'N/A';
-      resFuente.textContent = res.fuenteVerificacion || 'CONSULTA DIRECTA';
+      resRegimen.textContent = formatEnumLabel(res.regimen, 'NO_ASEGURADO');
+      resTipoAfiliado.textContent = formatEnumLabel(res.tipoAfiliado, 'N/A');
+      resFuente.textContent = formatEnumLabel(res.fuenteVerificacion, 'CONSULTA_DIRECTA');
 
       if (res.estado === 'ACTIVO') {
         badgeEstado.textContent = 'ACTIVO';
-        badgeEstado.className = 'badge badge-success';
+        badgeEstado.className = 'badge badge--confirmed';
       } else if (res.estado === 'NO_AFILIADO') {
         badgeEstado.textContent = 'NO AFILIADO';
-        badgeEstado.className = 'badge badge-warning';
+        badgeEstado.className = 'badge badge--warning';
       } else {
         badgeEstado.textContent = res.estado || 'DESCONOCIDO';
-        badgeEstado.className = 'badge badge-secondary';
+        badgeEstado.className = 'badge badge--neutral';
       }
+
+      motion.stepTransition(cardRes, 'forward', { root: container });
+      motion.pulseSubtle(badgeEstado, { root: container });
     } catch (err) {
       ui.showToast(err.message || 'Error consultando aseguramiento.', 'error');
     } finally {
-      btnConsultar.disabled = false;
-      btnConsultar.textContent = 'Consultar Estado de Afiliación';
+      ui.setButtonLoading(btnConsultar, false);
     }
   });
 }

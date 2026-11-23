@@ -24,7 +24,7 @@ public class SmtpEmailTransport implements EmailTransport {
     public SmtpEmailTransport(JavaMailSender javaMailSender, String mailFrom, String mailFromName) {
         this.javaMailSender = javaMailSender;
         this.mailFrom = (mailFrom != null && !mailFrom.isBlank()) ? mailFrom.trim() : "no-reply@meditriaje.com";
-        this.mailFromName = (mailFromName != null && !mailFromName.isBlank()) ? mailFromName.trim() : "MediTriaje 2.0";
+        this.mailFromName = (mailFromName != null && !mailFromName.isBlank()) ? mailFromName.trim() : "MediTriaje";
     }
 
     @Override

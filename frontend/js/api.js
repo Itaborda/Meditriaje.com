@@ -205,9 +205,12 @@ export const pharmacyApi = {
 };
 
 export const emergencyApi = {
+  buscarPacientesPorDocumento: (numeroDocumento, tipoDocumento = '') =>
+    api.get('/emergency/patients/search', tipoDocumento ? { numeroDocumento, tipoDocumento } : { numeroDocumento }),
   registrarAdmision: (data) => api.post('/emergency/admissions', data),
   obtenerDetalleEpisodio: (episodePublicId) => api.get(`/emergency/episodes/${episodePublicId}`),
   reconciliarIdentidad: (episodePublicId, data) => api.post(`/emergency/episodes/${episodePublicId}/reconcile-identity`, data),
+  calcularNivelTriaje: (data) => api.post('/emergency/triage-assessments/calculate', data),
   registrarValoracionTriaje: (episodePublicId, data) => api.post(`/emergency/episodes/${episodePublicId}/triage-assessments`, data),
   listarHistorialTriaje: (episodePublicId) => api.get(`/emergency/episodes/${episodePublicId}/triage-assessments`),
   asignarEquipo: (episodePublicId, data) => api.post(`/emergency/episodes/${episodePublicId}/assignments`, data),
@@ -230,7 +233,11 @@ export const hospitalApi = {
   obtenerCenso: () => api.get('/hospital/census'),
   listarCamas: () => api.get('/hospital/beds'),
   listarMovimientos: (episodeId) => api.get(`/hospital/episodes/${episodeId}/movements`),
-  listarProcedimientos: (episodeId) => api.get(`/hospital/episodes/${episodeId}/procedures`)
+  listarProcedimientos: (episodeId) => api.get(`/hospital/episodes/${episodeId}/procedures`),
+  listarAreas: () => api.get('/hospital/areas'),
+  crearArea: (data) => api.post('/hospital/areas', data),
+  crearHabitacion: (areaPublicId, data) => api.post(`/hospital/areas/${areaPublicId}/rooms`, data),
+  crearCamas: (roomPublicId, data) => api.post(`/hospital/rooms/${roomPublicId}/beds`, data)
 };
 
 export const affiliationApi = {
@@ -247,6 +254,7 @@ export const affiliationApi = {
 export const operationalApi = {
   obtenerDashboard: () => api.get('/operational/dashboard'),
   listarAlertas: (estado = null) => api.get('/operational/alerts', estado ? { estado } : {}),
+  evaluarAlertas: () => api.post('/operational/alerts/evaluate', {}),
   reconocerAlerta: (alertaId, motivo) => api.post(`/operational/alerts/${alertaId}/acknowledge`, { motivo }),
   generarTrackingQr: (episodioId) => api.post(`/operational/episodes/${episodioId}/tracking-qr`, {}),
   consultarTrackingQr: (token) => api.get(`/operational/tracking-qr/${token}`)

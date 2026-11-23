@@ -68,7 +68,7 @@ class PingControllerTest {
         mockMvc.perform(get("/"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("UP"))
-                .andExpect(jsonPath("$.service").value("MediTriaje 2.0 API"));
+                .andExpect(jsonPath("$.service").value("MediTriaje API"));
     }
 
     @Test

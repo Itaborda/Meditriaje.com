@@ -1,12 +1,72 @@
 /**
  * MediTriaje 2.0 — Valoración Clínica de Triaje y Reevaluación (nursing-assessment.js)
- * Clasificación presencial I a V (Resolución 5596/2015 MinSalud Colombia),
- * registro de signos vitales, escala de Glasgow y registro inmutable append-only (U04, ADR-027).
+ * Clasificación presencial I a V (Resolución 5596/2015 MinSalud Colombia) calculada
+ * automáticamente a partir de los síntomas clínicos del paciente, registro de signos vitales,
+ * escala de Glasgow y registro inmutable append-only (U04, ADR-027).
  */
 
 import { emergencyApi, api } from '../api.js';
+import { motion } from '../motion.js';
 import { router } from '../router.js';
 import { ui, esc } from '../ui.js';
+
+const CATEGORY_LABELS = {
+  TODOS: 'Todos',
+  CARDIOVASCULAR: 'Cardiovascular',
+  RESPIRATORIO: 'Respiratorio',
+  NEUROLOGICO: 'Neurológico',
+  DIGESTIVO: 'Digestivo',
+  TRAUMA: 'Trauma',
+  MUSCULOESQUELETICO: 'Musculoesquelético',
+  DERMATOLOGICO: 'Dermatológico',
+  GENERAL: 'General'
+};
+
+const LEVEL_META = {
+  I: {
+    badgeClass: 'badge--triage-i',
+    title: 'Nivel I — Reanimación Inmediata',
+    waitText: 'Atención inmediata',
+    borderColor: 'var(--triage-1-bd)'
+  },
+  II: {
+    badgeClass: 'badge--triage-ii',
+    title: 'Nivel II — Emergencia',
+    waitText: '≤ 30 min',
+    borderColor: 'var(--triage-2-bd)'
+  },
+  III: {
+    badgeClass: 'badge--triage-iii',
+    title: 'Nivel III — Urgencia',
+    waitText: '≤ 120 min',
+    borderColor: 'var(--triage-3-bd)'
+  },
+  IV: {
+    badgeClass: 'badge--triage-iv',
+    title: 'Nivel IV — Prioritaria',
+    waitText: '≤ 180 min',
+    borderColor: 'var(--triage-4-bd)'
+  },
+  V: {
+    badgeClass: 'badge--triage-v',
+    title: 'Nivel V — No Urgente',
+    waitText: '≤ 240 min',
+    borderColor: 'var(--triage-5-bd)'
+  }
+};
+
+function formatCategoryLabel(cat) {
+  if (!cat) return 'General';
+  if (CATEGORY_LABELS[cat]) return CATEGORY_LABELS[cat];
+  return cat.replace(/_/g, ' ').toLowerCase().replace(/(^|\s)\S/g, l => l.toUpperCase());
+}
+
+function getIntensityDescription(val) {
+  if (val <= 3) return 'Leve';
+  if (val <= 6) return 'Moderada';
+  if (val <= 8) return 'Severa';
+  return 'Muy intensa';
+}
 
 function formatTriageBadge(nivel) {
   switch (nivel) {
@@ -41,6 +101,29 @@ function formatDateTime(iso) {
   }
 }
 
+function computeLocalPreview(symptoms) {
+  if (!symptoms || symptoms.length === 0) return null;
+  const alarms = symptoms.filter(s => s.esAlarma).map(s => s.codigo);
+  if (alarms.length > 0) {
+    return {
+      nivel: 'I',
+      esEmergencia: true,
+      sintomasAlarma: alarms,
+      mensaje: 'Signos de alarma clínica detectados. Atención inmediata requerida.'
+    };
+  }
+  const maxIntensity = Math.max(...symptoms.map(s => Number(s.intensidad) || 0));
+  let nivel = 'IV';
+  if (maxIntensity >= 7) nivel = 'II';
+  else if (maxIntensity >= 4) nivel = 'III';
+  return {
+    nivel,
+    esEmergencia: false,
+    sintomasAlarma: [],
+    mensaje: null
+  };
+}
+
 export async function nursingAssessmentView(container, { params }) {
   const episodePublicId = params?.id || params?.episodioId;
 
@@ -49,7 +132,7 @@ export async function nursingAssessmentView(container, { params }) {
       title: 'Episodio no especificado',
       description: 'No se suministró un identificador de episodio de urgencias válido.',
       actionText: 'Volver a la cola',
-      actionUrl: '#/nursing/dashboard'
+      onAction: () => router.navigate('/nursing/dashboard')
     });
     return;
   }
@@ -67,12 +150,13 @@ export async function nursingAssessmentView(container, { params }) {
 
       <!-- Resumen del Paciente y Episodio -->
       <div class="card p-6 mb-6" id="episodeSummaryCard">
-        <div class="text-center p-4 text-muted">Cargando información del paciente y episodio...</div>
+        <div class="skeleton skeleton-title" style="width: 45%;"></div>
+        <div class="skeleton skeleton-text mb-0" style="width: 70%;"></div>
       </div>
 
       <!-- Historial de Valoraciones Previas (Inmutable) -->
       <div class="card p-6 mb-6">
-        <div class="flex items-center justify-between mb-4">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
           <h2 class="text-lg font-bold m-0 flex items-center gap-2">
             ${ui.icon('clock', 'icon icon--sm')}
             <span>Historial Clínico de Triaje (Inmutable)</span>
@@ -80,7 +164,8 @@ export async function nursingAssessmentView(container, { params }) {
           <span class="text-xs text-muted">Resolución 5596 MinSalud · Registro append-only</span>
         </div>
         <div id="triageHistoryContainer">
-          <p class="text-sm text-muted">Consultando valoraciones...</p>
+          <div class="skeleton skeleton-text" style="width: 85%;"></div>
+          <div class="skeleton skeleton-text mb-0" style="width: 60%;"></div>
         </div>
       </div>
 
@@ -88,83 +173,95 @@ export async function nursingAssessmentView(container, { params }) {
       <div class="card p-6">
         <div class="mb-4">
           <h2 class="text-xl font-bold m-0" id="formAssessmentTitle">Registro de Valoración de Triaje</h2>
-          <p class="text-sm text-muted m-0">Evaluación médica y de enfermería de riesgo vital conforme a criterios clínicos estandarizados</p>
+          <p class="text-sm text-muted m-0">El nivel de prioridad se calcula automáticamente según los síntomas ingresados</p>
         </div>
 
         <form id="triageAssessmentForm" novalidate>
           
-          <!-- Clasificación de Nivel -->
-          <div class="form-group mb-6">
-            <label class="form-label font-bold text-base">Nivel de Triaje Asignado <span class="text-danger">*</span></label>
-            <div class="grid grid-cols-1 md:grid-cols-5 gap-2 mt-2">
-              <label class="card p-3 text-center cursor-pointer border hover:border-danger transition-all select-triage-level" data-level="I">
-                <input type="radio" name="rdoNivel" value="I" class="sr-only" required>
-                <div class="text-lg font-bold text-danger">Nivel I</div>
-                <div class="text-xs font-semibold">Reanimación</div>
-                <div class="text-xs text-muted mt-1">Inmediato</div>
-              </label>
+          <!-- Selección de Síntomas del Paciente -->
+          <div class="card p-4 mb-6" style="background-color: var(--surface-2); border: 1px solid var(--border);">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <div>
+                <label for="nursingSymptomSearch" class="form-label font-bold text-base m-0">
+                  Síntomas del Paciente <span class="text-danger">*</span>
+                </label>
+                <p class="text-xs text-muted m-0">Seleccione uno o varios síntomas del catálogo e indique intensidad y duración</p>
+              </div>
+              <span id="nursingSelectedCounter" class="text-xs text-muted font-medium tabular-nums">0 síntoma(s) seleccionados</span>
+            </div>
 
-              <label class="card p-3 text-center cursor-pointer border hover:border-orange-500 transition-all select-triage-level" data-level="II">
-                <input type="radio" name="rdoNivel" value="II" class="sr-only">
-                <div class="text-lg font-bold text-orange-600">Nivel II</div>
-                <div class="text-xs font-semibold">Emergencia</div>
-                <div class="text-xs text-muted mt-1">&le; 30 min</div>
-              </label>
+            <div class="form-group mb-3">
+              <input
+                type="search"
+                id="nursingSymptomSearch"
+                class="form-input"
+                placeholder="Buscar síntoma (ej. fiebre, dolor torácico, mareo...)"
+                aria-label="Buscar síntoma clínico"
+              >
+            </div>
 
-              <label class="card p-3 text-center cursor-pointer border hover:border-yellow-600 transition-all select-triage-level" data-level="III">
-                <input type="radio" name="rdoNivel" value="III" class="sr-only">
-                <div class="text-lg font-bold text-yellow-600">Nivel III</div>
-                <div class="text-xs font-semibold">Urgencia</div>
-                <div class="text-xs text-muted mt-1">&le; 120 min</div>
-              </label>
+            <div class="chip-group mb-3" id="nursingCategoryChips" role="group" aria-label="Filtrar síntomas por categoría"></div>
 
-              <label class="card p-3 text-center cursor-pointer border hover:border-green-600 transition-all select-triage-level" data-level="IV">
-                <input type="radio" name="rdoNivel" value="IV" class="sr-only">
-                <div class="text-lg font-bold text-green-600">Nivel IV</div>
-                <div class="text-xs font-semibold">Prioritaria</div>
-                <div class="text-xs text-muted mt-1">&le; 180 min</div>
-              </label>
+            <div class="chip-group" id="nursingSymptomsList" style="max-height: 240px; overflow-y: auto; padding: var(--space-1);">
+              <div class="skeleton skeleton-text mb-0" style="width: 100%; height: 2.25rem;"></div>
+            </div>
 
-              <label class="card p-3 text-center cursor-pointer border hover:border-blue-600 transition-all select-triage-level" data-level="V">
-                <input type="radio" name="rdoNivel" value="V" class="sr-only">
-                <div class="text-lg font-bold text-blue-600">Nivel V</div>
-                <div class="text-xs font-semibold">No Urgente</div>
-                <div class="text-xs text-muted mt-1">&le; 240 min</div>
-              </label>
+            <div id="selectedSymptomsContainer" class="flex flex-col gap-3 mt-4"></div>
+          </div>
+
+          <!-- Nivel de Prioridad Calculado Automáticamente (Solo Lectura) -->
+          <div
+            id="calculatedPriorityPanel"
+            class="card p-4 mb-6"
+            aria-live="polite"
+            data-calculated-level=""
+            style="border: 1px solid var(--border); background-color: var(--surface);"
+          >
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div class="text-xs text-muted font-bold uppercase tracking-wider">Nivel de Triaje Calculado Automáticamente</div>
+                <p class="text-sm text-muted m-0 mt-1">
+                  Seleccione al menos un síntoma para calcular automáticamente el nivel de prioridad clínica.
+                </p>
+              </div>
+              <span class="badge badge--neutral text-xs">Calculado por síntomas (no editable)</span>
             </div>
           </div>
 
           <!-- Signos Vitales -->
-          <div class="card p-4 mb-6" style="background-color: var(--card-bg, #f8fafc); border: 1px solid var(--border);">
-            <div class="font-bold text-sm mb-3">Signos Vitales y Parámetros Clínicos</div>
-            <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div class="card p-4 mb-6" style="background-color: var(--surface-2); border: 1px solid var(--border);">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <div class="font-bold text-sm">Signos Vitales y Parámetros Clínicos</div>
+              <div id="vitalsAlertBar" class="flex flex-wrap items-center gap-2" aria-live="polite"></div>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-4 items-end">
               
-              <div class="form-group">
+              <div class="form-group m-0">
                 <label for="txtPA" class="form-label text-xs font-semibold">Presión Arterial (PA)</label>
                 <input type="text" id="txtPA" class="form-input" placeholder="Ej. 120/80">
               </div>
 
-              <div class="form-group">
+              <div class="form-group m-0">
                 <label for="txtFC" class="form-label text-xs font-semibold">Frecuencia Cardíaca (FC)</label>
                 <input type="number" id="txtFC" class="form-input" min="20" max="250" placeholder="lpm (ej. 78)">
               </div>
 
-              <div class="form-group">
+              <div class="form-group m-0">
                 <label for="txtFR" class="form-label text-xs font-semibold">Frecuencia Respiratoria (FR)</label>
                 <input type="number" id="txtFR" class="form-input" min="5" max="80" placeholder="rpm (ej. 18)">
               </div>
 
-              <div class="form-group">
+              <div class="form-group m-0">
                 <label for="txtSO2" class="form-label text-xs font-semibold">Saturación de O2 (SpO2 %)</label>
                 <input type="number" id="txtSO2" class="form-input" min="40" max="100" placeholder="% (ej. 98)">
               </div>
 
-              <div class="form-group">
+              <div class="form-group m-0">
                 <label for="txtTemp" class="form-label text-xs font-semibold">Temperatura (°C)</label>
                 <input type="number" step="0.1" id="txtTemp" class="form-input" min="30" max="45" placeholder="°C (ej. 36.8)">
               </div>
 
-              <div class="form-group">
+              <div class="form-group m-0">
                 <label for="txtGlasgow" class="form-label text-xs font-semibold">Escala de Glasgow (3-15)</label>
                 <input type="number" id="txtGlasgow" class="form-input" min="3" max="15" placeholder="Puntos (3-15)">
               </div>
@@ -175,12 +272,12 @@ export async function nursingAssessmentView(container, { params }) {
           <!-- Motivo y Hallazgos -->
           <div class="form-group mb-4">
             <label for="txtMotivo" class="form-label font-semibold">Motivo de Consulta Clínico <span class="text-danger">*</span></label>
-            <textarea id="txtMotivo" class="form-input" rows="2" required placeholder="Motivo relatado por el paciente o acompañante..."></textarea>
+            <textarea id="txtMotivo" class="form-textarea" rows="2" required placeholder="Motivo relatado por el paciente o acompañante..."></textarea>
           </div>
 
           <div class="form-group mb-4">
             <label for="txtHallazgos" class="form-label font-semibold">Hallazgos Clínicos y Exploración Inmediata</label>
-            <textarea id="txtHallazgos" class="form-input" rows="3" placeholder="Estado general, vía aérea, ventilación, signos de shock o focalización..."></textarea>
+            <textarea id="txtHallazgos" class="form-textarea" rows="3" placeholder="Estado general, vía aérea, ventilación, signos de shock o focalización..."></textarea>
           </div>
 
           <!-- Reevaluación (Si ya existe valoración previa) -->
@@ -191,12 +288,12 @@ export async function nursingAssessmentView(container, { params }) {
             </div>
             <div class="form-group m-0">
               <label for="txtMotivoReevaluacion" class="form-label text-xs font-bold text-amber-900">Motivo del Cambio o Reevaluación <span class="text-danger">*</span></label>
-              <textarea id="txtMotivoReevaluacion" class="form-input" rows="2" placeholder="Describa el cambio clínico (ej. agravamiento de dolor torácico, disminución de saturación, etc.)"></textarea>
+              <textarea id="txtMotivoReevaluacion" class="form-textarea" rows="2" placeholder="Describa el cambio clínico (ej. agravamiento de dolor torácico, disminución de saturación, etc.)"></textarea>
             </div>
           </div>
 
           <!-- Acciones -->
-          <div class="flex items-center justify-end gap-3 mt-6">
+          <div class="flex flex-wrap items-center justify-end gap-2 mt-6">
             <a href="#/nursing/dashboard" class="btn btn-ghost">Cancelar</a>
             <button type="submit" id="btnSubmitAssessment" class="btn btn-primary flex items-center gap-2">
               ${ui.icon('check', 'icon icon--sm')}
@@ -210,50 +307,485 @@ export async function nursingAssessmentView(container, { params }) {
     </div>
   `;
 
+  const state = {
+    catalog: [],
+    selectedSymptoms: new Map(),
+    searchTerm: '',
+    activeCategory: 'TODOS',
+    calculatedPreview: null,
+    lastAnimatedLevel: '',
+    calcRequestSeq: 0
+  };
+
   let episodioActual = null;
   let valoracionesPrevias = [];
 
-  // Cargar Detalle y Valoraciones
-  try {
-    episodioActual = await emergencyApi.obtenerDetalleEpisodio(episodePublicId);
-    renderEpisodeSummary(episodioActual);
-    document.getElementById('txtMotivo').value = episodioActual.motivoConsulta || '';
+  const searchInput = document.getElementById('nursingSymptomSearch');
+  const categoryChipsEl = document.getElementById('nursingCategoryChips');
+  const symptomsListEl = document.getElementById('nursingSymptomsList');
+  const selectedContainerEl = document.getElementById('selectedSymptomsContainer');
+  const selectedCounterEl = document.getElementById('nursingSelectedCounter');
+  const priorityPanelEl = document.getElementById('calculatedPriorityPanel');
+  const vitalsAlertBarEl = document.getElementById('vitalsAlertBar');
 
-    valoracionesPrevias = await emergencyApi.listarHistorialTriaje(episodePublicId);
-    renderHistory(valoracionesPrevias);
+  function updateVitalsAlerts() {
+    if (!vitalsAlertBarEl) return;
+    const so2Raw = document.getElementById('txtSO2')?.value;
+    const glasgowRaw = document.getElementById('txtGlasgow')?.value;
+    const tempRaw = document.getElementById('txtTemp')?.value;
+    const so2 = so2Raw !== '' ? Number(so2Raw) : null;
+    const glasgow = glasgowRaw !== '' ? Number(glasgowRaw) : null;
+    const temp = tempRaw !== '' ? Number(tempRaw) : null;
 
-    if (valoracionesPrevias && valoracionesPrevias.length > 0) {
-      document.getElementById('bloqueReevaluacion').style.display = 'block';
-      document.getElementById('formAssessmentTitle').textContent = `Reevaluación Clínica de Urgencias (Versión ${valoracionesPrevias.length + 1})`;
+    const pills = [];
+    if (so2 !== null && Number.isFinite(so2) && so2 < 90) {
+      pills.push(`
+        <span class="badge badge--danger text-xs">
+          ${ui.icon('alert-triangle', 'icon icon--xs')}
+          <span>Alerta SpO₂ &lt; 90% (${esc(so2)}%)</span>
+        </span>
+      `);
     }
+    if (glasgow !== null && Number.isFinite(glasgow) && glasgow <= 8) {
+      pills.push(`
+        <span class="badge badge--danger text-xs">
+          ${ui.icon('alert-triangle', 'icon icon--xs')}
+          <span>Alerta Glasgow ≤ 8 (${esc(glasgow)}/15)</span>
+        </span>
+      `);
+    }
+    if (temp !== null && Number.isFinite(temp) && (temp >= 39.5 || temp < 35)) {
+      pills.push(`
+        <span class="badge badge--warning text-xs">
+          ${ui.icon('alert-circle', 'icon icon--xs')}
+          <span>Temperatura crítica (${esc(temp)} °C)</span>
+        </span>
+      `);
+    }
+    vitalsAlertBarEl.innerHTML = pills.join('');
+  }
+
+  ['txtPA', 'txtFC', 'txtFR', 'txtSO2', 'txtTemp', 'txtGlasgow'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', updateVitalsAlerts);
+  });
+
+  ['txtMotivo', 'txtMotivoReevaluacion'].forEach(id => {
+    const el = document.getElementById(id);
+    el?.addEventListener('input', () => el.classList.remove('form-textarea--error'));
+  });
+
+  function renderCalculatedPriority() {
+    const preview = state.calculatedPreview;
+    if (!preview || !preview.nivel) {
+      state.lastAnimatedLevel = '';
+      priorityPanelEl.setAttribute('data-calculated-level', '');
+      priorityPanelEl.style.borderLeft = '1px solid var(--border)';
+      priorityPanelEl.innerHTML = `
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div class="text-xs text-muted font-bold uppercase tracking-wider">Nivel de Triaje Calculado Automáticamente</div>
+            <p class="text-sm text-muted m-0 mt-1">
+              Seleccione al menos un síntoma para calcular automáticamente el nivel de prioridad clínica.
+            </p>
+          </div>
+          <span class="badge badge--neutral text-xs">Calculado por síntomas (no editable)</span>
+        </div>
+      `;
+      return;
+    }
+
+    const meta = LEVEL_META[preview.nivel] || {
+      badgeClass: 'badge--scheduled',
+      title: `Nivel ${preview.nivel}`,
+      waitText: '',
+      borderColor: 'var(--primary)'
+    };
+
+    priorityPanelEl.setAttribute('data-calculated-level', preview.nivel);
+    priorityPanelEl.style.borderLeft = `4px solid ${meta.borderColor}`;
+    priorityPanelEl.innerHTML = `
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div class="text-xs text-muted font-bold uppercase tracking-wider mb-1">
+            Nivel de Triaje Calculado Automáticamente
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            ${formatTriageBadge(preview.nivel)}
+            ${preview.esEmergencia ? `<span class="badge badge--triage-1 text-xs font-bold">Emergencia Clínica</span>` : ''}
+            ${meta.waitText ? `<span class="text-xs text-muted font-medium">Tiempo objetivo: ${esc(meta.waitText)}</span>` : ''}
+          </div>
+          ${preview.mensaje ? `<p class="text-xs text-muted m-0 mt-2">${esc(preview.mensaje)}</p>` : ''}
+        </div>
+        <span class="badge badge--neutral text-xs">Calculado por síntomas (no editable)</span>
+      </div>
+    `;
+
+    if (preview.nivel !== state.lastAnimatedLevel) {
+      state.lastAnimatedLevel = preview.nivel;
+      if (preview.nivel === 'I' || preview.nivel === 'II') {
+        motion.pulseUrgency(priorityPanelEl, { root: container });
+      } else {
+        motion.pulseSubtle(priorityPanelEl);
+      }
+    }
+  }
+
+  async function recalculatePriority() {
+    const selected = Array.from(state.selectedSymptoms.values());
+    if (selected.length === 0) {
+      state.calcRequestSeq += 1;
+      state.calculatedPreview = null;
+      renderCalculatedPriority();
+      return;
+    }
+
+    state.calculatedPreview = computeLocalPreview(selected);
+    renderCalculatedPriority();
+
+    const seq = ++state.calcRequestSeq;
+    const payload = {
+      sintomas: selected.map(s => ({
+        codigo: s.codigo,
+        duracionHoras: s.duracionHoras,
+        intensidad: s.intensidad
+      }))
+    };
+
+    try {
+      const serverCalc = await emergencyApi.calcularNivelTriaje(payload);
+      if (seq !== state.calcRequestSeq) return;
+      if (serverCalc && serverCalc.nivel) {
+        state.calculatedPreview = serverCalc;
+        renderCalculatedPriority();
+      }
+    } catch {
+      // Mantiene la vista previa determinista local ante fallos transitorios de red
+    }
+  }
+
+  function renderCategoryChips() {
+    const categories = ['TODOS', ...new Set(state.catalog.map(s => s.categoria).filter(Boolean))];
+    categoryChipsEl.innerHTML = categories.map(cat => `
+      <button
+        type="button"
+        class="chip ${state.activeCategory === cat ? 'is-selected' : ''}"
+        data-category="${esc(cat)}"
+        style="padding: var(--space-1) var(--space-3); min-height: 2rem; font-size: var(--text-xs);"
+      >
+        ${esc(formatCategoryLabel(cat))}
+      </button>
+    `).join('');
+
+    categoryChipsEl.querySelectorAll('button[data-category]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const cat = btn.getAttribute('data-category') || 'TODOS';
+        state.activeCategory = cat;
+        renderCategoryChips();
+        const activeBtn = Array.from(categoryChipsEl.querySelectorAll('button[data-category]'))
+          .find(el => el.getAttribute('data-category') === cat);
+        if (activeBtn) {
+          motion.springPop(activeBtn, { scale: 0.92, y: 0, duration: 220, root: container });
+        }
+        renderSymptomCatalog();
+      });
+    });
+  }
+
+  function renderSelectedSymptoms(newlyAddedCode = null) {
+    const selected = Array.from(state.selectedSymptoms.values());
+    selectedCounterEl.textContent = `${selected.length} síntoma(s) seleccionados`;
+
+    if (selected.length === 0) {
+      selectedContainerEl.innerHTML = '';
+      return;
+    }
+
+    selectedContainerEl.innerHTML = selected.map((item, idx) => `
+      <div class="card p-3" data-selected-symptom="${esc(item.codigo)}" style="border-left: 4px solid ${item.esAlarma ? 'var(--danger)' : 'var(--primary)'}; background-color: var(--surface);">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="badge ${item.esAlarma ? 'badge--triage-1' : 'badge--scheduled'}">${idx + 1}</span>
+            <span class="font-bold text-sm">${esc(item.nombre)}</span>
+            ${item.esAlarma ? '<span class="badge badge--triage-1 text-xs">Alarma</span>' : ''}
+          </div>
+          <button
+            type="button"
+            class="btn btn-ghost btn--xs btn-remove-symptom"
+            data-code="${esc(item.codigo)}"
+            aria-label="Quitar ${esc(item.nombre)}"
+          >
+            ${ui.icon('x', 'icon icon--xs')}
+            <span>Quitar</span>
+          </button>
+        </div>
+
+        <div class="form-group mb-3">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+            <label class="form-label text-xs font-semibold m-0">Intensidad (0 - 10):</label>
+            <span class="badge badge--neutral text-xs font-bold" id="nursing-intensity-label-${esc(item.codigo)}">
+              ${item.intensidad} / 10 · ${getIntensityDescription(item.intensidad)}
+            </span>
+          </div>
+          <div class="scale-selector" role="group" aria-label="Intensidad para ${esc(item.nombre)}">
+            ${[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(val => `
+              <button
+                type="button"
+                class="scale-btn ${item.intensidad === val ? 'is-selected' : ''}"
+                data-code="${esc(item.codigo)}"
+                data-val="${val}"
+                aria-pressed="${item.intensidad === val}"
+              >
+                ${val}
+              </button>
+            `).join('')}
+          </div>
+        </div>
+
+        <div class="form-group m-0">
+          <label for="duration-${esc(item.codigo)}" class="form-label text-xs font-semibold">Duración aproximada (horas):</label>
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <input
+                type="number"
+                id="duration-${esc(item.codigo)}"
+                class="form-input duration-input"
+                style="max-width: 110px;"
+                min="0"
+                step="1"
+                value="${item.duracionHoras}"
+                data-code="${esc(item.codigo)}"
+                aria-label="Duración en horas para ${esc(item.nombre)}"
+              >
+              <span class="text-xs text-muted">horas</span>
+            </div>
+            <div class="flex flex-wrap gap-1">
+              ${[
+                { label: '1 h', val: 1 },
+                { label: '6 h', val: 6 },
+                { label: '12 h', val: 12 },
+                { label: '24 h', val: 24 },
+                { label: '48 h', val: 48 }
+              ].map(preset => `
+                <button
+                  type="button"
+                  class="btn btn-secondary btn--sm duration-preset"
+                  data-code="${esc(item.codigo)}"
+                  data-hours="${preset.val}"
+                  style="font-size: var(--text-xs); padding: 2px 8px; min-height: 28px;"
+                >
+                  ${preset.label}
+                </button>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    if (newlyAddedCode) {
+      const addedCard = Array.from(selectedContainerEl.querySelectorAll('[data-selected-symptom]'))
+        .find(el => el.getAttribute('data-selected-symptom') === newlyAddedCode);
+      if (addedCard) {
+        motion.revealPanel(addedCard, { root: container });
+      }
+    }
+
+    selectedContainerEl.querySelectorAll('.btn-remove-symptom').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const code = btn.getAttribute('data-code');
+        state.selectedSymptoms.delete(code);
+        renderSymptomCatalog();
+        renderSelectedSymptoms();
+        recalculatePriority();
+      });
+    });
+
+    selectedContainerEl.querySelectorAll('.scale-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const code = btn.getAttribute('data-code');
+        const val = parseInt(btn.getAttribute('data-val'), 10);
+        const item = state.selectedSymptoms.get(code);
+        if (!item) return;
+
+        item.intensidad = val;
+        selectedContainerEl.querySelectorAll('.scale-btn').forEach(b => {
+          if (b.getAttribute('data-code') !== code) return;
+          const isCur = parseInt(b.getAttribute('data-val'), 10) === val;
+          b.classList.toggle('is-selected', isCur);
+          b.setAttribute('aria-pressed', isCur ? 'true' : 'false');
+        });
+        motion.springPop(btn, { scale: 0.9, y: 0, duration: 220, root: container });
+        const label = Array.from(selectedContainerEl.querySelectorAll('[id]'))
+          .find(el => el.id === `nursing-intensity-label-${code}`);
+        if (label) {
+          label.textContent = `${val} / 10 · ${getIntensityDescription(val)}`;
+        }
+        recalculatePriority();
+      });
+    });
+
+    selectedContainerEl.querySelectorAll('.duration-input').forEach(input => {
+      input.addEventListener('input', (e) => {
+        const code = input.getAttribute('data-code');
+        const item = state.selectedSymptoms.get(code);
+        if (!item) return;
+        item.duracionHoras = Math.max(0, parseFloat(e.target.value) || 0);
+        recalculatePriority();
+      });
+    });
+
+    selectedContainerEl.querySelectorAll('.duration-preset').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const code = btn.getAttribute('data-code');
+        const hours = parseInt(btn.getAttribute('data-hours'), 10);
+        const item = state.selectedSymptoms.get(code);
+        if (!item) return;
+        item.duracionHoras = hours;
+        const input = Array.from(selectedContainerEl.querySelectorAll('.duration-input'))
+          .find(el => el.getAttribute('data-code') === code);
+        if (input) input.value = String(hours);
+        recalculatePriority();
+      });
+    });
+  }
+
+  function renderSymptomCatalog() {
+    if (state.catalog.length === 0) {
+      symptomsListEl.innerHTML = `<span class="text-xs text-muted">No se encontraron síntomas activos en el catálogo.</span>`;
+      return;
+    }
+
+    const term = state.searchTerm.toLowerCase().trim();
+    const cat = state.activeCategory;
+    const filtered = state.catalog.filter(s => {
+      const matchesSearch = !term
+        || (s.nombre || '').toLowerCase().includes(term)
+        || (s.categoria || '').toLowerCase().includes(term);
+      const matchesCategory = cat === 'TODOS' || s.categoria === cat;
+      return matchesSearch && matchesCategory;
+    });
+
+    if (filtered.length === 0) {
+      symptomsListEl.innerHTML = `
+        <div class="p-3 text-center text-muted text-xs w-full">
+          No hay síntomas coincidentes con "${esc(state.searchTerm)}".
+        </div>
+      `;
+      return;
+    }
+
+    symptomsListEl.innerHTML = filtered.map(s => {
+      const isSelected = state.selectedSymptoms.has(s.codigo);
+      const isAlarm = Boolean(s.esAlarma);
+      const chipClass = `chip ${isSelected ? 'is-selected' : ''} ${isAlarm ? 'chip--alarm' : ''}`;
+      return `
+        <button
+          type="button"
+          class="${chipClass}"
+          data-code="${esc(s.codigo)}"
+          role="checkbox"
+          aria-checked="${isSelected}"
+          aria-label="${esc(s.nombre)}${isAlarm ? ' (Síntoma de alarma)' : ''}"
+          style="padding: var(--space-1) var(--space-3); min-height: 2.25rem; font-size: var(--text-xs);"
+        >
+          ${isAlarm ? ui.icon('alert-triangle', 'icon icon--xs') : (isSelected ? ui.icon('check', 'icon icon--xs') : '')}
+          <span>${esc(s.nombre)}</span>
+          ${isAlarm ? '<span class="badge badge--triage-1" style="font-size: 10px; padding: 1px 4px; margin-left: 2px;">Alarma</span>' : ''}
+        </button>
+      `;
+    }).join('');
+
+    symptomsListEl.querySelectorAll('button[data-code]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const code = btn.getAttribute('data-code');
+        const symptom = state.catalog.find(s => s.codigo === code);
+        if (!symptom) return;
+
+        let addedCode = null;
+        if (state.selectedSymptoms.has(code)) {
+          state.selectedSymptoms.delete(code);
+        } else {
+          if (state.selectedSymptoms.size >= 20) {
+            ui.showToast('No se admiten más de 20 síntomas por valoración.', 'warning');
+            return;
+          }
+          state.selectedSymptoms.set(code, {
+            codigo: symptom.codigo,
+            nombre: symptom.nombre,
+            categoria: symptom.categoria,
+            esAlarma: Boolean(symptom.esAlarma),
+            intensidad: 5,
+            duracionHoras: 1
+          });
+          addedCode = code;
+        }
+
+        renderSymptomCatalog();
+        const activeChip = Array.from(symptomsListEl.querySelectorAll('button[data-code]'))
+          .find(el => el.getAttribute('data-code') === code);
+        if (activeChip) {
+          motion.springPop(activeChip, { scale: 0.92, y: 0, duration: 220, root: container });
+        }
+        renderSelectedSymptoms(addedCode);
+        recalculatePriority();
+      });
+    });
+  }
+
+  searchInput.addEventListener('input', (e) => {
+    state.searchTerm = e.target.value;
+    renderSymptomCatalog();
+  });
+
+  // Cargar detalle, historial y catálogo de síntomas
+  try {
+    const [ep, historial, catalogo] = await Promise.all([
+      emergencyApi.obtenerDetalleEpisodio(episodePublicId),
+      emergencyApi.listarHistorialTriaje(episodePublicId),
+      api.get('/triage/symptoms')
+    ]);
+
+    episodioActual = ep;
+    renderEpisodeSummary(episodioActual, episodePublicId);
+    document.getElementById('txtMotivo').value = episodioActual.motivoConsulta || episodioActual.motivoLlegada || '';
+
+    valoracionesPrevias = Array.isArray(historial) ? historial : [];
+    renderHistory(valoracionesPrevias, container);
+
+    if (valoracionesPrevias.length > 0) {
+      const bloqueReeval = document.getElementById('bloqueReevaluacion');
+      bloqueReeval.style.display = 'block';
+      document.getElementById('formAssessmentTitle').textContent = `Reevaluación Clínica de Urgencias (Versión ${valoracionesPrevias.length + 1})`;
+      motion.revealPanel(bloqueReeval, { root: container });
+    }
+
+    state.catalog = Array.isArray(catalogo) ? catalogo : [];
+    renderCategoryChips();
+    renderSymptomCatalog();
   } catch (err) {
     ui.showToast('Error cargando información: ' + err.message, 'error');
   }
-
-  // Selección visual de radio button para niveles
-  const levelCards = container.querySelectorAll('.select-triage-level');
-  levelCards.forEach(card => {
-    card.addEventListener('click', () => {
-      levelCards.forEach(c => c.style.borderColor = 'var(--border)');
-      card.style.borderColor = 'var(--primary)';
-      const radio = card.querySelector('input[type="radio"]');
-      if (radio) radio.checked = true;
-    });
-  });
 
   // Envío del formulario
   const form = document.getElementById('triageAssessmentForm');
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    const radioNivel = form.querySelector('input[name="rdoNivel"]:checked');
-    if (!radioNivel) {
-      ui.showToast('Debe seleccionar un nivel de triaje (I al V).', 'warning');
+    if (state.selectedSymptoms.size === 0) {
+      ui.showToast('Debe seleccionar al menos un síntoma para calcular el nivel de triaje.', 'warning');
+      searchInput.focus();
       return;
     }
 
-    const nivel = radioNivel.value;
-    const motivoConsulta = document.getElementById('txtMotivo').value.trim();
+    const txtMotivo = document.getElementById('txtMotivo');
+    const motivoConsulta = txtMotivo.value.trim();
+    if (!motivoConsulta) {
+      txtMotivo.classList.add('form-textarea--error');
+      txtMotivo.focus();
+      ui.showToast('El motivo de consulta clínica es obligatorio.', 'warning');
+      return;
+    }
+
     const hallazgosClinicos = document.getElementById('txtHallazgos').value.trim();
     const presionArterial = document.getElementById('txtPA').value.trim();
     const fc = document.getElementById('txtFC').value ? parseInt(document.getElementById('txtFC').value, 10) : null;
@@ -263,15 +795,24 @@ export async function nursingAssessmentView(container, { params }) {
     const glasgow = document.getElementById('txtGlasgow').value ? parseInt(document.getElementById('txtGlasgow').value, 10) : null;
 
     const esReevaluacion = valoracionesPrevias.length > 0;
-    const motivoReevaluacion = esReevaluacion ? document.getElementById('txtMotivoReevaluacion').value.trim() : null;
+    const txtReeval = document.getElementById('txtMotivoReevaluacion');
+    const motivoReevaluacion = esReevaluacion ? txtReeval.value.trim() : null;
 
     if (esReevaluacion && !motivoReevaluacion) {
+      txtReeval.classList.add('form-textarea--error');
+      txtReeval.focus();
       ui.showToast('El motivo de la reevaluación es obligatorio.', 'warning');
       return;
     }
 
+    const sintomas = Array.from(state.selectedSymptoms.values()).map(s => ({
+      codigo: s.codigo,
+      duracionHoras: s.duracionHoras,
+      intensidad: s.intensidad
+    }));
+
     const payload = {
-      nivel,
+      sintomas,
       motivoConsulta,
       hallazgosClinicos: hallazgosClinicos || null,
       presionArterial: presionArterial || null,
@@ -285,36 +826,42 @@ export async function nursingAssessmentView(container, { params }) {
     };
 
     const btnSubmit = document.getElementById('btnSubmitAssessment');
-    btnSubmit.disabled = true;
-    btnSubmit.innerHTML = `Guardando triaje...`;
+    ui.setButtonLoading(btnSubmit, true);
 
     try {
-      await emergencyApi.registrarValoracionTriaje(episodePublicId, payload);
-      ui.showToast(`Clasificación Triaje Nivel ${nivel} registrada con éxito.`, 'success');
-      router.navigate('#/nursing/dashboard');
+      const saved = await emergencyApi.registrarValoracionTriaje(episodePublicId, payload);
+      const nivelCalculado = saved?.nivel || saved?.nivelAsignado || state.calculatedPreview?.nivel || '';
+      ui.showToast(
+        nivelCalculado
+          ? `Clasificación Triaje Nivel ${nivelCalculado} calculada y registrada con éxito.`
+          : 'Clasificación de triaje calculada y registrada con éxito.',
+        'success'
+      );
+      router.navigate('/nursing/dashboard');
     } catch (err) {
-      btnSubmit.disabled = false;
-      btnSubmit.innerHTML = `${ui.icon('check', 'icon icon--sm')} <span>Guardar Clasificación de Triaje</span>`;
+      ui.setButtonLoading(btnSubmit, false);
       ui.showToast('Error al registrar triaje: ' + (err.message || 'Error de servidor'), 'error');
     }
   });
 }
 
-function renderEpisodeSummary(ep) {
+function renderEpisodeSummary(ep, fallbackEpisodeId) {
   const container = document.getElementById('episodeSummaryCard');
-  const isNN = ep.esIdentidadProvisional;
+  const isNN = Boolean(ep.esIdentidadProvisional);
+  const patientName = ep.pacienteNombre || ep.pacienteNombreCompleto || 'Paciente No Identificado';
+  const episodioId = ep.episodioPublicId || ep.publicId || fallbackEpisodeId;
 
   container.innerHTML = `
     <div class="flex flex-wrap items-center justify-between gap-4">
       <div>
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
           ${isNN ? `<span class="badge badge--warning font-bold">PROVISIONAL NN</span>` : ''}
-          <h1 class="text-xl font-bold m-0">${esc(ep.pacienteNombre || 'Paciente No Identificado')}</h1>
+          <h1 class="text-xl font-bold m-0">${esc(patientName)}</h1>
         </div>
-        <div class="text-xs text-muted mt-1 font-mono">
-          Episodio: ${esc(ep.episodioPublicId)} · Sede: ${esc(ep.sedeNombre || 'Valledupar')}
+        <div class="text-xs text-muted mt-1 font-mono break-all">
+          Episodio: ${esc(episodioId)} · Sede: ${esc(ep.sedeNombre || 'Valledupar')}
         </div>
-        ${isNN ? `<div class="text-xs text-indigo-700 font-bold mt-1">Código Identificador: ${esc(ep.codigoProvisional)}</div>` : ''}
+        ${isNN && ep.codigoProvisional ? `<div class="text-xs text-indigo-700 font-bold mt-1">Código Identificador: ${esc(ep.codigoProvisional)}</div>` : ''}
       </div>
 
       <div class="text-right">
@@ -327,31 +874,43 @@ function renderEpisodeSummary(ep) {
   `;
 }
 
-function renderHistory(lista) {
-  const container = document.getElementById('triageHistoryContainer');
+function renderHistory(lista, rootContainer) {
+  const historyEl = document.getElementById('triageHistoryContainer');
   if (!lista || lista.length === 0) {
-    container.innerHTML = `<p class="text-sm text-muted m-0">No se registran valoraciones clínicas previas para este episodio.</p>`;
+    historyEl.innerHTML = `<p class="text-sm text-muted m-0">No se registran valoraciones clínicas previas para este episodio.</p>`;
     return;
   }
 
-  container.innerHTML = `
+  historyEl.innerHTML = `
     <div class="flex flex-col gap-3">
-      ${lista.map(v => `
-        <div class="card p-3 border" style="background-color: var(--surface-subtle, #f8fafc);">
+      ${lista.map((v, index) => `
+        <div class="card p-3 border triage-history-item" style="background-color: var(--surface-2);">
           <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-            <div class="flex items-center gap-2">
-              <span class="badge badge--dark text-xs font-bold">Versión ${v.version}</span>
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="badge badge--dark text-xs font-bold">Versión ${esc(v.version ?? (index + 1))}</span>
               ${formatTriageBadge(v.nivel)}
               ${v.esReevaluacion ? `<span class="badge badge--warning text-xs">Reevaluación</span>` : ''}
             </div>
             <div class="text-xs text-muted font-mono">
-              ${formatDateTime(v.creadoAt)} · Por: ${esc(v.evaluadorNombre || 'Profesional')}
+              ${formatDateTime(v.creadoAt || v.fechaRegistro)} · Por: ${esc(v.evaluadorNombre || 'Profesional')}
             </div>
           </div>
 
-          <div class="text-sm mb-1">
-            <span class="font-semibold">Motivo:</span> ${esc(v.motivoConsulta)}
-          </div>
+          ${v.motivoConsulta ? `
+            <div class="text-sm mb-1">
+              <span class="font-semibold">Motivo:</span> ${esc(v.motivoConsulta)}
+            </div>
+          ` : ''}
+
+          ${Array.isArray(v.sintomas) && v.sintomas.length > 0 ? `
+            <div class="flex flex-wrap gap-1 mb-2">
+              ${v.sintomas.map(s => `
+                <span class="badge ${s.esAlarma ? 'badge--triage-1' : 'badge--neutral'} text-xs">
+                  ${esc(s.nombre || s.codigo)} (${esc(s.intensidad)}/10 · ${esc(s.duracionHoras)}h)
+                </span>
+              `).join('')}
+            </div>
+          ` : ''}
 
           ${v.hallazgosClinicos ? `
             <div class="text-xs text-muted mb-2">
@@ -359,13 +918,13 @@ function renderHistory(lista) {
             </div>
           ` : ''}
 
-          <div class="grid grid-cols-2 md:grid-cols-6 gap-2 text-xs font-mono p-2 rounded bg-white border">
+          <div class="grid grid-cols-2 md:grid-cols-6 gap-2 text-xs font-mono p-2 rounded border" style="background-color: var(--surface);">
             <div>PA: <strong>${esc(v.presionArterial || '—')}</strong></div>
-            <div>FC: <strong>${v.frecuenciaCardiaca ? v.frecuenciaCardiaca + ' lpm' : '—'}</strong></div>
-            <div>FR: <strong>${v.frecuenciaRespiratoria ? v.frecuenciaRespiratoria + ' rpm' : '—'}</strong></div>
-            <div>SpO2: <strong>${v.saturacionOxigeno ? v.saturacionOxigeno + '%' : '—'}</strong></div>
-            <div>Temp: <strong>${v.temperatura ? v.temperatura + '°C' : '—'}</strong></div>
-            <div>Glasgow: <strong>${v.escalaGlasgow ? v.escalaGlasgow + '/15' : '—'}</strong></div>
+            <div>FC: <strong>${v.frecuenciaCardiaca ? esc(v.frecuenciaCardiaca) + ' lpm' : '—'}</strong></div>
+            <div>FR: <strong>${v.frecuenciaRespiratoria ? esc(v.frecuenciaRespiratoria) + ' rpm' : '—'}</strong></div>
+            <div>SpO2: <strong>${v.saturacionOxigeno ? esc(v.saturacionOxigeno) + '%' : '—'}</strong></div>
+            <div>Temp: <strong>${v.temperatura ? esc(v.temperatura) + '°C' : '—'}</strong></div>
+            <div>Glasgow: <strong>${v.escalaGlasgow ? esc(v.escalaGlasgow) + '/15' : '—'}</strong></div>
           </div>
 
           ${v.motivoReevaluacion ? `
@@ -377,4 +936,6 @@ function renderHistory(lista) {
       `).join('')}
     </div>
   `;
+
+  motion.staggerCards(historyEl.querySelectorAll('.triage-history-item'), { root: rootContainer });
 }

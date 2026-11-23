@@ -170,7 +170,8 @@ test.describe('Auditoría Responsive: Apartados de Administración y Footer', ()
     await expect(footer).toBeVisible();
 
     // Verificación de marca y aviso de prototipo organizado
-    await expect(footer).toContainText('MediTriaje 2.0');
+    await expect(footer).toContainText('MediTriaje');
+    await expect(footer).not.toContainText('2.0');
     await expect(footer).toContainText('Plataforma Académica Asistencial');
     await expect(footer.locator('.badge')).toContainText('Prototipo');
     await expect(footer.locator('.app-footer-disclaimer')).toContainText('Ley Estatutaria 1751 de 2015');

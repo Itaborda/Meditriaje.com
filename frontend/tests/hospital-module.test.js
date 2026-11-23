@@ -14,6 +14,10 @@ test('Fase H: Exportación de hospitalApi y métodos requeridos', async () => {
   assert.equal(typeof hospitalApi.actualizarEstadoProcedimiento, 'function');
   assert.equal(typeof hospitalApi.registrarEgreso, 'function');
   assert.equal(typeof hospitalApi.obtenerCenso, 'function');
+  assert.equal(typeof hospitalApi.listarAreas, 'function');
+  assert.equal(typeof hospitalApi.crearArea, 'function');
+  assert.equal(typeof hospitalApi.crearHabitacion, 'function');
+  assert.equal(typeof hospitalApi.crearCamas, 'function');
   assert.equal(typeof hospitalApi.listarCamas, 'function');
   assert.equal(typeof hospitalApi.listarMovimientos, 'function');
   assert.equal(typeof hospitalApi.listarProcedimientos, 'function');

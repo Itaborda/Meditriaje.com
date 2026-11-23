@@ -100,6 +100,7 @@ test.describe('Fase 3: Gestión Hospitalaria, Camas, Movimientos y Egresos', () 
             habitacionCodigo: 'HAB-101',
             tipoCama: 'OBSERVACION',
             estado: 'OCUPADA',
+            episodioPublicId: 'ep-bed-102',
             pacienteNombre: 'Guillermo Mendoza'
           }
         ])
@@ -115,10 +116,12 @@ test.describe('Fase 3: Gestión Hospitalaria, Camas, Movimientos y Egresos', () 
     await expect(page.locator('#kpiDisponibles')).toContainText('4');
     await expect(page.locator('#kpiTasaOcupacion')).toContainText('70%');
 
-    // Verificar presencia de pabellones y tarjetas de camas
+    // Verificar presencia de pabellones, tarjetas de camas y accesos clínicos en cama ocupada
     await expect(page.locator('text=Observación Urgencias Adultos').first()).toBeVisible();
     await expect(page.locator('text=CAMA-101')).toBeVisible();
     await expect(page.locator('text=CAMA-102')).toBeVisible();
+    await expect(page.locator('a[href="#/hospital/beds/ep-bed-102"]')).toBeVisible();
+    await expect(page.locator('a[href="#/hospital/discharge/ep-bed-102"]')).toBeVisible();
   });
 
   test('debe asignar atómicamente una cama disponible y rechazar si hay conflicto 409 (H03)', async ({ page }) => {
@@ -339,5 +342,151 @@ test.describe('Fase 3: Gestión Hospitalaria, Camas, Movimientos y Egresos', () 
     expect(dischargePayload.tipoDestino).toBe('ALTA_DOMICILIO');
     expect(dischargePayload.diagnosticoEgreso).toContain('Infección urinaria');
     expect(dischargePayload.epicrisisResumen).toContain('esquema antibiótico');
+  });
+
+  test('debe permitir al administrador crear áreas, habitaciones y camas desde el censo hospitalario (H01)', async ({ page }) => {
+    await page.route('**/api/v1/auth/refresh', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          publicId: 'usr-admin-01',
+          email: 'admin@demo.meditriaje.test',
+          nombreCompleto: 'Administrador Hospital',
+          roles: ['ROLE_ADMINISTRADOR']
+        })
+      });
+    });
+
+    const areasCatalog = [];
+    const bedsList = [];
+    let areaPayload = null;
+    let roomPayload = null;
+    let bedPayload = null;
+
+    await page.route('**/api/v1/hospital/census', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          sedePublicId: sedeId,
+          sedeNombre: 'Sede Principal Valledupar',
+          totalCamas: bedsList.length,
+          ocupadas: 0,
+          disponibles: bedsList.length,
+          enLimpieza: 0,
+          enMantenimiento: 0,
+          tasaOcupacionPorcentaje: 0,
+          areas: areasCatalog.map(a => ({
+            areaCodigo: a.codigo,
+            areaNombre: a.nombre,
+            tipoArea: a.tipo,
+            totalCamas: bedsList.filter(b => b.areaNombre === a.nombre).length,
+            ocupadas: 0,
+            disponibles: bedsList.filter(b => b.areaNombre === a.nombre).length
+          }))
+        })
+      });
+    });
+
+    await page.route('**/api/v1/hospital/beds', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(bedsList)
+      });
+    });
+
+    await page.route('**/api/v1/hospital/areas', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(areasCatalog)
+        });
+      } else {
+        areaPayload = route.request().postDataJSON();
+        const nueva = {
+          publicId: 'area-new-1',
+          codigo: areaPayload.codigo,
+          nombre: areaPayload.nombre,
+          tipo: areaPayload.tipo,
+          piso: areaPayload.piso,
+          estado: 'ACTIVA',
+          habitaciones: []
+        };
+        areasCatalog.push(nueva);
+        await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(nueva) });
+      }
+    });
+
+    await page.route('**/api/v1/hospital/areas/area-new-1/rooms', async (route) => {
+      roomPayload = route.request().postDataJSON();
+      const hab = {
+        publicId: 'room-new-1',
+        areaPublicId: 'area-new-1',
+        codigo: roomPayload.codigo,
+        tipo: roomPayload.tipo,
+        estado: 'ACTIVA'
+      };
+      areasCatalog[0].habitaciones.push(hab);
+      await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(hab) });
+    });
+
+    await page.route('**/api/v1/hospital/rooms/room-new-1/beds', async (route) => {
+      bedPayload = route.request().postDataJSON();
+      const count = bedPayload.cantidad || 1;
+      const created = [];
+      for (let i = 1; i <= count; i++) {
+        const code = count === 1 ? bedPayload.codigo : `${bedPayload.codigo}-0${i}`;
+        const bed = {
+          publicId: `bed-new-${i}`,
+          habitacionPublicId: 'room-new-1',
+          habitacionCodigo: areasCatalog[0].habitaciones[0].codigo,
+          areaPublicId: 'area-new-1',
+          areaNombre: areasCatalog[0].nombre,
+          sedePublicId: sedeId,
+          sedeNombre: 'Sede Principal Valledupar',
+          codigo: code,
+          estado: 'DISPONIBLE'
+        };
+        bedsList.push(bed);
+        created.push(bed);
+      }
+      await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(created) });
+    });
+
+    await page.goto('/#/hospital/census');
+    await expect(page.locator('#btnAddHospitalArea')).toBeVisible();
+
+    // 1. Crear área
+    await page.click('#btnAddHospitalArea');
+    await page.fill('#txtAreaCodigo', 'HOSP-P4');
+    await page.fill('#txtAreaNombre', 'Hospitalización Piso 4');
+    await page.selectOption('#selAreaTipo', 'HOSPITALIZACION_GENERAL');
+    await page.fill('#txtAreaPiso', 'Piso 4');
+    await page.click('.btn-confirm-modal');
+    await expect(page.locator('#txtAreaCodigo')).toHaveCount(0);
+    expect(areaPayload).toEqual({ codigo: 'HOSP-P4', nombre: 'Hospitalización Piso 4', tipo: 'HOSPITALIZACION_GENERAL', piso: 'Piso 4' });
+
+    // 2. Crear habitación
+    await page.click('#btnAddHospitalRoom');
+    await page.fill('#txtRoomCodigo', 'HAB-401');
+    await page.selectOption('#selRoomTipo', 'INDIVIDUAL');
+    await page.click('.btn-confirm-modal');
+    await expect(page.locator('#txtRoomCodigo')).toHaveCount(0);
+    expect(roomPayload).toEqual({ codigo: 'HAB-401', tipo: 'INDIVIDUAL' });
+
+    // 3. Crear lote de 2 camas
+    await page.click('#btnAddHospitalBed');
+    await page.fill('#txtBedCodigo', 'CAMA-401');
+    await page.fill('#txtBedCantidad', '2');
+    await page.click('.btn-confirm-modal');
+    await expect(page.locator('#txtBedCodigo')).toHaveCount(0);
+    expect(bedPayload).toEqual({ codigo: 'CAMA-401', cantidad: 2 });
+
+    await expect(page.locator('text=CAMA-401-01')).toBeVisible();
+    await expect(page.locator('text=CAMA-401-02')).toBeVisible();
+    await expect(page.locator('#kpiTotalCamas')).toContainText('2');
   });
 });
