@@ -1,12 +1,18 @@
 package com.meditriaje.service;
 
 import com.meditriaje.dto.emergency.AssignTeamRequest;
+import com.meditriaje.dto.emergency.CalculateTriageLevelRequest;
 import com.meditriaje.dto.emergency.EmergencyEpisodeResponse;
+import com.meditriaje.dto.emergency.EmergencyPatientLookupResponse;
 import com.meditriaje.dto.emergency.EmergencyQueueItemResponse;
 import com.meditriaje.dto.emergency.ReconcileIdentityRequest;
 import com.meditriaje.dto.emergency.RegisterEmergencyAdmissionRequest;
 import com.meditriaje.dto.emergency.RegisterTriageAssessmentRequest;
 import com.meditriaje.dto.emergency.TriageAssessmentResponse;
+import com.meditriaje.dto.emergency.TriageCalculationResponse;
+import com.meditriaje.dto.triage.SymptomCatalogResponse;
+import com.meditriaje.dto.triage.SymptomItemRequest;
+import com.meditriaje.dto.triage.SymptomItemResponse;
 import com.meditriaje.exception.UnauthorizedAccessException;
 import com.meditriaje.exception.OperationConflictException;
 import com.meditriaje.exception.InvalidDataException;
@@ -30,8 +36,14 @@ import com.meditriaje.repository.EmergencyAdmissionRepository;
 import com.meditriaje.repository.PatientRepository;
 import com.meditriaje.repository.ProfessionalRepository;
 import com.meditriaje.repository.SiteRepository;
-import com.meditriaje.repository.UserRepository;
 import com.meditriaje.repository.TriageAssessmentRepository;
+import com.meditriaje.repository.TriageRepository;
+import com.meditriaje.repository.UserRepository;
+import com.meditriaje.triage.ReportedSymptom;
+import com.meditriaje.triage.TriageEngineFactory;
+import com.meditriaje.triage.TriageInput;
+import com.meditriaje.triage.TriageResult;
+import com.meditriaje.util.ColombianStandardValidator;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.stereotype.Service;
@@ -44,10 +56,15 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -71,6 +88,8 @@ public class EmergencyService {
     private final PatientRepository patientRepository;
     private final UserRepository userRepository;
     private final ProfessionalRepository professionalRepository;
+    private final TriageEngineFactory triageEngineFactory;
+    private final TriageRepository triageRepository;
     private final AuditService auditService;
     private final Clock clock;
 
@@ -84,6 +103,8 @@ public class EmergencyService {
             PatientRepository patientRepository,
             UserRepository userRepository,
             ProfessionalRepository professionalRepository,
+            TriageEngineFactory triageEngineFactory,
+            TriageRepository triageRepository,
             AuditService auditService
     ) {
         this(
@@ -96,6 +117,8 @@ public class EmergencyService {
                 patientRepository,
                 userRepository,
                 professionalRepository,
+                triageEngineFactory,
+                triageRepository,
                 auditService,
                 Clock.system(BOGOTA_ZONE)
         );
@@ -112,6 +135,8 @@ public class EmergencyService {
             PatientRepository patientRepository,
             UserRepository userRepository,
             ProfessionalRepository professionalRepository,
+            TriageEngineFactory triageEngineFactory,
+            TriageRepository triageRepository,
             AuditService auditService,
             Clock clock
     ) {
@@ -124,13 +149,41 @@ public class EmergencyService {
         this.patientRepository = Objects.requireNonNull(patientRepository);
         this.userRepository = Objects.requireNonNull(userRepository);
         this.professionalRepository = Objects.requireNonNull(professionalRepository);
+        this.triageEngineFactory = Objects.requireNonNull(triageEngineFactory);
+        this.triageRepository = Objects.requireNonNull(triageRepository);
         this.auditService = Objects.requireNonNull(auditService);
         this.clock = Objects.requireNonNull(clock);
     }
 
     /**
+     * Busca pacientes por número de documento (y tipo opcional) para admisión presencial o reconciliación NN.
+     */
+    public List<EmergencyPatientLookupResponse> searchPatientsByDocument(String documentNumber, String documentType) {
+        if (documentNumber == null || documentNumber.isBlank()) {
+            return List.of();
+        }
+        String normalizedType = (documentType == null || documentType.isBlank())
+                ? null
+                : documentType.trim().toUpperCase(Locale.ROOT);
+        return patientRepository.searchByDocument(documentNumber.trim(), normalizedType).stream()
+                .map(p -> new EmergencyPatientLookupResponse(
+                        p.publicId(),
+                        p.documentType(),
+                        p.documentNumber(),
+                        p.firstNames(),
+                        p.lastNames(),
+                        p.firstNames() + " " + p.lastNames(),
+                        p.birthDate(),
+                        p.phone(),
+                        p.userId() != null
+                ))
+                .toList();
+    }
+
+    /**
      * Registra un ingreso de urgencia presencial (U02).
-     * Acepta pacientes identificados o indocumentados (NN con código provisional opaco).
+     * Acepta pacientes registrados (por UUID o número de documento), pacientes presenciales sin cuenta
+     * previa en MediTriaje o pacientes indocumentados (NN con código provisional opaco).
      */
     @Transactional
     public EmergencyEpisodeResponse registerEmergencyAdmission(
@@ -146,12 +199,16 @@ public class EmergencyService {
         Site sede = siteRepository.getSingleSite();
 
         Long pacienteId = null;
-        boolean esProvisional = request.isProvisionalIdentity() || request.patientPublicId() == null || request.patientPublicId().isBlank();
+        boolean hasPatientRef = request.patientPublicId() != null && !request.patientPublicId().isBlank();
+        boolean hasInlinePatient = request.patientDocumentNumber() != null && !request.patientDocumentNumber().isBlank();
+        boolean esProvisional = request.isProvisionalIdentity() || (!hasPatientRef && !hasInlinePatient);
 
         if (!esProvisional) {
-            Patient paciente = patientRepository.findByPublicId(request.patientPublicId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Paciente no encontrado: " + request.patientPublicId()));
-            pacienteId = paciente.id();
+            if (hasPatientRef) {
+                pacienteId = resolvePatientByRef(request.patientPublicId()).id();
+            } else {
+                pacienteId = resolveOrCreateWalkInPatient(request, registrador.id(), ipOrigen);
+            }
         }
 
         String episodioPubId = UUID.randomUUID().toString();
@@ -283,8 +340,7 @@ public class EmergencyService {
             throw new OperationConflictException("La identidad provisional ya fue reconciliada o no está activa.");
         }
 
-        Patient pacienteVerificado = patientRepository.findByPublicId(request.patientPublicId())
-                .orElseThrow(() -> new ResourceNotFoundException("Paciente civil verificado no encontrado: " + request.patientPublicId()));
+        Patient pacienteVerificado = resolvePatientByRef(request.patientPublicId());
 
         Instant ahora = Instant.now(clock);
         identityRepository.reconcileIdentity(identidad.id(), pacienteVerificado.id(), confirmador.id(), ahora);
@@ -304,7 +360,24 @@ public class EmergencyService {
     }
 
     /**
+     * Calcula el nivel de prioridad de triaje a partir de los síntomas ingresados sin persistir la valoración.
+     */
+    public TriageCalculationResponse calculateTriageLevel(CalculateTriageLevelRequest request) {
+        Objects.requireNonNull(request, "request no puede ser nulo");
+        TriageResult resultado = evaluateSymptoms(request.symptoms());
+        return new TriageCalculationResponse(
+                resultado.level().name(),
+                resultado.route().name(),
+                resultado.emergency(),
+                resultado.rulesVersion(),
+                resultado.alarmSymptoms(),
+                resultado.message()
+        );
+    }
+
+    /**
      * Registra una valoración clínica presencial de triaje o reevaluación (U04).
+     * El nivel de prioridad se calcula automáticamente a partir de los síntomas reportados.
      */
     @Transactional
     public TriageAssessmentResponse recordTriageAssessment(
@@ -334,6 +407,18 @@ public class EmergencyService {
             throw new OperationConflictException("No es posible registrar triaje en un episodio cerrado o egresado.");
         }
 
+        // Calcular nivel de prioridad automáticamente con el motor determinista de síntomas
+        TriageResult resultado = evaluateSymptoms(request.symptoms());
+        String nivelCalculado = resultado.level().name();
+
+        Map<String, Long> mapaSintomas = triageRepository.getSymptomCodeToIdMap();
+        for (SymptomItemRequest item : request.symptoms()) {
+            String codigo = item.code().trim();
+            if (!mapaSintomas.containsKey(codigo)) {
+                throw new InvalidDataException("Síntoma desconocido: " + item.code());
+            }
+        }
+
         int siguienteVersion = assessmentRepository.getNextVersion(episodio.id());
         String valoracionPubId = UUID.randomUUID().toString();
         Instant ahora = Instant.now(clock);
@@ -343,7 +428,7 @@ public class EmergencyService {
                 valoracionPubId,
                 episodio.id(),
                 siguienteVersion,
-                request.level(),
+                nivelCalculado,
                 request.consultationReason(),
                 request.clinicalFindings(),
                 request.bloodPressure(),
@@ -357,10 +442,21 @@ public class EmergencyService {
                 request.reevaluationReason(),
                 ahora
         );
-        assessmentRepository.save(valoracion);
+        TriageAssessment guardada = assessmentRepository.save(valoracion);
 
-        // Actualizar estado del episodio según la urgencia del nivel asignado
-        if ("I".equals(request.level()) || "II".equals(request.level())) {
+        List<TriageAssessmentRepository.AssessmentSymptomEntry> sintomasEntidad = request.symptoms().stream()
+                .map(s -> new TriageAssessmentRepository.AssessmentSymptomEntry(
+                        mapaSintomas.get(s.code().trim()),
+                        s.durationHours(),
+                        s.intensity()
+                ))
+                .toList();
+        if (guardada != null && guardada.id() != null) {
+            assessmentRepository.saveSymptoms(guardada.id(), sintomasEntidad);
+        }
+
+        // Actualizar estado del episodio según la urgencia del nivel calculado
+        if ("I".equals(nivelCalculado) || "II".equals(nivelCalculado)) {
             episodeRepository.updateStatus(episodio.id(), "EN_ATENCION");
         } else if ("REGISTRADO".equals(episodio.status())) {
             episodeRepository.updateStatus(episodio.id(), "EN_TRIAJE");
@@ -375,11 +471,30 @@ public class EmergencyService {
                 ipOrigen
         ));
 
+        List<SymptomCatalogResponse> catalogo = triageRepository.listActiveSymptomCatalog();
+        Map<String, SymptomCatalogResponse> catalogoPorCodigo = catalogo == null
+                ? Map.of()
+                : catalogo.stream().collect(Collectors.toMap(
+                        SymptomCatalogResponse::code,
+                        Function.identity(),
+                        (a, b) -> a));
+
+        List<SymptomItemResponse> sintomasRespuesta = request.symptoms().stream()
+                .map(s -> {
+                    String codigo = s.code().trim();
+                    SymptomCatalogResponse info = catalogoPorCodigo.get(codigo);
+                    String nombre = info != null && info.name() != null ? info.name() : codigo;
+                    boolean esAlarma = info != null ? info.isAlarm() : resultado.alarmSymptoms().contains(codigo);
+                    return new SymptomItemResponse(codigo, nombre, s.durationHours(), s.intensity(), esAlarma);
+                })
+                .sorted(Comparator.comparing(SymptomItemResponse::name))
+                .toList();
+
         return new TriageAssessmentResponse(
                 valoracionPubId,
                 episodio.publicId(),
                 siguienteVersion,
-                request.level(),
+                nivelCalculado,
                 request.consultationReason(),
                 request.clinicalFindings(),
                 request.bloodPressure(),
@@ -391,8 +506,24 @@ public class EmergencyService {
                 evaluador.email(),
                 request.isReevaluation() || siguienteVersion > 1,
                 request.reevaluationReason(),
-                ahora
+                ahora,
+                sintomasRespuesta
         );
+    }
+
+    private TriageResult evaluateSymptoms(List<SymptomItemRequest> items) {
+        if (items == null || items.isEmpty()) {
+            throw new InvalidDataException("Debe reportar al menos un síntoma para calcular el nivel de prioridad.");
+        }
+        List<ReportedSymptom> reportados = items.stream()
+                .map(s -> {
+                    if (s == null || s.code() == null || s.code().isBlank()) {
+                        throw new InvalidDataException("El código del síntoma es obligatorio.");
+                    }
+                    return new ReportedSymptom(s.code().trim(), s.durationHours(), s.intensity());
+                })
+                .toList();
+        return triageEngineFactory.getEngine().evaluate(new TriageInput(reportados));
     }
 
     /**
@@ -515,6 +646,66 @@ public class EmergencyService {
                 AuditResult.EXITO,
                 ipOrigen
         ));
+    }
+
+    private Patient resolvePatientByRef(String ref) {
+        String trimmed = ref.trim();
+        return patientRepository.findByPublicId(trimmed)
+                .or(() -> patientRepository.searchByDocument(trimmed, null).stream().findFirst())
+                .orElseThrow(() -> new ResourceNotFoundException("Paciente no encontrado: " + ref));
+    }
+
+    private Long resolveOrCreateWalkInPatient(
+            RegisterEmergencyAdmissionRequest request,
+            Long registradorUserId,
+            String ipOrigen
+    ) {
+        String tipoDoc = (request.patientDocumentType() == null || request.patientDocumentType().isBlank())
+                ? "CC"
+                : request.patientDocumentType().trim().toUpperCase(Locale.ROOT);
+        String numDoc = request.patientDocumentNumber().trim();
+
+        ColombianStandardValidator.validateDocument(tipoDoc, numDoc);
+
+        Optional<Patient> existente = patientRepository.findByDocument(tipoDoc, numDoc);
+        if (existente.isPresent()) {
+            return existente.get().id();
+        }
+
+        ColombianStandardValidator.validateNamesOrSurnames("nombres", request.patientFirstNames());
+        ColombianStandardValidator.validateNamesOrSurnames("apellidos", request.patientLastNames());
+        if (request.patientBirthDate() == null) {
+            throw new InvalidDataException("La fecha de nacimiento del paciente es obligatoria.");
+        }
+        ColombianStandardValidator.validateDocumentAgeCoherence(tipoDoc, request.patientBirthDate(), clock);
+        ColombianStandardValidator.validateColombianPhone(request.patientPhone());
+
+        String nuevoPublicId = UUID.randomUUID().toString();
+        String telefono = (request.patientPhone() != null && !request.patientPhone().isBlank())
+                ? request.patientPhone().trim()
+                : null;
+
+        Long nuevoPacienteId = patientRepository.create(
+                null,
+                nuevoPublicId,
+                tipoDoc,
+                numDoc,
+                request.patientFirstNames().trim(),
+                request.patientLastNames().trim(),
+                request.patientBirthDate(),
+                telefono
+        );
+
+        auditService.audit(new AuditEvent(
+                registradorUserId,
+                AuditableAction.REGISTRO_PACIENTE,
+                "PACIENTE",
+                nuevoPublicId,
+                AuditResult.EXITO,
+                ipOrigen
+        ));
+
+        return nuevoPacienteId;
     }
 
     private String generateProvisionalCode() {

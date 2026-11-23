@@ -29,7 +29,7 @@ public class EmailConfig {
             @Value("${meditriaje.mail.brevo.api-url:https://api.brevo.com/v3/smtp/email}") String brevoApiUrl,
             @Value("${meditriaje.mail.brevo.api-key:${mail.brevo-api-key:${BREVO_API_KEY:}}}") String brevoApiKey,
             @Value("${meditriaje.mail.from:${mail.from:${SMTP_FROM:${BREVO_SENDER_EMAIL:no-reply@meditriaje.com}}}}") String mailFrom,
-            @Value("${meditriaje.mail.from-name:${mail.from-name:${SMTP_FROM_NAME:MediTriaje 2.0}}}") String mailFromName,
+            @Value("${meditriaje.mail.from-name:${mail.from-name:${SMTP_FROM_NAME:MediTriaje}}}") String mailFromName,
             @Autowired(required = false) JavaMailSender javaMailSender,
             @Autowired(required = false) ObjectMapper objectMapper
     ) {

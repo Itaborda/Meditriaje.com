@@ -49,7 +49,7 @@ class AssistantControllerTest {
     void chat_withQuestionValid_returns200Ok() throws Exception {
         AssistantQuestionRequest req = new AssistantQuestionRequest("¿Cómo agendo una cita médica?");
         AssistantAnswerResponse resp = new AssistantAnswerResponse(
-                "Para agendar una cita médica en MediTriaje 2.0, ingresa a la sección Agendar Cita.",
+                "Para agendar una cita médica en MediTriaje, ingresa a la sección Agendar Cita.",
                 false,
                 "CITAS",
                 List.of(new ActionSuggestionDto("Agendar Cita", "#/patient/book", "calendar")),
@@ -65,7 +65,7 @@ class AssistantControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.esEmergencia").value(false))
                 .andExpect(jsonPath("$.categoria").value("CITAS"))
-                .andExpect(jsonPath("$.respuesta").value("Para agendar una cita médica en MediTriaje 2.0, ingresa a la sección Agendar Cita."))
+                .andExpect(jsonPath("$.respuesta").value("Para agendar una cita médica en MediTriaje, ingresa a la sección Agendar Cita."))
                 .andExpect(jsonPath("$.sugerencias[0].etiqueta").value("Agendar Cita"))
                 .andExpect(jsonPath("$.avisoLegal").value(AssistantService.LEGAL_NOTICE));
     }

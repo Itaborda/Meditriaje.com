@@ -4,8 +4,30 @@
  */
 
 import { auth } from '../auth.js';
+import { motion } from '../motion.js';
 import { router } from '../router.js';
 import { ui, esc } from '../ui.js';
+
+function bindPasswordToggle(inputEl, toggleBtn, showLabel = 'Mostrar contraseña', hideLabel = 'Ocultar contraseña') {
+  if (!inputEl || !toggleBtn) return;
+  let visible = false;
+  toggleBtn.addEventListener('click', () => {
+    visible = !visible;
+    inputEl.type = visible ? 'text' : 'password';
+    toggleBtn.setAttribute('aria-label', visible ? hideLabel : showLabel);
+    toggleBtn.setAttribute('aria-pressed', visible ? 'true' : 'false');
+    toggleBtn.innerHTML = ui.icon(visible ? 'eye-off' : 'eye', 'icon icon--sm');
+  });
+}
+
+function clearFieldError(inputEl, errorEl) {
+  if (!inputEl || !errorEl) return;
+  inputEl.classList.remove('has-error', 'form-input--error');
+  inputEl.removeAttribute('aria-invalid');
+  inputEl.removeAttribute('aria-describedby');
+  errorEl.style.display = 'none';
+  errorEl.textContent = '';
+}
 
 /**
  * Renderiza la vista de Inicio de Sesión
@@ -46,7 +68,7 @@ export function loginView(container, { queryParams } = {}) {
             <label for="loginPassword" class="form-label">
               Contraseña <span class="required" aria-hidden="true">*</span>
             </label>
-            <div style="position: relative; display: flex; align-items: center;">
+            <div class="password-field">
               <input 
                 type="password" 
                 id="loginPassword" 
@@ -56,14 +78,13 @@ export function loginView(container, { queryParams } = {}) {
                 required 
                 autocomplete="current-password"
                 aria-required="true"
-                style="padding-right: 48px;"
               >
               <button 
                 type="button" 
                 id="btnTogglePassword" 
-                class="btn btn-ghost btn--sm" 
-                style="position: absolute; right: 4px; padding: 6px 10px; color: var(--text-muted);" 
+                class="password-toggle-btn" 
                 aria-label="Mostrar contraseña"
+                aria-pressed="false"
                 title="Mostrar u ocultar contraseña"
               >
                 ${ui.icon('eye', 'icon icon--sm')}
@@ -82,10 +103,14 @@ export function loginView(container, { queryParams } = {}) {
         </form>
 
         <div class="text-center mt-6 pt-4 border-top">
-          <p class="text-sm text-muted">
+          <p class="text-sm text-muted mb-2">
             ¿Eres paciente nuevo?
             <a href="#/register" class="font-semibold text-primary" style="margin-left: 4px;">Regístrate aquí</a>
           </p>
+          <a href="#/" class="text-xs text-muted hover:underline inline-flex items-center gap-1">
+            ${ui.icon('arrow-left', 'icon icon--xs')}
+            <span>Volver al inicio</span>
+          </a>
         </div>
       </div>
     </div>
@@ -94,14 +119,7 @@ export function loginView(container, { queryParams } = {}) {
   // Toggle de visibilidad de contraseña
   const passwordInput = document.getElementById('loginPassword');
   const toggleBtn = document.getElementById('btnTogglePassword');
-  let isPasswordVisible = false;
-
-  toggleBtn.addEventListener('click', () => {
-    isPasswordVisible = !isPasswordVisible;
-    passwordInput.type = isPasswordVisible ? 'text' : 'password';
-    toggleBtn.setAttribute('aria-label', isPasswordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña');
-    toggleBtn.innerHTML = ui.icon(isPasswordVisible ? 'eye-off' : 'eye', 'icon icon--sm');
-  });
+  bindPasswordToggle(passwordInput, toggleBtn);
 
   // Manejo del envío del formulario
   const form = document.getElementById('formLogin');
@@ -112,19 +130,13 @@ export function loginView(container, { queryParams } = {}) {
   const passwordError = document.getElementById('passwordError');
 
   const clearErrors = () => {
-    emailInput.classList.remove('has-error');
-    emailInput.removeAttribute('aria-invalid');
-    emailInput.removeAttribute('aria-describedby');
-    emailError.style.display = 'none';
-    emailError.textContent = '';
-
-    passwordInput.classList.remove('has-error');
-    passwordInput.removeAttribute('aria-invalid');
-    passwordInput.removeAttribute('aria-describedby');
-    passwordError.style.display = 'none';
-    passwordError.textContent = '';
+    clearFieldError(emailInput, emailError);
+    clearFieldError(passwordInput, passwordError);
     alertBox.innerHTML = '';
   };
+
+  emailInput.addEventListener('input', () => clearFieldError(emailInput, emailError));
+  passwordInput.addEventListener('input', () => clearFieldError(passwordInput, passwordError));
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -200,10 +212,11 @@ export function loginView(container, { queryParams } = {}) {
           ${ui.icon(isWarning ? 'alert-triangle' : 'alert-circle', 'icon alert-icon')}
           <div class="alert-content">
             <div class="alert-title">${isWarning ? 'Cuenta bloqueada' : 'No fue posible ingresar'}</div>
-            <div>${errorMsg}</div>
+            <div>${esc(errorMsg)}</div>
           </div>
         </div>
       `;
+      motion.pulseSubtle(alertBox.querySelector('.alert'));
     } finally {
       ui.setButtonLoading(btnSubmit, false);
     }
@@ -216,7 +229,7 @@ export function loginView(container, { queryParams } = {}) {
 function renderMfaChallengeStep(container, challengeToken, email, queryParams) {
   container.innerHTML = `
     <div class="container-narrow" style="padding-top: var(--space-8); padding-bottom: var(--space-8);">
-      <div class="card" style="padding: var(--space-8);">
+      <div class="card auth-card">
         <div class="text-center mb-6">
          <img src="assets/images/logo-full.png" alt="MediTriaje" class="auth-logo" width="220" height="186">
           <h1 class="text-2xl font-bold mb-1">Verificación en Dos Pasos</h1>
@@ -260,6 +273,8 @@ function renderMfaChallengeStep(container, challengeToken, email, queryParams) {
     </div>
   `;
 
+  motion.stepTransition(container.querySelector('.auth-card'), 'forward');
+
   const mfaForm = container.querySelector('#formMfaChallenge');
   const mfaInput = container.querySelector('#mfaChallengeCode');
   const mfaError = container.querySelector('#mfaChallengeError');
@@ -269,20 +284,22 @@ function renderMfaChallengeStep(container, challengeToken, email, queryParams) {
 
   setTimeout(() => mfaInput?.focus(), 150);
 
+  mfaInput?.addEventListener('input', () => clearFieldError(mfaInput, mfaError));
+
   btnCancel?.addEventListener('click', () => {
     loginView(container, { queryParams });
   });
 
   mfaForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    mfaError.style.display = 'none';
-    mfaError.textContent = '';
+    clearFieldError(mfaInput, mfaError);
     mfaAlert.innerHTML = '';
-    mfaInput.classList.remove('has-error');
 
     const codigo = mfaInput.value.trim();
     if (!codigo) {
       mfaInput.classList.add('has-error');
+      mfaInput.setAttribute('aria-invalid', 'true');
+      mfaInput.setAttribute('aria-describedby', 'mfaChallengeError');
       mfaError.textContent = 'Por favor ingresa tu código de verificación.';
       mfaError.style.display = 'block';
       mfaInput.focus();
@@ -312,6 +329,7 @@ function renderMfaChallengeStep(container, challengeToken, email, queryParams) {
           </div>
         </div>
       `;
+      motion.pulseSubtle(mfaAlert.querySelector('.alert'));
       mfaInput.select();
     }
   });
@@ -321,7 +339,7 @@ function renderMfaChallengeStep(container, challengeToken, email, queryParams) {
  * Texto oficial del consentimiento informado v1.0 (Ley 1581 de 2012)
  */
 export const TEXTO_CONSENTIMIENTO_V1 = `
-En cumplimiento de la Ley Estatutaria 1581 de 2012 de Protección de Datos Personales y el Decreto 1377 de 2013 de la República de Colombia, autorizo de manera libre, previa, expresa e informada a MediTriaje 2.0 para recolectar, almacenar, usar y tratar mis datos personales y de salud (categoría sensible).
+En cumplimiento de la Ley Estatutaria 1581 de 2012 de Protección de Datos Personales y el Decreto 1377 de 2013 de la República de Colombia, autorizo de manera libre, previa, expresa e informada a MediTriaje para recolectar, almacenar, usar y tratar mis datos personales y de salud (categoría sensible).
 
 Finalidades asistenciales y clínicas:
 1. Valoración y clasificación de riesgo mediante el sistema automatizado de triaje clínico.
@@ -349,7 +367,7 @@ export function registerView(container) {
 
         <!-- Indicador de pasos -->
         <div class="flex flex-wrap items-center justify-between gap-2 mb-6" style="border-bottom: 1px solid var(--border); padding-bottom: var(--space-4);">
-          <div id="stepTab1" class="flex items-center gap-2 font-medium text-sm" style="color: var(--primary);">
+          <div id="stepTab1" class="flex items-center gap-2 font-medium text-sm text-primary" aria-current="step">
             <span class="badge badge--confirmed" style="border-radius: var(--radius-full); width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; padding: 0;">1</span>
             <span>Datos Personales</span>
           </div>
@@ -445,7 +463,7 @@ export function registerView(container) {
                   autocomplete="bday"
                   aria-required="true"
                 >
-                <span class="form-help" id="fechaNacHelp" style="color: var(--teal-700); font-weight: 500;"></span>
+                <span class="form-help" id="fechaNacHelp" style="color: var(--primary); font-weight: 500;"></span>
                 <span class="form-error" id="fechaNacError" style="display: none;" role="alert"></span>
               </div>
 
@@ -491,7 +509,7 @@ export function registerView(container) {
               <label for="regPassword" class="form-label">
                 Contraseña <span class="required" aria-hidden="true">*</span>
               </label>
-              <div style="position: relative; display: flex; align-items: center;">
+              <div class="password-field">
                 <input 
                   type="password" 
                   id="regPassword" 
@@ -500,14 +518,13 @@ export function registerView(container) {
                   required 
                   autocomplete="new-password"
                   aria-required="true"
-                  style="padding-right: 48px;"
                 >
                 <button 
                   type="button" 
                   id="btnToggleRegPassword" 
-                  class="btn btn-ghost btn--sm" 
-                  style="position: absolute; right: 4px; padding: 6px 10px; color: var(--text-muted);" 
+                  class="password-toggle-btn" 
                   aria-label="Mostrar contraseña"
+                  aria-pressed="false"
                   title="Mostrar u ocultar contraseña"
                 >
                   ${ui.icon('eye', 'icon icon--sm')}
@@ -523,7 +540,7 @@ export function registerView(container) {
                 <div style="background-color: var(--border); height: 6px; border-radius: 3px; overflow: hidden;">
                   <div id="passwordStrengthBar" style="height: 100%; width: 20%; transition: width 0.3s ease, background-color 0.3s ease; background-color: var(--danger);"></div>
                 </div>
-                <ul id="passwordRequirementsList" class="text-xs mt-2" style="list-style-type: none; padding-left: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
+                <ul id="passwordRequirementsList" class="grid grid-cols-1 grid-cols-2-sm gap-1 text-xs mt-2 list-none" style="padding-left: 0;">
                   <li id="reqLength" class="text-muted flex items-center gap-1">• Mínimo 10 caracteres</li>
                   <li id="reqUpper" class="text-muted flex items-center gap-1">• Una letra mayúscula</li>
                   <li id="reqLower" class="text-muted flex items-center gap-1">• Una letra minúscula</li>
@@ -538,20 +555,32 @@ export function registerView(container) {
               <label for="regPasswordConfirm" class="form-label">
                 Confirmar contraseña <span class="required" aria-hidden="true">*</span>
               </label>
-              <input 
-                type="password" 
-                id="regPasswordConfirm" 
-                class="form-input" 
-                placeholder="Repite tu contraseña" 
-                required 
-                autocomplete="new-password"
-                aria-required="true"
-              >
+              <div class="password-field">
+                <input 
+                  type="password" 
+                  id="regPasswordConfirm" 
+                  class="form-input" 
+                  placeholder="Repite tu contraseña" 
+                  required 
+                  autocomplete="new-password"
+                  aria-required="true"
+                >
+                <button 
+                  type="button" 
+                  id="btnToggleRegPasswordConfirm" 
+                  class="password-toggle-btn" 
+                  aria-label="Mostrar confirmación de contraseña"
+                  aria-pressed="false"
+                  title="Mostrar u ocultar confirmación de contraseña"
+                >
+                  ${ui.icon('eye', 'icon icon--sm')}
+                </button>
+              </div>
               <span class="form-error" id="regPasswordConfirmError" style="display: none;" role="alert"></span>
             </div>
 
             <!-- Consentimiento informado explícito (Ley 1581) -->
-            <div class="card mb-4" style="background-color: var(--primary-soft); border-color: var(--teal-200); padding: var(--space-4);">
+            <div class="card mb-4" style="background-color: var(--primary-soft); border-color: var(--primary-soft-border); padding: var(--space-4);">
               <div class="form-check">
                 <input type="checkbox" id="regConsentimiento" required aria-required="true">
                 <label for="regConsentimiento" class="form-check-label text-sm" style="line-height: 1.5;">
@@ -567,7 +596,7 @@ export function registerView(container) {
               <span class="form-error" id="consentimientoError" style="display: none; margin-top: 4px;" role="alert"></span>
             </div>
 
-            <div class="flex gap-3">
+            <div class="flex flex-wrap gap-3">
               <button type="button" id="btnPrevStep" class="btn btn-secondary flex-1">
                 ${ui.icon('arrow-left', 'icon icon--sm')}
                 <span>Volver</span>
@@ -580,10 +609,14 @@ export function registerView(container) {
         </form>
 
         <div class="text-center mt-6 pt-4 border-top">
-          <p class="text-sm text-muted">
+          <p class="text-sm text-muted mb-2">
             ¿Ya tienes una cuenta?
             <a href="#/login" class="font-semibold text-primary" style="margin-left: 4px;">Inicia sesión</a>
           </p>
+          <a href="#/" class="text-xs text-muted hover:underline inline-flex items-center gap-1">
+            ${ui.icon('arrow-left', 'icon icon--xs')}
+            <span>Volver al inicio</span>
+          </a>
         </div>
       </div>
     </div>
@@ -655,14 +688,13 @@ export function registerView(container) {
   });
 
   // Toggle de visibilidad de contraseña en registro
-  const toggleRegPass = document.getElementById('btnToggleRegPassword');
-  let isRegPassVisible = false;
-  toggleRegPass.addEventListener('click', () => {
-    isRegPassVisible = !isRegPassVisible;
-    password.type = isRegPassVisible ? 'text' : 'password';
-    toggleRegPass.setAttribute('aria-label', isRegPassVisible ? 'Ocultar contraseña' : 'Mostrar contraseña');
-    toggleRegPass.innerHTML = ui.icon(isRegPassVisible ? 'eye-off' : 'eye', 'icon icon--sm');
-  });
+  bindPasswordToggle(password, document.getElementById('btnToggleRegPassword'));
+  bindPasswordToggle(
+    passwordConfirm,
+    document.getElementById('btnToggleRegPasswordConfirm'),
+    'Mostrar confirmación de contraseña',
+    'Ocultar confirmación de contraseña'
+  );
 
   // =========================================================================
   // LIVE VALIDATION — NORMA COLOMBIANA EN SALUD (MinSalud RIPS / Registraduría)
@@ -1030,11 +1062,16 @@ export function registerView(container) {
     step1.style.display = 'none';
     step2.style.display = 'block';
 
-    stepTab1.classList.replace('text-primary', 'text-muted');
+    stepTab1.classList.remove('text-primary');
+    stepTab1.classList.add('text-muted');
+    stepTab1.removeAttribute('aria-current');
     stepTab1.querySelector('.badge').className = 'badge badge--neutral';
-    stepTab2.classList.replace('text-muted', 'text-primary');
+    stepTab2.classList.remove('text-muted');
+    stepTab2.classList.add('text-primary');
+    stepTab2.setAttribute('aria-current', 'step');
     stepTab2.querySelector('.badge').className = 'badge badge--confirmed';
 
+    motion.stepTransition(step2, 'forward');
     email.focus();
   });
 
@@ -1043,10 +1080,16 @@ export function registerView(container) {
     step2.style.display = 'none';
     step1.style.display = 'block';
 
-    stepTab2.classList.replace('text-primary', 'text-muted');
+    stepTab2.classList.remove('text-primary');
+    stepTab2.classList.add('text-muted');
+    stepTab2.removeAttribute('aria-current');
     stepTab2.querySelector('.badge').className = 'badge badge--neutral';
-    stepTab1.classList.replace('text-muted', 'text-primary');
+    stepTab1.classList.remove('text-muted');
+    stepTab1.classList.add('text-primary');
+    stepTab1.setAttribute('aria-current', 'step');
     stepTab1.querySelector('.badge').className = 'badge badge--confirmed';
+
+    motion.stepTransition(step1, 'back');
   });
 
   // Enviar formulario (Paso 2)
@@ -1102,10 +1145,11 @@ export function registerView(container) {
           ${ui.icon('alert-circle', 'icon alert-icon')}
           <div class="alert-content">
             <div class="alert-title">No fue posible registrar la cuenta</div>
-            <div>${err.message || 'Verifica los datos e intenta nuevamente.'}</div>
+            <div>${esc(err.message || 'Verifica los datos e intenta nuevamente.')}</div>
           </div>
         </div>
       `;
+      motion.pulseSubtle(alertBox.querySelector('.alert'));
     } finally {
       ui.setButtonLoading(btnSubmit, false);
     }
@@ -1119,10 +1163,10 @@ export function registerView(container) {
 export function forgotPasswordView(container) {
   let userEmail = '';
 
-  const renderStep1 = () => {
+  const renderStep1 = (direction = null) => {
     container.innerHTML = `
       <div class="container-narrow" style="padding-top: var(--space-8); padding-bottom: var(--space-8);">
-        <div class="card" style="padding: var(--space-8);">
+        <div class="card auth-card">
           <div class="text-center mb-6">
            <img src="assets/images/logo-full.png" alt="MediTriaje" class="auth-logo" width="220" height="186">
             <h1 class="text-2xl font-bold mb-1">Recuperar Contraseña</h1>
@@ -1156,14 +1200,22 @@ export function forgotPasswordView(container) {
           </form>
 
           <div class="text-center mt-6 pt-4 border-top">
-            <p class="text-sm text-muted">
+            <p class="text-sm text-muted mb-2">
               ¿Recordaste tu contraseña?
               <a href="#/login" class="font-semibold text-primary" style="margin-left: 4px;">Volver al inicio de sesión</a>
             </p>
+            <a href="#/" class="text-xs text-muted hover:underline inline-flex items-center gap-1">
+              ${ui.icon('arrow-left', 'icon icon--xs')}
+              <span>Volver al inicio</span>
+            </a>
           </div>
         </div>
       </div>
     `;
+
+    if (direction) {
+      motion.stepTransition(container.querySelector('.auth-card'), direction);
+    }
 
     const form = container.querySelector('#formForgotPassword');
     const emailInput = container.querySelector('#forgotEmail');
@@ -1228,6 +1280,7 @@ export function forgotPasswordView(container) {
             </div>
           </div>
         `;
+        motion.pulseSubtle(alertBox.querySelector('.alert'));
       }
     });
   };
@@ -1235,7 +1288,7 @@ export function forgotPasswordView(container) {
   const renderStep2 = () => {
     container.innerHTML = `
       <div class="container-narrow" style="padding-top: var(--space-8); padding-bottom: var(--space-8);">
-        <div class="card" style="padding: var(--space-8);">
+        <div class="card auth-card">
           <div class="text-center mb-6">
             <img src="assets/images/logo-full.png" alt="MediTriaje" class="auth-logo" width="220" height="186">
             <h1 class="text-2xl font-bold mb-1">Nueva Contraseña</h1>
@@ -1279,7 +1332,7 @@ export function forgotPasswordView(container) {
               <label for="resetPassword" class="form-label">
                 Nueva Contraseña <span class="required" aria-hidden="true">*</span>
               </label>
-              <div style="position: relative; display: flex; align-items: center;">
+              <div class="password-field">
                 <input 
                   type="password" 
                   id="resetPassword" 
@@ -1288,16 +1341,16 @@ export function forgotPasswordView(container) {
                   placeholder="Mínimo 10 caracteres" 
                   required 
                   autocomplete="new-password"
-                  style="padding-right: 48px;"
                 >
                 <button 
                   type="button" 
                   id="btnToggleResetPassword" 
-                  class="btn btn-ghost btn--sm" 
-                  style="position: absolute; right: 4px; padding: 6px 10px; color: var(--text-muted);" 
+                  class="password-toggle-btn" 
                   aria-label="Mostrar contraseña"
+                  aria-pressed="false"
+                  title="Mostrar u ocultar contraseña"
                 >
-                  ${ui.icon('search', 'icon icon--sm')}
+                  ${ui.icon('eye', 'icon icon--sm')}
                 </button>
               </div>
 
@@ -1310,7 +1363,7 @@ export function forgotPasswordView(container) {
                 <div style="background-color: var(--border); height: 6px; border-radius: 3px; overflow: hidden;">
                   <div id="resetStrengthBar" style="height: 100%; width: 20%; transition: width 0.3s ease, background-color 0.3s ease; background-color: var(--danger);"></div>
                 </div>
-                <ul id="resetReqList" class="text-xs mt-2" style="list-style-type: none; padding-left: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
+                <ul id="resetReqList" class="grid grid-cols-1 grid-cols-2-sm gap-1 text-xs mt-2 list-none" style="padding-left: 0;">
                   <li id="resetReqLength" class="text-muted flex items-center gap-1">• Mínimo 10 caracteres</li>
                   <li id="resetReqUpper" class="text-muted flex items-center gap-1">• Una letra mayúscula</li>
                   <li id="resetReqLower" class="text-muted flex items-center gap-1">• Una letra minúscula</li>
@@ -1325,15 +1378,27 @@ export function forgotPasswordView(container) {
               <label for="resetPasswordConfirm" class="form-label">
                 Confirmar Nueva Contraseña <span class="required" aria-hidden="true">*</span>
               </label>
-              <input 
-                type="password" 
-                id="resetPasswordConfirm" 
-                name="passwordConfirm"
-                class="form-input" 
-                placeholder="Repite tu nueva contraseña" 
-                required 
-                autocomplete="new-password"
-              >
+              <div class="password-field">
+                <input 
+                  type="password" 
+                  id="resetPasswordConfirm" 
+                  name="passwordConfirm"
+                  class="form-input" 
+                  placeholder="Repite tu nueva contraseña" 
+                  required 
+                  autocomplete="new-password"
+                >
+                <button 
+                  type="button" 
+                  id="btnToggleResetPasswordConfirm" 
+                  class="password-toggle-btn" 
+                  aria-label="Mostrar confirmación de contraseña"
+                  aria-pressed="false"
+                  title="Mostrar u ocultar confirmación de contraseña"
+                >
+                  ${ui.icon('eye', 'icon icon--sm')}
+                </button>
+              </div>
               <span class="form-error" id="resetConfirmError" style="display: none;" role="alert"></span>
             </div>
 
@@ -1345,25 +1410,37 @@ export function forgotPasswordView(container) {
               <span>Reenviar código o corregir correo</span>
             </button>
           </form>
+
+          <div class="text-center mt-4 pt-4 border-top">
+            <a href="#/" class="text-xs text-muted hover:underline inline-flex items-center gap-1">
+              ${ui.icon('arrow-left', 'icon icon--xs')}
+              <span>Volver al inicio</span>
+            </a>
+          </div>
         </div>
       </div>
     `;
 
+    motion.stepTransition(container.querySelector('.auth-card'), 'forward');
+
     const passInput = container.querySelector('#resetPassword');
     const toggleBtn = container.querySelector('#btnToggleResetPassword');
-    let isVisible = false;
-    toggleBtn?.addEventListener('click', () => {
-      isVisible = !isVisible;
-      passInput.type = isVisible ? 'text' : 'password';
-      toggleBtn.innerHTML = ui.icon(isVisible ? 'x' : 'search', 'icon icon--sm');
-    });
+    const confirmInput = container.querySelector('#resetPasswordConfirm');
+    const toggleConfirmBtn = container.querySelector('#btnToggleResetPasswordConfirm');
 
-    container.querySelector('#btnBackToStep1')?.addEventListener('click', renderStep1);
+    bindPasswordToggle(passInput, toggleBtn);
+    bindPasswordToggle(
+      confirmInput,
+      toggleConfirmBtn,
+      'Mostrar confirmación de contraseña',
+      'Ocultar confirmación de contraseña'
+    );
+
+    container.querySelector('#btnBackToStep1')?.addEventListener('click', () => renderStep1('back'));
 
     const form = container.querySelector('#formResetPassword');
     const otpInput = container.querySelector('#resetOtpCode');
     const otpHelp = container.querySelector('#otpHelp');
-    const confirmInput = container.querySelector('#resetPasswordConfirm');
     const otpError = container.querySelector('#otpError');
     const passError = container.querySelector('#resetPasswordError');
     const confirmError = container.querySelector('#resetConfirmError');
@@ -1568,6 +1645,7 @@ export function forgotPasswordView(container) {
             </div>
           </div>
         `;
+        motion.pulseSubtle(alertBox.querySelector('.alert'));
       }
     });
   };
@@ -1575,7 +1653,7 @@ export function forgotPasswordView(container) {
   const renderSuccess = () => {
     container.innerHTML = `
       <div class="container-narrow" style="padding-top: var(--space-8); padding-bottom: var(--space-8);">
-        <div class="card text-center" style="padding: var(--space-8);">
+        <div class="card auth-card text-center">
           <div class="empty-state-icon" style="margin: 0 auto var(--space-4) auto; background-color: var(--success-bg); color: var(--success);">
             ${ui.icon('check', 'icon icon--lg')}
           </div>
@@ -1589,6 +1667,9 @@ export function forgotPasswordView(container) {
         </div>
       </div>
     `;
+    motion.stepTransition(container.querySelector('.auth-card'), 'forward');
+    motion.springPop(container.querySelector('.empty-state-icon'), { root: container });
+    motion.drawSvg(container.querySelector('.empty-state-icon svg'), { duration: 480, root: container });
     ui.showToast('Contraseña restablecida exitosamente.', 'success');
   };
 

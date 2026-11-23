@@ -6,6 +6,7 @@
  */
 
 import { api } from '../api.js';
+import { motion } from '../motion.js';
 import { ui, esc } from '../ui.js';
 
 /** Fecha de hoy en formato YYYY-MM-DD en zona America/Bogota. */
@@ -18,6 +19,21 @@ function subtractDays(isoDate, days) {
   const d = new Date(isoDate + 'T00:00:00Z');
   d.setUTCDate(d.getUTCDate() - days);
   return d.toISOString().slice(0, 10);
+}
+
+/** Normaliza colecciones de distribución (array o mapa objeto) a filas homogéneas. */
+function normalizeDistributionItems(items) {
+  if (Array.isArray(items)) return items;
+  if (items && typeof items === 'object') {
+    const entries = Object.entries(items);
+    const total = entries.reduce((acc, [, v]) => acc + (Number(v) || 0), 0);
+    return entries.map(([etiqueta, val]) => {
+      const cantidad = Number(val) || 0;
+      const porcentaje = total > 0 ? Math.round((cantidad * 100) / total) : 0;
+      return { etiqueta, cantidad, porcentaje };
+    });
+  }
+  return [];
 }
 
 /**
@@ -42,7 +58,7 @@ export async function renderReports(container) {
               Analítica hospitalaria agregada para evaluación de demanda, triajes, farmacia y accesos de emergencia.
             </p>
           </div>
-          <div class="flex items-center gap-3">
+          <div class="flex flex-wrap items-center gap-3">
             <button type="button" id="btnExportarCsv" class="btn btn-secondary btn--sm" title="Descargar reporte operativo en formato CSV">
               ${ui.icon('download', 'icon icon--sm')}
               <span>Exportar CSV</span>
@@ -59,11 +75,11 @@ export async function renderReports(container) {
           <form id="reportsFilterForm" class="flex flex-wrap items-center gap-3">
             <div class="flex items-center gap-2">
               <label for="repDesde" class="text-xs font-semibold text-muted">Desde:</label>
-              <input type="date" id="repDesde" class="input input--sm" value="${fechaDesde}" max="${hoy}">
+              <input type="date" id="repDesde" class="input input--sm" style="width: auto; max-width: 100%;" value="${fechaDesde}" max="${hoy}">
             </div>
             <div class="flex items-center gap-2">
               <label for="repHasta" class="text-xs font-semibold text-muted">Hasta:</label>
-              <input type="date" id="repHasta" class="input input--sm" value="${fechaHasta}" max="${hoy}">
+              <input type="date" id="repHasta" class="input input--sm" style="width: auto; max-width: 100%;" value="${fechaHasta}" max="${hoy}">
             </div>
             <button type="submit" id="btnFiltrarReportes" class="btn btn-primary btn--sm">
               ${ui.icon('refresh-cw', 'icon icon--sm')}
@@ -82,12 +98,7 @@ export async function renderReports(container) {
       </div>
 
       <!-- Contenedor dinámico de métricas -->
-      <div id="reportsDataContainer" aria-live="polite">
-        <div class="p-8 text-center text-muted">
-          <span class="spinner spinner--lg mb-3"></span>
-          <p>Cargando indicadores operativos...</p>
-        </div>
-      </div>
+      <div id="reportsDataContainer" aria-live="polite"></div>
     </div>
   `;
 
@@ -99,6 +110,8 @@ export async function renderReports(container) {
   const rangoButtons = container.querySelectorAll('.btn-rango');
   const exportBtn = container.querySelector('#btnExportarCsv');
 
+  ui.renderSkeleton(dataContainer, 'kpis');
+
   exportBtn?.addEventListener('click', () => {
     if (!datosReporteActual) {
       ui.showToast('Espere a que carguen los datos antes de exportar.', 'warning');
@@ -109,7 +122,7 @@ export async function renderReports(container) {
   });
 
   async function cargarMetricas() {
-    ui.renderLoading(dataContainer, 'Calculando métricas agregadas...');
+    ui.renderSkeleton(dataContainer, 'kpis');
     try {
       const params = {};
       if (fechaDesde) params.desde = fechaDesde;
@@ -117,7 +130,7 @@ export async function renderReports(container) {
 
       const data = await api.get('/admin/reports/operational', params);
       datosReporteActual = data;
-      renderMetricas(dataContainer, data);
+      renderMetricas(dataContainer, data, container);
     } catch (err) {
       ui.renderError(dataContainer, {
         title: 'Error al consultar reportes',
@@ -136,7 +149,10 @@ export async function renderReports(container) {
       ui.showToast('La fecha desde no puede ser posterior a la fecha hasta.', 'error');
       return;
     }
-    rangoButtons.forEach(b => b.classList.remove('is-selected', 'btn-secondary'));
+    rangoButtons.forEach(b => {
+      b.classList.remove('is-selected', 'btn-secondary');
+      b.classList.add('btn-ghost');
+    });
     cargarMetricas();
   });
 
@@ -172,7 +188,7 @@ export async function renderReports(container) {
 /**
  * Renderiza las tarjetas y tablas analíticas con los datos agregados.
  */
-function renderMetricas(target, data) {
+function renderMetricas(target, data, rootContainer) {
   const citas = data.citas || {};
   const triaje = data.triaje || {};
   const farmacia = data.farmacia || {};
@@ -182,60 +198,60 @@ function renderMetricas(target, data) {
     <!-- 1. Tarjetas KPI de Resumen Global -->
     <div class="grid grid-cols-1 grid-cols-2-md grid-cols-4-lg gap-4 mb-6">
       <!-- KPI Citas -->
-      <div class="card p-4">
-        <div class="flex justify-between items-start mb-2">
+      <div class="card p-4 report-card">
+        <div class="flex justify-between items-start gap-2 mb-2">
           <span class="text-xs font-semibold text-muted uppercase">Total Citas</span>
           <div class="p-2 rounded bg-teal-50 text-primary">
             ${ui.icon('calendar', 'icon icon--sm')}
           </div>
         </div>
-        <div class="text-3xl font-extrabold mb-1">${citas.totalCitas ?? 0}</div>
-        <div class="text-xs flex items-center justify-between text-muted">
+        <div class="text-3xl font-extrabold mb-1 tabular-nums report-kpi-value" data-kpi-val="${Number(citas.totalCitas ?? 0)}">${citas.totalCitas ?? 0}</div>
+        <div class="text-xs flex flex-wrap items-center justify-between gap-3 text-muted">
           <span>Cumplimiento: <strong class="text-success">${citas.tasaCumplimiento ?? 0}%</strong></span>
           <span>Cancelación: <strong class="text-danger">${citas.tasaCancelacion ?? 0}%</strong></span>
         </div>
       </div>
 
       <!-- KPI Triajes -->
-      <div class="card p-4">
-        <div class="flex justify-between items-start mb-2">
+      <div class="card p-4 report-card">
+        <div class="flex justify-between items-start gap-2 mb-2">
           <span class="text-xs font-semibold text-muted uppercase">Evaluaciones Triaje</span>
           <div class="p-2 rounded" style="background-color: var(--triage-1-bg); color: var(--triage-1-fg);">
             ${ui.icon('activity', 'icon icon--sm')}
           </div>
         </div>
-        <div class="text-3xl font-extrabold mb-1">${triaje.totalTriajes ?? 0}</div>
-        <div class="text-xs flex items-center justify-between text-muted">
+        <div class="text-3xl font-extrabold mb-1 tabular-nums report-kpi-value" data-kpi-val="${Number(triaje.totalTriajes ?? 0)}">${triaje.totalTriajes ?? 0}</div>
+        <div class="text-xs flex flex-wrap items-center justify-between gap-3 text-muted">
           <span>Emergencias (Nivel I): <strong class="text-danger">${triaje.emergencias ?? 0}</strong></span>
           <span>Tasa: <strong>${triaje.tasaEmergencia ?? 0}%</strong></span>
         </div>
       </div>
 
       <!-- KPI Farmacia -->
-      <div class="card p-4">
-        <div class="flex justify-between items-start mb-2">
+      <div class="card p-4 report-card">
+        <div class="flex justify-between items-start gap-2 mb-2">
           <span class="text-xs font-semibold text-muted uppercase">Recetas Emitidas</span>
           <div class="p-2 rounded bg-info-bg text-info">
             ${ui.icon('pill', 'icon icon--sm')}
           </div>
         </div>
-        <div class="text-3xl font-extrabold mb-1">${farmacia.totalRecetas ?? 0}</div>
-        <div class="text-xs flex items-center justify-between text-muted">
+        <div class="text-3xl font-extrabold mb-1 tabular-nums report-kpi-value" data-kpi-val="${Number(farmacia.totalRecetas ?? 0)}">${farmacia.totalRecetas ?? 0}</div>
+        <div class="text-xs flex flex-wrap items-center justify-between gap-3 text-muted">
           <span>Fármacos entregados: <strong>${farmacia.unidadesDispensadas ?? 0}</strong> un.</span>
           <span>Completas: <strong class="text-success">${farmacia.dispensadasTotal ?? 0}</strong></span>
         </div>
       </div>
 
       <!-- KPI Break-Glass -->
-      <div class="card p-4">
-        <div class="flex justify-between items-start mb-2">
+      <div class="card p-4 report-card">
+        <div class="flex justify-between items-start gap-2 mb-2">
           <span class="text-xs font-semibold text-muted uppercase">Acceso Emergencia (BG)</span>
           <div class="p-2 rounded bg-warning-bg text-warning">
             ${ui.icon('alert-triangle', 'icon icon--sm')}
           </div>
         </div>
-        <div class="text-3xl font-extrabold mb-1">${breakGlass.totalActivaciones ?? 0}</div>
-        <div class="text-xs flex items-center justify-between text-muted">
+        <div class="text-3xl font-extrabold mb-1 tabular-nums report-kpi-value" data-kpi-val="${Number(breakGlass.totalActivaciones ?? 0)}">${breakGlass.totalActivaciones ?? 0}</div>
+        <div class="text-xs flex flex-wrap items-center justify-between gap-3 text-muted">
           <span>Ventanas activas (24h): <strong class="text-warning">${breakGlass.activacionesActivas ?? 0}</strong></span>
           <span>ADR-017 / 100% auditado</span>
         </div>
@@ -245,8 +261,8 @@ function renderMetricas(target, data) {
     <!-- 2. Sección Detallada: Citas Médicas y Triaje Clínico -->
     <div class="grid grid-cols-1 grid-cols-2-md gap-6 mb-6">
       <!-- Desglose de Citas por Estado -->
-      <div class="card">
-        <div class="card-header pb-3 border-b mb-4 flex justify-between items-center">
+      <div class="card report-card">
+        <div class="card-header pb-3 border-b mb-4 flex flex-wrap justify-between items-center gap-3">
           <h3 class="text-base font-bold m-0 flex items-center gap-2">
             ${ui.icon('clock', 'icon icon--sm text-primary')}
             <span>Estados de Citas</span>
@@ -256,16 +272,16 @@ function renderMetricas(target, data) {
         <div class="flex flex-col gap-3">
           ${renderProgressBar('Atendidas', citas.atendidas ?? 0, citas.totalCitas, 'var(--success)')}
           ${renderProgressBar('Programadas', citas.programadas ?? 0, citas.totalCitas, 'var(--info)')}
-          ${renderProgressBar('Confirmadas', citas.confirmadas ?? 0, citas.totalCitas, 'var(--teal-600)')}
+          ${renderProgressBar('Confirmadas', citas.confirmadas ?? 0, citas.totalCitas, 'var(--primary)')}
           ${renderProgressBar('Canceladas', citas.canceladas ?? 0, citas.totalCitas, 'var(--danger)')}
           ${renderProgressBar('No Asistió', citas.noAsistio ?? 0, citas.totalCitas, 'var(--warning)')}
-          ${renderProgressBar('Reprogramadas', citas.reprogramadas ?? 0, citas.totalCitas, 'var(--slate-500)')}
+          ${renderProgressBar('Reprogramadas', citas.reprogramadas ?? 0, citas.totalCitas, 'var(--text-muted)')}
         </div>
       </div>
 
       <!-- Desglose de Triajes por Nivel de Prioridad -->
-      <div class="card">
-        <div class="card-header pb-3 border-b mb-4 flex justify-between items-center">
+      <div class="card report-card">
+        <div class="card-header pb-3 border-b mb-4 flex flex-wrap justify-between items-center gap-3">
           <h3 class="text-base font-bold m-0 flex items-center gap-2">
             ${ui.icon('activity', 'icon icon--sm text-danger')}
             <span>Distribución de Triaje (Niveles I–V)</span>
@@ -285,8 +301,8 @@ function renderMetricas(target, data) {
     <!-- 3. Sección: Demanda por Especialidad y Sedes Hospitalarias -->
     <div class="grid grid-cols-1 grid-cols-2-md gap-6 mb-6">
       <!-- Citas por Especialidad -->
-      <div class="card">
-        <div class="card-header pb-3 border-b mb-4 flex justify-between items-center">
+      <div class="card report-card">
+        <div class="card-header pb-3 border-b mb-4 flex flex-wrap justify-between items-center gap-3">
           <h3 class="text-base font-bold m-0 flex items-center gap-2">
             ${ui.icon('briefcase', 'icon icon--sm text-primary')}
             <span>Demanda por Especialidad</span>
@@ -297,8 +313,8 @@ function renderMetricas(target, data) {
       </div>
 
       <!-- Citas por Sede -->
-      <div class="card">
-        <div class="card-header pb-3 border-b mb-4 flex justify-between items-center">
+      <div class="card report-card">
+        <div class="card-header pb-3 border-b mb-4 flex flex-wrap justify-between items-center gap-3">
           <h3 class="text-base font-bold m-0 flex items-center gap-2">
             ${ui.icon('map-pin', 'icon icon--sm text-primary')}
             <span>Ocupación por Sede Hospitalaria</span>
@@ -312,8 +328,8 @@ function renderMetricas(target, data) {
     <!-- 4. Sección: Farmacia y Auditoría Break-Glass -->
     <div class="grid grid-cols-1 grid-cols-2-md gap-6">
       <!-- Estados de Dispensación -->
-      <div class="card">
-        <div class="card-header pb-3 border-b mb-4 flex justify-between items-center">
+      <div class="card report-card">
+        <div class="card-header pb-3 border-b mb-4 flex flex-wrap justify-between items-center gap-3">
           <h3 class="text-base font-bold m-0 flex items-center gap-2">
             ${ui.icon('package', 'icon icon--sm text-info')}
             <span>Dispensación de Medicamentos</span>
@@ -325,15 +341,15 @@ function renderMetricas(target, data) {
           ${renderProgressBar('Dispensada Parcial', farmacia.dispensadasParcial ?? 0, farmacia.totalRecetas, 'var(--warning)')}
           ${renderProgressBar('Pendiente por Dispensar', farmacia.recetasPendientes ?? 0, farmacia.totalRecetas, 'var(--info)')}
         </div>
-        <div class="mt-4 pt-3 border-t text-xs text-muted flex justify-between">
+        <div class="mt-4 pt-3 border-t text-xs text-muted flex flex-wrap justify-between items-center gap-3">
           <span>Unidades entregadas en ventanilla:</span>
-          <strong class="text-base font-bold text-primary">${farmacia.unidadesDispensadas ?? 0}</strong>
+          <strong class="text-base font-bold text-primary tabular-nums">${farmacia.unidadesDispensadas ?? 0}</strong>
         </div>
       </div>
 
       <!-- Auditoría de Activaciones Break-Glass por Especialidad -->
-      <div class="card">
-        <div class="card-header pb-3 border-b mb-4 flex justify-between items-center">
+      <div class="card report-card">
+        <div class="card-header pb-3 border-b mb-4 flex flex-wrap justify-between items-center gap-3">
           <h3 class="text-base font-bold m-0 flex items-center gap-2">
             ${ui.icon('shield-alert', 'icon icon--sm text-warning')}
             <span>Break-Glass por Especialidad</span>
@@ -341,13 +357,23 @@ function renderMetricas(target, data) {
           <span class="text-xs text-muted">Comité Asistencial</span>
         </div>
         ${renderDistributionList(breakGlass.porEspecialidad, 'No se registran accesos Break-Glass en este rango.')}
-        <div class="mt-4 pt-3 border-t text-xs text-muted">
-          ${ui.icon('info', 'icon icon--xs mr-1')}
+        <div class="mt-4 pt-3 border-t text-xs text-muted flex items-start gap-2">
+          ${ui.icon('info', 'icon icon--xs shrink-0')}
           <span>Todas las activaciones cuentan con justificación clínica firmada y expiración en 24h.</span>
         </div>
       </div>
     </div>
   `;
+
+  const root = rootContainer || target;
+  motion.staggerCards(target.querySelectorAll('.report-card'), { delayStep: 30, maxDelay: 220, root });
+  target.querySelectorAll('.report-kpi-value').forEach(el => {
+    const val = Number(el.dataset.kpiVal);
+    if (Number.isFinite(val)) {
+      motion.animateCounter(el, val);
+    }
+  });
+  motion.animateProgress(target.querySelectorAll('.report-progress-bar'), { root });
 }
 
 /**
@@ -361,10 +387,10 @@ function renderProgressBar(etiqueta, valor, total, colorHex) {
     <div>
       <div class="flex justify-between items-center text-xs mb-1">
         <span class="font-medium text-slate-700">${esc(etiqueta)}</span>
-        <span class="text-muted"><strong>${valor}</strong> (${pct}%)</span>
+        <span class="text-muted tabular-nums"><strong>${valor}</strong> (${pct}%)</span>
       </div>
-      <div style="background-color: var(--slate-100); height: 8px; border-radius: 4px; overflow: hidden;" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100">
-        <div style="background-color: ${colorHex}; width: ${pct}%; height: 100%; transition: width 0.3s ease;"></div>
+      <div style="background-color: var(--surface-2); height: 8px; border-radius: var(--radius-full); overflow: hidden;" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100">
+        <div class="report-progress-bar" data-progress="${pct}%" style="background-color: ${colorHex}; width: ${pct}%; height: 100%; border-radius: var(--radius-full);"></div>
       </div>
     </div>
   `;
@@ -374,18 +400,19 @@ function renderProgressBar(etiqueta, valor, total, colorHex) {
  * Renderiza una lista o tabla de items distribuidos porcentualmente.
  */
 function renderDistributionList(items, emptyMsg = 'No hay datos registrados en este rango de fechas.') {
-  if (!items || items.length === 0) {
+  const list = normalizeDistributionItems(items);
+  if (list.length === 0) {
     return `<p class="text-xs text-muted my-4 text-center">${esc(emptyMsg)}</p>`;
   }
 
   return `
     <div class="flex flex-col gap-2">
-      ${items.map(it => `
-        <div class="flex items-center justify-between p-2 rounded bg-surface-2 text-xs">
+      ${list.map(it => `
+        <div class="flex items-center justify-between p-2 rounded bg-surface-2 text-xs gap-2">
           <span class="font-medium text-slate-800 truncate" style="max-width: 60%;">${esc(it.etiqueta)}</span>
           <div class="flex items-center gap-3">
             <span class="badge badge--neutral">${it.cantidad} reg.</span>
-            <span class="font-semibold text-muted" style="min-width: 45px; text-align: right;">${it.porcentaje}%</span>
+            <span class="font-semibold text-muted tabular-nums" style="min-width: 45px; text-align: right;">${it.porcentaje}%</span>
           </div>
         </div>
       `).join('')}
@@ -412,7 +439,7 @@ export function sanitizeCsvCell(val) {
  */
 function exportarReporteCsv(data, fechaDesde, fechaHasta) {
   const rows = [];
-  rows.push(['REPORTE OPERATIVO AGREGADO — MEDITRIAJE 2.0']);
+  rows.push(['REPORTE OPERATIVO AGREGADO — MEDITRIAJE']);
   rows.push(['Rango Desde', fechaDesde || 'Inicio Historico']);
   rows.push(['Rango Hasta', fechaHasta || 'Actualidad']);
   rows.push(['Fecha de Generacion (Bogota)', new Intl.DateTimeFormat('es-CO', {
@@ -457,19 +484,19 @@ function exportarReporteCsv(data, fechaDesde, fechaHasta) {
   rows.push([]);
 
   rows.push(['CITAS POR ESPECIALIDAD', 'Especialidad', 'Cantidad', 'Porcentaje']);
-  (citas.porEspecialidad || []).forEach(it => {
+  normalizeDistributionItems(citas.porEspecialidad).forEach(it => {
     rows.push(['CITAS POR ESPECIALIDAD', it.etiqueta, it.cantidad, `${it.porcentaje}%`]);
   });
   rows.push([]);
 
   rows.push(['CITAS POR SEDE', 'Sede Hospitalaria', 'Cantidad', 'Porcentaje']);
-  (citas.porSede || []).forEach(it => {
+  normalizeDistributionItems(citas.porSede).forEach(it => {
     rows.push(['CITAS POR SEDE', it.etiqueta, it.cantidad, `${it.porcentaje}%`]);
   });
   rows.push([]);
 
   rows.push(['BREAK_GLASS POR ESPECIALIDAD', 'Especialidad Solicitante', 'Cantidad', 'Porcentaje']);
-  (breakGlass.porEspecialidad || []).forEach(it => {
+  normalizeDistributionItems(breakGlass.porEspecialidad).forEach(it => {
     rows.push(['BREAK_GLASS POR ESPECIALIDAD', it.etiqueta, it.cantidad, `${it.porcentaje}%`]);
   });
 

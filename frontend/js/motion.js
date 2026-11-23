@@ -9,6 +9,7 @@ import {
   createScope,
   createTimeline,
   onScroll,
+  spring,
   stagger,
   svg,
   utils
@@ -113,10 +114,14 @@ function runInScope(root, callback) {
   if (isMotionReduced() || typeof callback !== 'function') return;
   ensureMotionWatchers();
 
-  const scopeRoot = root || (typeof document !== 'undefined' ? document.body : null);
+  const appRoot = typeof document !== 'undefined' ? document.getElementById('app') : null;
+  const candidate = root || (typeof document !== 'undefined' ? document.body : null);
+  const scopeRoot = appRoot && candidate && (candidate === appRoot || appRoot.contains(candidate))
+    ? appRoot
+    : candidate;
   if (!scopeRoot) return;
 
-  if (!activeScope || activeScopeRoot !== scopeRoot) {
+  if (!activeScope || (activeScopeRoot !== scopeRoot && !activeScopeRoot?.contains?.(scopeRoot))) {
     resetViewScope();
     try {
       activeScope = createScope({ root: scopeRoot });
@@ -388,6 +393,153 @@ export function pulseSubtle(el) {
 }
 
 /**
+ * Entrada elástica discreta con física de resorte (Anime.js v4 spring).
+ * @param {NodeList|Element[]|Element|string} targets
+ * @param {Object} options
+ */
+export function springPop(targets, { scale = 0.94, y = 6, bounce = 0.24, duration = 340, delayStep = 30, root } = {}) {
+  if (isMotionReduced()) return;
+  const els = resolveElements(targets, root);
+  if (els.length === 0) return;
+
+  const scopeRoot = root || els[0].closest?.('#main-content') || els[0].parentElement || document.body;
+  runInScope(scopeRoot, () => {
+    animate(els, {
+      opacity: [0, 1],
+      scale: [scale, 1],
+      translateY: [y, 0],
+      delay: els.length > 1 ? stagger(delayStep) : 0,
+      ease: spring({ bounce, duration }),
+      onComplete: cleanStyles
+    });
+  });
+}
+
+/**
+ * Anima barras de progreso u ocupación de 0% hasta su porcentaje objetivo.
+ * @param {NodeList|Element[]|Element|string} targets
+ * @param {Object} options
+ */
+export function animateProgress(targets, { delayStep = 45, duration = 560, root } = {}) {
+  if (isMotionReduced()) return;
+  const els = resolveElements(targets, root);
+  if (els.length === 0) return;
+
+  const scopeRoot = root || els[0].closest?.('#main-content') || els[0].parentElement || document.body;
+  runInScope(scopeRoot, () => {
+    els.forEach((bar, index) => {
+      const targetWidth = bar.dataset?.progress || bar.style?.width || '0%';
+      animate(bar, {
+        width: ['0%', targetWidth],
+        duration,
+        delay: Math.min(index * delayStep, 220),
+        ease: 'outQuart'
+      });
+    });
+  });
+}
+
+/**
+ * Revela con suavidad un panel, formulario colapsable o detalle inline recién abierto.
+ * @param {Element|null} el
+ * @param {Object} options
+ */
+export function revealPanel(el, { duration = 240, y = 8, root } = {}) {
+  if (!el || isMotionReduced()) return;
+  const scopeRoot = root || el.closest?.('#main-content') || el.parentElement || document.body;
+
+  runInScope(scopeRoot, () => {
+    animate(el, {
+      opacity: [0, 1],
+      translateY: [y, 0],
+      duration,
+      ease: 'outQuart',
+      onComplete: cleanStyles
+    });
+  });
+}
+
+/**
+ * Pulso clínico sobrio para alertas críticas, alergias graves o Triaje I/II.
+ * @param {NodeList|Element[]|Element|string} targets
+ * @param {Object} options
+ */
+export function pulseUrgency(targets, { root } = {}) {
+  if (isMotionReduced()) return;
+  const els = resolveElements(targets, root);
+  if (els.length === 0) return;
+
+  const scopeRoot = root || els[0].closest?.('#main-content') || els[0].parentElement || document.body;
+  runInScope(scopeRoot, () => {
+    animate(els, {
+      scale: [0.988, 1.012, 1],
+      duration: 360,
+      delay: els.length > 1 ? stagger(40) : 0,
+      ease: 'inOutQuad',
+      onComplete: cleanStyles
+    });
+  });
+}
+
+/**
+ * Rotación única de 360 grados para iconos de botones de recarga manual.
+ * @param {Element|null} el
+ * @param {Object} options
+ */
+export function spinOnce(el, { duration = 520 } = {}) {
+  if (!el || isMotionReduced()) return;
+  const svgIcon = el.matches?.('svg') ? el : el.querySelector?.('svg');
+  const target = svgIcon || el;
+  const scopeRoot = target.closest?.('#main-content') || target.parentElement || document.body;
+
+  runInScope(scopeRoot, () => {
+    animate(target, {
+      rotate: [0, 360],
+      duration,
+      ease: 'outCubic',
+      onComplete: cleanStyles
+    });
+  });
+}
+
+/**
+ * Coreografía rápida para apertura de modales (independiente del scope de ruta).
+ * @param {Element|null} backdropEl
+ */
+export function animateModalOpen(backdropEl) {
+  if (!backdropEl || isMotionReduced()) return;
+  const dialogEl = backdropEl.querySelector?.('.modal, .qr-scanner-dialog');
+  animate(backdropEl, {
+    opacity: [0, 1],
+    duration: 160,
+    ease: 'outQuad'
+  });
+  if (dialogEl) {
+    animate(dialogEl, {
+      opacity: [0, 1],
+      scale: [0.95, 1],
+      translateY: [10, 0],
+      ease: spring({ bounce: 0.22, duration: 280 }),
+      onComplete: cleanStyles
+    });
+  }
+}
+
+/**
+ * Entrada suave para notificaciones Toast sin interferir con el scope de la vista activa.
+ * @param {Element|null} toastEl
+ */
+export function animateToastIn(toastEl) {
+  if (!toastEl || isMotionReduced()) return;
+  animate(toastEl, {
+    opacity: [0, 1],
+    translateX: [18, 0],
+    ease: spring({ bounce: 0.2, duration: 260 }),
+    onComplete: cleanStyles
+  });
+}
+
+/**
  * Coreografía de entrada del hero de la landing pública.
  * @param {HTMLElement|null} container
  */
@@ -464,5 +616,12 @@ export const motion = {
   revealOnScroll,
   stepTransition,
   pulseSubtle,
+  springPop,
+  animateProgress,
+  revealPanel,
+  pulseUrgency,
+  spinOnce,
+  animateModalOpen,
+  animateToastIn,
   heroEntrance
 };

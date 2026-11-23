@@ -208,4 +208,61 @@ test.describe('Fase 5: Centro de Mando Operativo, Analítica, Alertas y QR', () 
     await expect(page.locator('#resultado-qr-track')).not.toContainText('diagnostico');
     await expect(page.locator('#resultado-qr-track')).not.toContainText('CIE-10');
   });
+
+  test('debe permitir evaluar alertas operativas bajo demanda desde el centro de mando (O02)', async ({ page }) => {
+    let evaluated = false;
+
+    await page.route('**/api/v1/operational/dashboard**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          sedePublicId: sedeId,
+          totalCamas: 20,
+          camasOcupadas: 18,
+          camasDisponibles: 2,
+          tasaOcupacionPorcentaje: 90,
+          episodiosUrgenciasActivos: 12,
+          alertasActivas: evaluated ? [
+            {
+              publicId: 'alt-eval-01',
+              sedePublicId: sedeId,
+              tipoAlerta: 'SATURACION_CAMAS',
+              nivelSeveridad: 'CRITICA',
+              mensaje: 'Capacidad al 90%: umbral de saturación superado.',
+              creadoAt: new Date().toISOString(),
+              estado: 'ACTIVA'
+            }
+          ] : []
+        })
+      });
+    });
+
+    await page.route('**/api/v1/operational/alerts/evaluate', async (route) => {
+      evaluated = true;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            publicId: 'alt-eval-01',
+            sedePublicId: sedeId,
+            tipoAlerta: 'SATURACION_CAMAS',
+            nivelSeveridad: 'CRITICA',
+            mensaje: 'Capacidad al 90%: umbral de saturación superado.',
+            creadoAt: new Date().toISOString(),
+            estado: 'ACTIVA'
+          }
+        ])
+      });
+    });
+
+    await page.goto('/#/operational/dashboard');
+    await expect(page.locator('#btnEvaluateAlerts')).toBeVisible();
+    await page.click('#btnEvaluateAlerts');
+
+    expect(evaluated).toBe(true);
+    await expect(page.locator('#banner-alerta-critica')).toBeVisible();
+    await expect(page.locator('text=umbral de saturación superado')).toBeVisible();
+  });
 });

@@ -49,5 +49,10 @@ CREATE OR REPLACE PACKAGE PKG_TRIAGE AUTHID DEFINER AS
     PROCEDURE list_assessments_by_episode(p_episode_id IN NUMBER, o_rows OUT SYS_REFCURSOR);
     -- Última valoración (versión más alta) de un episodio.
     PROCEDURE get_latest_assessment(p_episode_id IN NUMBER, o_row OUT SYS_REFCURSOR);
+    -- Registra un síntoma reportado en una valoración de triaje presencial.
+    PROCEDURE add_assessment_symptom(p_assessment_id IN NUMBER, p_symptom_id IN NUMBER,
+                                     p_duration_hours IN NUMBER, p_intensity IN NUMBER);
+    -- Síntomas asociados a todas las valoraciones de un episodio, ordenados por versión y nombre.
+    PROCEDURE list_assessment_symptoms(p_episode_id IN NUMBER, o_rows OUT SYS_REFCURSOR);
 END PKG_TRIAGE;
 /

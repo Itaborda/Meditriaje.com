@@ -22,6 +22,9 @@ export async function landingView(container) {
   } else if (auth.isFarmaceutico) {
     userDashboardUrl = '#/pharmacy/dispensation';
     userDashboardLabel = 'Ir a dispensación farmacéutica';
+  } else if (auth.isEnfermeria) {
+    userDashboardUrl = '#/nursing/dashboard';
+    userDashboardLabel = 'Ir al panel de enfermería';
   }
 
   container.innerHTML = `
@@ -114,7 +117,7 @@ export async function landingView(container) {
                   <aside class="hero-laptop-sidebar">
                     <div class="hero-laptop-brand">
                       <span class="hero-laptop-dot"></span>
-                      <span>MediTriaje <strong class="text-primary">2.0</strong></span>
+                      <span>MediTriaje</span>
                     </div>
                     <ul class="hero-laptop-nav">
                       <li class="is-active">${ui.icon('home', 'icon icon--xs')}<span>Inicio</span></li>
@@ -155,7 +158,7 @@ export async function landingView(container) {
                       <div class="hero-laptop-chart-row">
                         <div class="hero-donut-wrap">
                           <svg class="hero-donut-svg" viewBox="0 0 48 48">
-                            <circle cx="24" cy="24" r="19" fill="none" stroke="var(--surface-3)" stroke-width="5"/>
+                            <circle cx="24" cy="24" r="19" fill="none" stroke="var(--border)" stroke-width="5"/>
                             <circle cx="24" cy="24" r="19" fill="none" stroke="#10B981" stroke-width="5" stroke-dasharray="77 120" stroke-dashoffset="0" stroke-linecap="round"/>
                             <circle cx="24" cy="24" r="19" fill="none" stroke="#F59E0B" stroke-width="5" stroke-dasharray="28 120" stroke-dashoffset="-80" stroke-linecap="round"/>
                             <circle cx="24" cy="24" r="19" fill="none" stroke="#EF4444" stroke-width="5" stroke-dasharray="9 120" stroke-dashoffset="-110" stroke-linecap="round"/>
@@ -182,7 +185,7 @@ export async function landingView(container) {
                 <div class="hero-phone-notch"></div>
                 <div class="hero-phone-header">
                   ${ui.icon('activity', 'icon icon--xs text-primary')}
-                  <span>MediTriaje <strong class="text-primary">2.0</strong></span>
+                  <span>MediTriaje</span>
                 </div>
                 <div class="hero-phone-body">
                   <div class="hero-phone-badge">
@@ -300,7 +303,7 @@ export async function landingView(container) {
                   </p>
                 </div>
                 <div>
-                  <span class="badge" style="background: var(--teal-50); color: var(--teal-800); border: 1px solid var(--teal-200);">
+                  <span class="badge badge--in-progress">
                     Motor Puro Determinista
                   </span>
                 </div>
@@ -406,7 +409,7 @@ export async function landingView(container) {
                   <span class="badge badge--confirmed mb-3">Farmacia &amp; Trazabilidad Criptográfica</span>
                   <h3 class="text-2xl font-bold mb-3">Recetas Digitales con Snapshot Farmacológico</h3>
                   <p class="text-muted text-sm mb-4" style="line-height: 1.6;">
-                    En MediTriaje 2.0, una receta médica emitida congela de manera inmutable el principio activo, concentración y posología del medicamento (ADR-007 / ADR-008). Además, cada paciente cuenta con su <strong>Ficha de Emergencia con Código QR</strong> accesible en situaciones críticas para socorristas y paramédicos.
+                    En MediTriaje, una receta médica emitida congela de manera inmutable el principio activo, concentración y posología del medicamento (ADR-007 / ADR-008). Además, cada paciente cuenta con su <strong>Ficha de Emergencia con Código QR</strong> accesible en situaciones críticas para socorristas y paramédicos.
                   </p>
                   <div class="flex flex-col gap-2 text-xs">
                     <div class="flex items-center gap-2 font-medium">
@@ -457,8 +460,8 @@ export async function landingView(container) {
               Selecciona síntoma principal:
             </label>
             <select id="simSintoma" class="form-select w-full">
-              <option value="alarma-toracico">🚨 Dolor torácico opresivo de alarma (Vital)</option>
-              <option value="alarma-respiratoria">🚨 Dificultad respiratoria severa (Vital)</option>
+              <option value="alarma-toracico">Alarma vital: Dolor torácico opresivo</option>
+              <option value="alarma-respiratoria">Alarma vital: Dificultad respiratoria severa</option>
               <option value="fiebre" selected>Fiebre alta persistente (&gt; 38.5°C)</option>
               <option value="cefalea">Dolor de cabeza intenso o cefalea</option>
               <option value="abdominal">Dolor abdominal cólico</option>
@@ -482,7 +485,7 @@ export async function landingView(container) {
         </div>
 
         <div class="mb-6">
-          <div class="flex justify-between items-center mb-2">
+          <div class="flex flex-wrap justify-between items-center gap-2 mb-2">
             <label for="simIntensidad" class="form-label text-sm font-semibold">
               Nivel de Intensidad del Síntoma:
             </label>
@@ -499,15 +502,15 @@ export async function landingView(container) {
         </div>
 
         <!-- Tarjeta de Resultado Dinámico del Simulador -->
-        <div id="simResultadoBox" class="card" style="border: 2px solid var(--teal-300); background-color: var(--teal-50); padding: var(--space-5);">
+        <div id="simResultadoBox" class="card" style="border: 2px solid var(--primary-soft-border); background-color: var(--primary-soft); padding: var(--space-5);">
           <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
-            <span class="text-xs uppercase font-bold tracking-wider" style="color: var(--teal-800);">Clasificación del Motor:</span>
+            <span class="text-xs uppercase font-bold tracking-wider" style="color: var(--primary);">Clasificación del Motor:</span>
             <span id="simNivelBadge" class="badge" style="background: var(--triage-3-bg); color: var(--triage-3-fg); border: 1px solid var(--triage-3-bd); font-size: var(--text-sm); font-weight: var(--weight-bold);">
               Nivel III · Urgente (Amarillo)
             </span>
           </div>
 
-          <div id="simRutaText" class="text-lg font-bold text-slate-900 mb-2">
+          <div id="simRutaText" class="text-lg font-bold mb-2" style="color: var(--text);">
             Ruta Sugerida: Consulta Médica Presencial
           </div>
 
@@ -515,7 +518,7 @@ export async function landingView(container) {
             Tus síntomas requieren evaluación médica presencial en las próximas 4 a 6 horas para descartar complicaciones.
           </p>
 
-          <div class="flex flex-wrap items-center justify-between gap-3 pt-3" style="border-top: 1px solid var(--teal-200);">
+          <div class="flex flex-wrap items-center justify-between gap-3 pt-3" style="border-top: 1px solid var(--primary-soft-border);">
             <span class="text-xs text-muted flex items-center gap-1">
               ${ui.icon('info', 'icon icon--xs')} Demostración puramente orientativa.
             </span>
@@ -599,7 +602,7 @@ export async function landingView(container) {
                   <svg class="icon icon-hospital text-primary" viewBox="0 0 24 24" style="width: 24px; height: 24px;" aria-hidden="true">
                     <path d="M12 6v4"/><path d="M14 14h-4"/><path d="M14 18h-4"/><path d="M14 8h-4"/><path d="M18 12h-4"/><path d="M6 12h4"/><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M10 22v-4h4v4"/>
                   </svg>
-                  <span class="font-bold text-lg" style="color: var(--text);">MediTriaje 2.0</span>
+                  <span class="font-bold text-lg" style="color: var(--text);">MediTriaje</span>
                 </div>
                 <p class="text-sm text-muted mb-4" style="max-width: 32ch;">
                   Plataforma asistencial web para la orientación de triaje, agendamiento de citas, historia clínica inmutable y recetas digitales en Colombia.
@@ -623,9 +626,9 @@ export async function landingView(container) {
                 <h4>Normativa &amp; Salud</h4>
                 <ul>
                   <li><a href="#/emergency-summary/token-demo">Ficha de Emergencia QR</a></li>
-                  <li><a href="javascript:void(0)" onclick="alert('Sistema alineado con Resolución 5596 de Triaje en Colombia.')">Estándar de Triaje (I-V)</a></li>
-                  <li><a href="javascript:void(0)" onclick="alert('Inmutabilidad garantizada por arquitectura limpia y registros append-only (ADR-007).')">Inmutabilidad Clínica</a></li>
-                  <li><a href="javascript:void(0)" onclick="alert('Protocolo de auditoría forense para aperturas de urgencia no programadas (ADR-018).')">Protocolo Break-Glass</a></li>
+                  <li><button type="button" data-legal-modal="triage" style="background: none; border: none; padding: 0; color: var(--text-muted); cursor: pointer; font: inherit; text-align: left;">Estándar de Triaje (I-V)</button></li>
+                  <li><button type="button" data-legal-modal="inmutabilidad" style="background: none; border: none; padding: 0; color: var(--text-muted); cursor: pointer; font: inherit; text-align: left;">Inmutabilidad Clínica</button></li>
+                  <li><button type="button" data-legal-modal="breakglass" style="background: none; border: none; padding: 0; color: var(--text-muted); cursor: pointer; font: inherit; text-align: left;">Protocolo Break-Glass</button></li>
                 </ul>
               </div>
 
@@ -633,8 +636,8 @@ export async function landingView(container) {
                 <h4>Proyecto Académico</h4>
                 <ul>
                   <li><a href="https://github.com/Itaborda/Meditriaje.com" target="_blank" rel="noopener noreferrer">Repositorio GitHub</a></li>
-                  <li><a href="javascript:void(0)" onclick="alert('Universidad Popular del Cesar · Ingeniería de Sistemas')">UPC Valledupar</a></li>
-                  <li><a href="javascript:void(0)" onclick="alert('Arquitectura Limpia · Java 21 · Spring Boot 3 · Oracle Autonomous DB · Vanilla ES Modules')">Stack Tecnológico</a></li>
+                  <li><button type="button" data-legal-modal="upc" style="background: none; border: none; padding: 0; color: var(--text-muted); cursor: pointer; font: inherit; text-align: left;">UPC Valledupar</button></li>
+                  <li><button type="button" data-legal-modal="stack" style="background: none; border: none; padding: 0; color: var(--text-muted); cursor: pointer; font: inherit; text-align: left;">Stack Tecnológico</button></li>
                   <li><a href="#/login">Portal Administrativo</a></li>
                 </ul>
               </div>
@@ -642,11 +645,11 @@ export async function landingView(container) {
 
             <div class="flex flex-wrap justify-between items-center gap-4 pt-6" style="border-top: 1px solid var(--border);">
               <div class="text-xs text-muted">
-                © 2026 MediTriaje 2.0 · Plataforma de Demostración Asistencial y Académica.
+                © 2026 MediTriaje · Plataforma de Demostración Asistencial y Académica.
               </div>
-              <div class="flex items-center gap-4 text-xs text-muted">
+              <div class="flex flex-wrap items-center gap-2 text-xs text-muted">
                 <span>Diseño UI/UX con Tokens CSS</span>
-                <span>·</span>
+                <span aria-hidden="true">·</span>
                 <span>WCAG 2.1 AA Accesible</span>
               </div>
             </div>
@@ -656,15 +659,62 @@ export async function landingView(container) {
     </div>
   `;
 
-  // 12. Lógica Interactiva del Simulador de Triaje
-  initSimulator(container);
+  // 12. Modales informativos y normativos del pie de página
+  initLegalModals(container);
 
-  // 13. Coreografía discreta de entrada y revelación en scroll
+  // 13. Lógica Interactiva del Simulador de Triaje
+  initSimulator(container, { userDashboardUrl, userDashboardLabel });
+
+  // 14. Coreografía discreta de entrada y revelación en scroll
   initLandingMotion(container);
+}
+
+const LEGAL_MODAL_INFO = {
+  triage: {
+    title: 'Estándar de Triaje (I-V)',
+    message: 'Sistema alineado con la Resolución 5596 de 2015 del Ministerio de Salud para clasificación de triaje clínico en Colombia (Niveles I a V).'
+  },
+  inmutabilidad: {
+    title: 'Inmutabilidad Clínica (ADR-007)',
+    message: 'Inmutabilidad garantizada por arquitectura limpia y registros append-only con enmiendas cronológicas justificadas (ADR-007).'
+  },
+  breakglass: {
+    title: 'Protocolo Break-Glass (ADR-018)',
+    message: 'Protocolo de auditoría forense para aperturas de urgencia no programadas en episodios asistenciales críticos (ADR-018).'
+  },
+  upc: {
+    title: 'UPC Valledupar',
+    message: 'Universidad Popular del Cesar · Programa de Ingeniería de Sistemas · Proyecto académico y asistencial MediTriaje.'
+  },
+  stack: {
+    title: 'Stack Tecnológico',
+    message: 'Arquitectura Limpia · Java 21 · Spring Boot 3 · Oracle Autonomous DB · Vanilla ES Modules · Design Tokens CSS.'
+  }
+};
+
+function initLegalModals(container) {
+  container.querySelectorAll('[data-legal-modal]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const key = btn.getAttribute('data-legal-modal');
+      const info = LEGAL_MODAL_INFO[key];
+      if (!info) return;
+      ui.showModal({
+        title: info.title,
+        message: info.message,
+        confirmText: 'Entendido',
+        cancelText: ''
+      });
+    });
+  });
 }
 
 function initLandingMotion(container) {
   motion.heroEntrance(container);
+
+  const donutRing = container.querySelector('.hero-donut-svg circle');
+  if (donutRing) {
+    motion.drawSvg(donutRing, { duration: 700, delay: 200, root: container });
+  }
 
   const metricsContainer = container.querySelector('.metrics-container');
   if (metricsContainer) {
@@ -697,9 +747,15 @@ function initLandingMotion(container) {
   if (simSection && simBox) {
     motion.revealOnScroll(simSection, [simBox], { root: container });
   }
+
+  const faqSection = container.querySelector('#landing-normativa');
+  const faqItems = faqSection?.querySelectorAll('.faq-item');
+  if (faqSection && faqItems?.length) {
+    motion.revealOnScroll(faqSection, faqItems, { root: container, delayStep: 40 });
+  }
 }
 
-function initSimulator(container) {
+function initSimulator(container, { userDashboardUrl = '#/patient/dashboard', userDashboardLabel = 'Ir a mi panel' } = {}) {
   const selectSintoma = container.querySelector('#simSintoma');
   const selectDuracion = container.querySelector('#simDuracion');
   const sliderIntensidad = container.querySelector('#simIntensidad');
@@ -731,25 +787,33 @@ function initSimulator(container) {
       textRuta.textContent = 'Ruta: Urgencias Médicas Inmediatas (Línea 123)';
       textRuta.style.color = 'var(--danger)';
 
-      textMensaje.textContent = '⚠️ ¡CORTE DE EMERGENCIA ACTIVADO! Presentas un síntoma de alarma médica inminente. Llama al 123 o acude de inmediato al centro de urgencias más cercano.';
+      textMensaje.textContent = '¡CORTE DE EMERGENCIA ACTIVADO! Presentas un síntoma de alarma médica inminente. Llama al 123 o acude de inmediato al centro de urgencias más cercano.';
 
       resultadoBox.style.borderColor = 'var(--danger)';
       resultadoBox.style.backgroundColor = 'var(--danger-bg)';
 
       if (ctaBtn && ctaText) {
         ctaBtn.href = 'tel:123';
-        ctaBtn.className = 'btn btn--danger btn--sm';
+        ctaBtn.className = 'btn btn-danger btn--sm';
         ctaText.textContent = 'Llamar a Emergencias (123)';
         if (ctaIcon) ctaIcon.innerHTML = ui.icon('phone', 'icon icon--xs');
       }
-      if (isUserInteraction) motion.pulseSubtle(resultadoBox);
+      if (isUserInteraction) {
+        motion.pulseSubtle(resultadoBox);
+        motion.pulseSubtle(badgeNivel);
+      }
       return;
     }
 
     if (ctaBtn && ctaText) {
-      ctaBtn.href = auth.isAuthenticated ? '#/triage' : '#/register';
+      if (auth.isAuthenticated) {
+        ctaBtn.href = auth.isPaciente ? '#/patient/triage' : userDashboardUrl;
+        ctaText.textContent = auth.isPaciente ? 'Continuar con mi triaje' : userDashboardLabel;
+      } else {
+        ctaBtn.href = '#/register';
+        ctaText.textContent = 'Agendar cita con esta prioridad';
+      }
       ctaBtn.className = 'btn btn-primary btn--sm';
-      ctaText.textContent = auth.isAuthenticated ? 'Continuar con mi triaje' : 'Agendar cita con esta prioridad';
       if (ctaIcon) ctaIcon.innerHTML = ui.icon('arrow-right', 'icon icon--xs');
     }
 
@@ -778,8 +842,8 @@ function initSimulator(container) {
 
       textMensaje.textContent = 'Síntomas moderados que justifican consulta médica en el transcurso del día para definir plan terapéutico.';
 
-      resultadoBox.style.borderColor = 'var(--teal-300)';
-      resultadoBox.style.backgroundColor = 'var(--teal-50)';
+      resultadoBox.style.borderColor = 'var(--primary-soft-border)';
+      resultadoBox.style.backgroundColor = 'var(--primary-soft)';
     } else if (intensidad >= 3) {
       badgeNivel.style.background = 'var(--triage-4-bg)';
       badgeNivel.style.color = 'var(--triage-4-fg)';
@@ -808,7 +872,10 @@ function initSimulator(container) {
       resultadoBox.style.backgroundColor = 'var(--info-bg)';
     }
 
-    if (isUserInteraction) motion.pulseSubtle(resultadoBox);
+    if (isUserInteraction) {
+      motion.pulseSubtle(resultadoBox);
+      motion.pulseSubtle(badgeNivel);
+    }
   };
 
   const scrollSim = () => {

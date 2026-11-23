@@ -8,8 +8,10 @@ test('Fase U: Exportación de emergencyApi y funciones de API requeridas', async
   const { emergencyApi } = await import('../js/api.js');
   assert.ok(emergencyApi, 'emergencyApi debe estar definido y exportado');
   assert.equal(typeof emergencyApi.registrarAdmision, 'function');
+  assert.equal(typeof emergencyApi.buscarPacientesPorDocumento, 'function');
   assert.equal(typeof emergencyApi.obtenerDetalleEpisodio, 'function');
   assert.equal(typeof emergencyApi.reconciliarIdentidad, 'function');
+  assert.equal(typeof emergencyApi.calcularNivelTriaje, 'function');
   assert.equal(typeof emergencyApi.registrarValoracionTriaje, 'function');
   assert.equal(typeof emergencyApi.listarHistorialTriaje, 'function');
   assert.equal(typeof emergencyApi.asignarEquipo, 'function');

@@ -9,6 +9,7 @@ test('Fase O: Exportación de operationalApi y métodos requeridos', async () =>
   assert.ok(operationalApi, 'operationalApi debe estar definido y exportado');
   assert.equal(typeof operationalApi.obtenerDashboard, 'function');
   assert.equal(typeof operationalApi.listarAlertas, 'function');
+  assert.equal(typeof operationalApi.evaluarAlertas, 'function');
   assert.equal(typeof operationalApi.reconocerAlerta, 'function');
   assert.equal(typeof operationalApi.generarTrackingQr, 'function');
   assert.equal(typeof operationalApi.consultarTrackingQr, 'function');

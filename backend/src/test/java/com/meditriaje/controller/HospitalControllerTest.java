@@ -183,4 +183,85 @@ class HospitalControllerTest {
                 .andExpect(jsonPath("$.ocupadas").value(15))
                 .andExpect(jsonPath("$.tasaOcupacionPorcentaje").value(75.0));
     }
+
+    @Test
+    @DisplayName("H01: Consultar áreas y habitaciones hospitalarias retorna 200 OK")
+    void listAreas_nursing_returns200() throws Exception {
+        HospitalAreaResponse area = new HospitalAreaResponse(
+                "area-1", "URG-OBS", "Observación Urgencias", "OBSERVACION", "1", "ACTIVA",
+                List.of(new HospitalRoomResponse("hab-1", "area-1", "OBS-101", "COMPARTIDA", "ACTIVA"))
+        );
+        when(hospitalService.listAreasWithRooms()).thenReturn(List.of(area));
+
+        mockMvc.perform(get("/api/v1/hospital/areas")
+                        .cookie(cookie(TOKEN_ENFERMERIA)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].codigo").value("URG-OBS"))
+                .andExpect(jsonPath("$[0].habitaciones[0].codigo").value("OBS-101"));
+    }
+
+    @Test
+    @DisplayName("H01: Administrador creando área hospitalaria retorna 201 Created")
+    void createArea_admin_returns201() throws Exception {
+        CreateHospitalAreaRequest req = new CreateHospitalAreaRequest("UCI-ADU", "UCI Adultos", "UCI_ADULTOS", "3");
+        HospitalAreaResponse resp = new HospitalAreaResponse("area-uci", "UCI-ADU", "UCI Adultos", "UCI_ADULTOS", "3", "ACTIVA", List.of());
+        when(hospitalService.createArea(any(), eq("usr-admin-uuid"), anyString())).thenReturn(resp);
+
+        mockMvc.perform(post("/api/v1/hospital/areas")
+                        .cookie(cookie(TOKEN_ADMIN))
+                        .header("X-Requested-With", "XMLHttpRequest")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.codigo").value("UCI-ADU"));
+    }
+
+    @Test
+    @DisplayName("SEC02: Enfermería intentando crear área hospitalaria recibe 403 Forbidden")
+    void createArea_nursing_returns403() throws Exception {
+        CreateHospitalAreaRequest req = new CreateHospitalAreaRequest("UCI-ADU", "UCI Adultos", "UCI_ADULTOS", "3");
+
+        mockMvc.perform(post("/api/v1/hospital/areas")
+                        .cookie(cookie(TOKEN_ENFERMERIA))
+                        .header("X-Requested-With", "XMLHttpRequest")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("H01: Administrador creando habitación en área retorna 201 Created")
+    void createRoom_admin_returns201() throws Exception {
+        CreateHospitalRoomRequest req = new CreateHospitalRoomRequest("UCI-301", "AISLAMIENTO");
+        HospitalRoomResponse resp = new HospitalRoomResponse("hab-301", "area-uci", "UCI-301", "AISLAMIENTO", "ACTIVA");
+        when(hospitalService.createRoom(eq("area-uci"), any(), eq("usr-admin-uuid"), anyString())).thenReturn(resp);
+
+        mockMvc.perform(post("/api/v1/hospital/areas/area-uci/rooms")
+                        .cookie(cookie(TOKEN_ADMIN))
+                        .header("X-Requested-With", "XMLHttpRequest")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.codigo").value("UCI-301"));
+    }
+
+    @Test
+    @DisplayName("H01: Administrador creando camas en habitación retorna 201 Created")
+    void createBeds_admin_returns201() throws Exception {
+        CreateHospitalBedRequest req = new CreateHospitalBedRequest("UCI-301", 2);
+        List<BedDetailResponse> resp = List.of(
+                new BedDetailResponse("cama-1", "hab-301", "UCI-301", "area-uci", "UCI Adultos", "sede-1", "Hospital", "UCI-301-01", "DISPONIBLE", null, null, null),
+                new BedDetailResponse("cama-2", "hab-301", "UCI-301", "area-uci", "UCI Adultos", "sede-1", "Hospital", "UCI-301-02", "DISPONIBLE", null, null, null)
+        );
+        when(hospitalService.createBeds(eq("hab-301"), any(), eq("usr-admin-uuid"), anyString())).thenReturn(resp);
+
+        mockMvc.perform(post("/api/v1/hospital/rooms/hab-301/beds")
+                        .cookie(cookie(TOKEN_ADMIN))
+                        .header("X-Requested-With", "XMLHttpRequest")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$[0].codigo").value("UCI-301-01"))
+                .andExpect(jsonPath("$[1].codigo").value("UCI-301-02"));
+    }
 }

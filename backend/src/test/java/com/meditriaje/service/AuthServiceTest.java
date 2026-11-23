@@ -215,6 +215,30 @@ class AuthServiceTest {
     }
 
     @Test
+    void registerPatient_linksExistingWalkInPatientWithoutUserAccount() {
+        RegisterPatientRequest req = requestValido();
+        Patient walkInExistente = new Patient(
+                200L, null, "pac-walkin-pub", "CC", "1020304050",
+                "Carlos", "Perez", LocalDate.of(1995, 5, 20), "3001234567",
+                Instant.now(), null
+        );
+        when(userRepository.existsByEmail("carlos.perez@example.com")).thenReturn(false);
+        when(patientRepository.existsByDocument("CC", "1020304050")).thenReturn(true);
+        when(patientRepository.findByDocument("CC", "1020304050")).thenReturn(Optional.of(walkInExistente));
+        when(passwordEncoder.encode(anyString())).thenReturn("argon2id-hash");
+        when(userRepository.create(anyString(), eq("carlos.perez@example.com"), eq("argon2id-hash"))).thenReturn(100L);
+        when(userRepository.findRoleIdByName("ROLE_PACIENTE")).thenReturn(Optional.of(1L));
+        when(patientRepository.linkUserToPatient(200L, 100L)).thenReturn(1);
+        when(consentRepository.record(eq(100L), eq("v1.0"), eq(true), eq("192.168.1.5"))).thenReturn(300L);
+
+        RegisterPatientResponse res = authService.registerPatient(req, "192.168.1.5");
+
+        assertThat(res.patientPublicId()).isEqualTo("pac-walkin-pub");
+        verify(patientRepository).linkUserToPatient(200L, 100L);
+        verify(patientRepository, never()).create(any(), anyString(), anyString(), anyString(), anyString(), anyString(), any(), any());
+    }
+
+    @Test
     void registerPatient_documentDuplicate_throwsExceptionAndAuditsFailure() {
         RegisterPatientRequest req = requestValido();
         when(userRepository.existsByEmail("carlos.perez@example.com")).thenReturn(false);
@@ -231,6 +255,24 @@ class AuthServiceTest {
                 eq(AuditResult.FALLO),
                 eq("192.168.1.5")
         );
+        verify(userRepository, never()).create(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void registerPatient_documentAlreadyLinkedToUser_throwsException() {
+        RegisterPatientRequest req = requestValido();
+        Patient existenteConUsuario = new Patient(
+                200L, 99L, "pac-con-usuario", "CC", "1020304050",
+                "Carlos", "Perez", LocalDate.of(1995, 5, 20), "3001234567",
+                Instant.now(), null
+        );
+        when(userRepository.existsByEmail("carlos.perez@example.com")).thenReturn(false);
+        when(patientRepository.existsByDocument("CC", "1020304050")).thenReturn(true);
+        when(patientRepository.findByDocument("CC", "1020304050")).thenReturn(Optional.of(existenteConUsuario));
+
+        assertThatThrownBy(() -> authService.registerPatient(req, "192.168.1.5"))
+                .isInstanceOf(InvalidDataException.class)
+                .hasMessageContaining("documento de identidad ya se encuentra registrado");
         verify(userRepository, never()).create(anyString(), anyString(), anyString());
     }
 

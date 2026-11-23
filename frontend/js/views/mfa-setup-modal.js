@@ -270,7 +270,7 @@ function renderStepBackupCodes(backdrop, verifyResult, closeModal) {
   `;
 
   backdrop.querySelector('#btnCopyAllCodes')?.addEventListener('click', () => {
-    const textToCopy = `MEDITRIAJE 2.0 - CODIGOS DE RESPALDO MFA\n======================================\n` +
+    const textToCopy = `MEDITRIAJE - CODIGOS DE RESPALDO MFA\n==================================\n` +
       backupCodes.join('\n') +
       `\n\nCada codigo es de un solo uso. Guardalos en un lugar seguro.`;
     navigator.clipboard.writeText(textToCopy).then(() => {

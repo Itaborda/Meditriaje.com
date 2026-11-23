@@ -26,6 +26,11 @@ CREATE OR REPLACE PACKAGE PKG_PATIENTS AUTHID DEFINER AS
     PROCEDURE get_patient_by_public_id(p_public_id IN VARCHAR2, o_row OUT SYS_REFCURSOR);
     PROCEDURE get_patient_by_document(p_document_type IN VARCHAR2, p_document_number IN VARCHAR2,
                                       o_row OUT SYS_REFCURSOR);
+    -- Busca pacientes por número de documento (y tipo opcional) para admisión y triaje presencial.
+    PROCEDURE search_patients_by_document(p_document_number IN VARCHAR2, p_document_type IN VARCHAR2,
+                                          o_rows OUT SYS_REFCURSOR);
+    -- Vincula un usuario web recién registrado a un registro de paciente creado presencialmente sin cuenta.
+    PROCEDURE link_user_to_patient(p_patient_id IN NUMBER, p_user_id IN NUMBER, o_updated OUT NUMBER);
 
     -- ---------------------------------------------------------- CONSENTIMIENTO
     -- Registra el consentimiento de tratamiento de datos (REVOCADO = 0) y devuelve su ID interno.

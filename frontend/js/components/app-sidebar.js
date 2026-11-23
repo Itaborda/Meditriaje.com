@@ -38,6 +38,7 @@ function getNavigationConfig() {
         { label: 'Mis Citas Médicas', href: '#/patient/appointments', icon: 'calendar' },
         { label: 'Mi Historia Clínica', href: '#/patient/history', icon: 'file-text' },
         { label: 'Mis Recetas', href: '#/patient/prescriptions', icon: 'pill' },
+        { label: 'Seguimientos', href: '#/patient/follow-ups', icon: 'check-circle' },
         { label: 'Carnet QR Urgencias', href: '#/patient/emergency-qr', icon: 'qr-code' },
         { label: 'Alergias y Registro', href: '#/patient/allergies', icon: 'shield-check' }
       ]
@@ -258,6 +259,7 @@ export function initSidebar() {
 function openMobileSidebar() {
   if (!sidebarElement) return;
   sidebarElement.classList.add('is-mobile-open');
+  document.body.style.overflow = 'hidden';
   const backdrop = document.getElementById('sidebar-backdrop');
   if (backdrop) backdrop.classList.add('is-visible');
   const toggleBtn = document.getElementById('sidebarToggleBtn');
@@ -276,6 +278,7 @@ function openMobileSidebar() {
 function closeMobileSidebar() {
   if (!sidebarElement) return;
   sidebarElement.classList.remove('is-mobile-open');
+  document.body.style.overflow = '';
   const backdrop = document.getElementById('sidebar-backdrop');
   if (backdrop) backdrop.classList.remove('is-visible');
   const toggleBtn = document.getElementById('sidebarToggleBtn');

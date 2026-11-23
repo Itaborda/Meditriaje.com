@@ -1,0 +1,91 @@
+-- =============================================================================
+-- MediTriaje 2.0 — Migración V030: Semilla de infraestructura hospitalaria y
+-- pacientes de urgencias sin cuenta de usuario web
+-- =============================================================================
+-- 1. Permite registrar pacientes en PACIENTE sin exigir una cuenta en USUARIO
+--    (USUARIO_ID NULL) para admisiones presenciales de urgencias.
+-- 2. Siembra idempotente de áreas, habitaciones y camas iniciales si la tabla
+--    AREA_HOSPITALARIA está vacía, para que el censo y centro de mando operen
+--    con capacidad instalada real desde el arranque.
+-- =============================================================================
+
+DECLARE
+    v_nullable   VARCHAR2(1);
+    v_area_count NUMBER;
+    v_area_id    NUMBER;
+    v_room_id    NUMBER;
+BEGIN
+    SELECT NULLABLE
+      INTO v_nullable
+      FROM USER_TAB_COLUMNS
+     WHERE TABLE_NAME = 'PACIENTE'
+       AND COLUMN_NAME = 'USUARIO_ID';
+
+    IF v_nullable = 'N' THEN
+        EXECUTE IMMEDIATE 'ALTER TABLE PACIENTE MODIFY (USUARIO_ID NULL)';
+    END IF;
+
+    SELECT COUNT(*) INTO v_area_count FROM AREA_HOSPITALARIA;
+
+    IF v_area_count = 0 THEN
+        -- 1. Observación Urgencias Adultos (4 camas)
+        INSERT INTO AREA_HOSPITALARIA (PUBLIC_ID, CODIGO, NOMBRE, TIPO, PISO, ESTADO)
+        VALUES ('a1000001-0001-4a20-8b01-5e7f00000001', 'URG-OBS', 'Observación Urgencias Adultos', 'OBSERVACION', 'Piso 1', 'ACTIVA')
+        RETURNING ID INTO v_area_id;
+
+        INSERT INTO HABITACION_SALA (PUBLIC_ID, AREA_ID, CODIGO, TIPO, ESTADO)
+        VALUES ('b1000001-0001-4a20-8b01-5e7f00000001', v_area_id, 'OBS-101', 'SALA_COMUN', 'ACTIVA')
+        RETURNING ID INTO v_room_id;
+
+        INSERT INTO CAMA_HOSPITALARIA (PUBLIC_ID, HABITACION_ID, CODIGO, ESTADO) VALUES ('c1000001-0001-4a20-8b01-5e7f00000001', v_room_id, 'OBS-101-A', 'DISPONIBLE');
+        INSERT INTO CAMA_HOSPITALARIA (PUBLIC_ID, HABITACION_ID, CODIGO, ESTADO) VALUES ('c1000001-0002-4a20-8b01-5e7f00000002', v_room_id, 'OBS-101-B', 'DISPONIBLE');
+        INSERT INTO CAMA_HOSPITALARIA (PUBLIC_ID, HABITACION_ID, CODIGO, ESTADO) VALUES ('c1000001-0003-4a20-8b01-5e7f00000003', v_room_id, 'OBS-101-C', 'DISPONIBLE');
+        INSERT INTO CAMA_HOSPITALARIA (PUBLIC_ID, HABITACION_ID, CODIGO, ESTADO) VALUES ('c1000001-0004-4a20-8b01-5e7f00000004', v_room_id, 'OBS-101-D', 'DISPONIBLE');
+
+        -- 2. Pabellón Guatapurí — Hospitalización General (5 camas en 2 habitaciones)
+        INSERT INTO AREA_HOSPITALARIA (PUBLIC_ID, CODIGO, NOMBRE, TIPO, PISO, ESTADO)
+        VALUES ('a1000002-0002-4a20-8b02-5e7f00000002', 'HOSP-GUA', 'Pabellón Guatapurí (Hospitalización General)', 'HOSPITALIZACION_GENERAL', 'Piso 2', 'ACTIVA')
+        RETURNING ID INTO v_area_id;
+
+        INSERT INTO HABITACION_SALA (PUBLIC_ID, AREA_ID, CODIGO, TIPO, ESTADO)
+        VALUES ('b1000002-0001-4a20-8b02-5e7f00000001', v_area_id, 'HOSP-201', 'COMPARTIDA', 'ACTIVA')
+        RETURNING ID INTO v_room_id;
+
+        INSERT INTO CAMA_HOSPITALARIA (PUBLIC_ID, HABITACION_ID, CODIGO, ESTADO) VALUES ('c1000002-0001-4a20-8b02-5e7f00000001', v_room_id, 'HOSP-201-A', 'DISPONIBLE');
+        INSERT INTO CAMA_HOSPITALARIA (PUBLIC_ID, HABITACION_ID, CODIGO, ESTADO) VALUES ('c1000002-0002-4a20-8b02-5e7f00000002', v_room_id, 'HOSP-201-B', 'DISPONIBLE');
+        INSERT INTO CAMA_HOSPITALARIA (PUBLIC_ID, HABITACION_ID, CODIGO, ESTADO) VALUES ('c1000002-0003-4a20-8b02-5e7f00000003', v_room_id, 'HOSP-201-C', 'DISPONIBLE');
+
+        INSERT INTO HABITACION_SALA (PUBLIC_ID, AREA_ID, CODIGO, TIPO, ESTADO)
+        VALUES ('b1000002-0002-4a20-8b02-5e7f00000002', v_area_id, 'HOSP-202', 'INDIVIDUAL', 'ACTIVA')
+        RETURNING ID INTO v_room_id;
+
+        INSERT INTO CAMA_HOSPITALARIA (PUBLIC_ID, HABITACION_ID, CODIGO, ESTADO) VALUES ('c1000002-0004-4a20-8b02-5e7f00000004', v_room_id, 'HOSP-202-A', 'DISPONIBLE');
+        INSERT INTO CAMA_HOSPITALARIA (PUBLIC_ID, HABITACION_ID, CODIGO, ESTADO) VALUES ('c1000002-0005-4a20-8b02-5e7f00000005', v_room_id, 'HOSP-202-B', 'DISPONIBLE');
+
+        -- 3. UCI Adultos (3 camas)
+        INSERT INTO AREA_HOSPITALARIA (PUBLIC_ID, CODIGO, NOMBRE, TIPO, PISO, ESTADO)
+        VALUES ('a1000003-0003-4a20-8b03-5e7f00000003', 'UCI-ADU', 'UCI Adultos', 'UCI_ADULTOS', 'Piso 3', 'ACTIVA')
+        RETURNING ID INTO v_area_id;
+
+        INSERT INTO HABITACION_SALA (PUBLIC_ID, AREA_ID, CODIGO, TIPO, ESTADO)
+        VALUES ('b1000003-0001-4a20-8b03-5e7f00000001', v_area_id, 'UCI-301', 'AISLAMIENTO', 'ACTIVA')
+        RETURNING ID INTO v_room_id;
+
+        INSERT INTO CAMA_HOSPITALARIA (PUBLIC_ID, HABITACION_ID, CODIGO, ESTADO) VALUES ('c1000003-0001-4a20-8b03-5e7f00000001', v_room_id, 'UCI-301-A', 'DISPONIBLE');
+        INSERT INTO CAMA_HOSPITALARIA (PUBLIC_ID, HABITACION_ID, CODIGO, ESTADO) VALUES ('c1000003-0002-4a20-8b03-5e7f00000002', v_room_id, 'UCI-301-B', 'DISPONIBLE');
+        INSERT INTO CAMA_HOSPITALARIA (PUBLIC_ID, HABITACION_ID, CODIGO, ESTADO) VALUES ('c1000003-0003-4a20-8b03-5e7f00000003', v_room_id, 'UCI-301-C', 'DISPONIBLE');
+
+        -- 4. Quirófanos y Recuperación (2 camas)
+        INSERT INTO AREA_HOSPITALARIA (PUBLIC_ID, CODIGO, NOMBRE, TIPO, PISO, ESTADO)
+        VALUES ('a1000004-0004-4a20-8b04-5e7f00000004', 'QUIR-01', 'Quirófanos y Recuperación', 'RECUPERACION', 'Piso 2', 'ACTIVA')
+        RETURNING ID INTO v_area_id;
+
+        INSERT INTO HABITACION_SALA (PUBLIC_ID, AREA_ID, CODIGO, TIPO, ESTADO)
+        VALUES ('b1000004-0001-4a20-8b04-5e7f00000001', v_area_id, 'REC-201', 'SALA_COMUN', 'ACTIVA')
+        RETURNING ID INTO v_room_id;
+
+        INSERT INTO CAMA_HOSPITALARIA (PUBLIC_ID, HABITACION_ID, CODIGO, ESTADO) VALUES ('c1000004-0001-4a20-8b04-5e7f00000001', v_room_id, 'REC-201-A', 'DISPONIBLE');
+        INSERT INTO CAMA_HOSPITALARIA (PUBLIC_ID, HABITACION_ID, CODIGO, ESTADO) VALUES ('c1000004-0002-4a20-8b04-5e7f00000002', v_room_id, 'REC-201-B', 'DISPONIBLE');
+    END IF;
+END;
+/

@@ -108,7 +108,7 @@ public class DefaultEmailService implements EmailService {
         );
 
         String cuerpoHtml = templateService.render(RECOVERY_TEMPLATE, variables);
-        String asunto = "MediTriaje 2.0 — Código de recuperación de contraseña";
+        String asunto = "MediTriaje — Código de recuperación de contraseña";
 
         return sendHtmlEmail(destinatarioEmail, asunto, cuerpoHtml);
     }
@@ -131,7 +131,7 @@ public class DefaultEmailService implements EmailService {
         );
 
         String cuerpoHtml = templateService.render(WELCOME_TEMPLATE, variables);
-        String asunto = "MediTriaje 2.0 — Tus credenciales de acceso institucional";
+        String asunto = "MediTriaje — Tus credenciales de acceso institucional";
 
         return sendHtmlEmail(destinatarioEmail, asunto, cuerpoHtml);
     }

@@ -41,7 +41,7 @@ class EmailServiceTest {
                 templateService,
                 javaMailSender,
                 "no-reply@meditriaje.com",
-                "MediTriaje 2.0",
+                "MediTriaje",
                 "http://localhost:5500"
         );
     }
@@ -71,7 +71,7 @@ class EmailServiceTest {
                 .contains("Hola, Carlos Mendoza:")
                 .contains("654321")
                 .contains("15 minutos")
-                .contains("MediTriaje 2.0")
+                .contains("MediTriaje")
                 .contains("Aviso de Seguridad");
 
         verify(javaMailSender, times(1)).send(any(MimeMessage.class));

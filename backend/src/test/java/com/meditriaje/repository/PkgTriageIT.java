@@ -148,6 +148,12 @@ class PkgTriageIT {
                 "Paciente alerta", "120/80", null, 18, 97, new BigDecimal("38.5"), null,
                 staffUserId, false, null, null));
         assertThat(v1.id()).isNotNull();
+        Map<String, Long> symptomIds = triages.getSymptomCodeToIdMap();
+        assessments.saveSymptoms(v1.id(), List.of(
+                new TriageAssessmentRepository.AssessmentSymptomEntry(
+                        symptomIds.get("FIEBRE"), new BigDecimal("12.0"), 6),
+                new TriageAssessmentRepository.AssessmentSymptomEntry(
+                        symptomIds.get("TOS"), new BigDecimal("24.0"), 4)));
         assertThat(assessments.getNextVersion(episodeId)).isEqualTo(2);
 
         // v2: reevaluación por médico con FRECUENCIA_CARDIACA presente y TEMPERATURA nula.
@@ -166,6 +172,8 @@ class PkgTriageIT {
         assertThat(history.get(0).temperature()).isEqualByComparingTo("38.5");
         assertThat(history.get(0).glasgowScale()).isNull();
         assertThat(history.get(0).isReevaluation()).isFalse();
+        assertThat(history.get(0).symptoms()).extracting(s -> s.code())
+                .containsExactly("FIEBRE", "TOS");
 
         assertThat(history.get(1).version()).isEqualTo(2);
         assertThat(history.get(1).evaluatorName()).isEqualTo("Pedro Medico");
@@ -174,6 +182,7 @@ class PkgTriageIT {
         assertThat(history.get(1).glasgowScale()).isEqualTo(15);
         assertThat(history.get(1).isReevaluation()).isTrue();
         assertThat(history.get(1).reevaluationReason()).isEqualTo("Deterioro clinico");
+        assertThat(history.get(1).symptoms()).isEmpty();
 
         TriageAssessment latest = assessments.findLatestByEpisodeId(episodeId).orElseThrow();
         assertThat(latest.version()).isEqualTo(2);

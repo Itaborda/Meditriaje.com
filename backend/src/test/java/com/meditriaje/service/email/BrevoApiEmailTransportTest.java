@@ -68,7 +68,7 @@ class BrevoApiEmailTransportTest {
                 serverUrl,
                 testApiKey,
                 "notificaciones@meditriaje.com",
-                "MediTriaje 2.0",
+                "MediTriaje",
                 HttpClient.newHttpClient(),
                 objectMapper
         );
@@ -103,7 +103,7 @@ class BrevoApiEmailTransportTest {
                 serverUrl,
                 testApiKey,
                 "no-verificado@ejemplo.com",
-                "MediTriaje 2.0",
+                "MediTriaje",
                 HttpClient.newHttpClient(),
                 objectMapper
         );
@@ -140,7 +140,7 @@ class BrevoApiEmailTransportTest {
                 serverUrl,
                 testApiKey,
                 "notificaciones@meditriaje.com",
-                "MediTriaje 2.0",
+                "MediTriaje",
                 HttpClient.newHttpClient(),
                 objectMapper
         );
@@ -171,7 +171,7 @@ class BrevoApiEmailTransportTest {
                 serverUrl,
                 testApiKey,
                 "notificaciones@meditriaje.com",
-                "MediTriaje 2.0",
+                "MediTriaje",
                 HttpClient.newHttpClient(),
                 objectMapper
         );
@@ -202,7 +202,7 @@ class BrevoApiEmailTransportTest {
                 serverUrl,
                 testApiKey,
                 "notificaciones@meditriaje.com",
-                "MediTriaje 2.0",
+                "MediTriaje",
                 HttpClient.newHttpClient(),
                 objectMapper
         );
@@ -243,7 +243,7 @@ class BrevoApiEmailTransportTest {
                 serverUrl,
                 testApiKey,
                 "notificaciones@meditriaje.com",
-                "MediTriaje 2.0",
+                "MediTriaje",
                 HttpClient.newHttpClient(),
                 objectMapper
         );
@@ -272,7 +272,7 @@ class BrevoApiEmailTransportTest {
                 serverUrl,
                 testApiKey,
                 "notificaciones@meditriaje.com",
-                "MediTriaje 2.0",
+                "MediTriaje",
                 HttpClient.newHttpClient(),
                 objectMapper
         );
@@ -291,7 +291,7 @@ class BrevoApiEmailTransportTest {
                 serverUrl,
                 "",
                 "notificaciones@meditriaje.com",
-                "MediTriaje 2.0",
+                "MediTriaje",
                 HttpClient.newHttpClient(),
                 objectMapper
         );

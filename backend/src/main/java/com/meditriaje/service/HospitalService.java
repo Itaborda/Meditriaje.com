@@ -1,6 +1,7 @@
 package com.meditriaje.service;
 
 import com.meditriaje.dto.hospital.*;
+import com.meditriaje.exception.InvalidDataException;
 import com.meditriaje.exception.UnauthorizedAccessException;
 import com.meditriaje.exception.OperationConflictException;
 import com.meditriaje.exception.ResourceNotFoundException;
@@ -22,6 +23,14 @@ import java.util.stream.Collectors;
  */
 @Service
 public class HospitalService {
+
+    private static final Set<String> VALID_AREA_TYPES = Set.of(
+            "URGENCIAS", "OBSERVACION", "HOSPITALIZACION_GENERAL", "UCI_ADULTOS",
+            "UCI_PEDIATRICA", "QUIROFANO", "RECUPERACION", "SALA_PARTOS"
+    );
+    private static final Set<String> VALID_ROOM_TYPES = Set.of(
+            "INDIVIDUAL", "COMPARTIDA", "AISLAMIENTO", "QUIROFANO", "SALA_COMUN"
+    );
 
     private final HospitalAreaRepository areaRepository;
     private final HospitalRoomRepository roomRepository;
@@ -623,5 +632,189 @@ public class HospitalService {
         CareEpisode episodio = episodeRepository.findByPublicId(episodePublicId)
                 .orElseThrow(() -> new ResourceNotFoundException("Episodio no encontrado: " + episodePublicId));
         return procedureRepository.listByEpisodeId(episodio.id());
+    }
+
+    /**
+     * Lista las áreas hospitalarias activas junto con sus habitaciones o salas configuradas.
+     */
+    public List<HospitalAreaResponse> listAreasWithRooms() {
+        Long siteId = siteRepository.getSingleSiteId();
+        List<HospitalArea> areas = areaRepository.listBySiteId(siteId);
+        return areas.stream()
+                .map(area -> {
+                    List<HospitalRoomResponse> rooms = roomRepository.listByAreaId(area.id()).stream()
+                            .map(r -> new HospitalRoomResponse(
+                                    r.publicId(), area.publicId(), r.code(), r.type(), r.status()))
+                            .toList();
+                    return new HospitalAreaResponse(
+                            area.publicId(), area.code(), area.name(), area.type(),
+                            area.floor(), area.status(), rooms);
+                })
+                .toList();
+    }
+
+    /**
+     * Crea una nueva área o pabellón hospitalario (rol administrativo).
+     */
+    @Transactional
+    public HospitalAreaResponse createArea(
+            CreateHospitalAreaRequest request,
+            String usuarioAutenticadoPublicId,
+            String ipOrigen
+    ) {
+        Objects.requireNonNull(request, "request no puede ser nulo");
+        String tipo = request.type().trim().toUpperCase(Locale.ROOT);
+        if (!VALID_AREA_TYPES.contains(tipo)) {
+            throw new InvalidDataException("Tipo de área hospitalaria inválido: " + request.type());
+        }
+
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
+        Long siteId = siteRepository.getSingleSiteId();
+
+        String codigo = request.code().trim().toUpperCase(Locale.ROOT);
+        String piso = request.floor() != null && !request.floor().isBlank() ? request.floor().trim() : null;
+
+        HospitalArea creada = areaRepository.save(new HospitalArea(
+                null,
+                UUID.randomUUID().toString(),
+                siteId,
+                codigo,
+                request.name().trim(),
+                tipo,
+                piso,
+                "ACTIVA",
+                Instant.now(clock)
+        ));
+
+        auditService.audit(new AuditEvent(
+                usuario.id(),
+                AuditableAction.CAMBIO_ADMINISTRATIVO,
+                "AREA_HOSPITALARIA",
+                creada.publicId(),
+                AuditResult.EXITO,
+                ipOrigen
+        ));
+
+        return new HospitalAreaResponse(
+                creada.publicId(), creada.code(), creada.name(), creada.type(),
+                creada.floor(), creada.status(), List.of());
+    }
+
+    /**
+     * Crea una habitación o sala dentro de un área hospitalaria existente (rol administrativo).
+     */
+    @Transactional
+    public HospitalRoomResponse createRoom(
+            String areaPublicId,
+            CreateHospitalRoomRequest request,
+            String usuarioAutenticadoPublicId,
+            String ipOrigen
+    ) {
+        Objects.requireNonNull(request, "request no puede ser nulo");
+        String tipo = request.type().trim().toUpperCase(Locale.ROOT);
+        if (!VALID_ROOM_TYPES.contains(tipo)) {
+            throw new InvalidDataException("Tipo de habitación o sala inválido: " + request.type());
+        }
+
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
+        HospitalArea area = areaRepository.findByPublicId(areaPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Área hospitalaria no encontrada: " + areaPublicId));
+
+        String codigo = request.code().trim().toUpperCase(Locale.ROOT);
+        HospitalRoom creada = roomRepository.save(new HospitalRoom(
+                null,
+                UUID.randomUUID().toString(),
+                area.id(),
+                codigo,
+                tipo,
+                "ACTIVA",
+                Instant.now(clock)
+        ));
+
+        auditService.audit(new AuditEvent(
+                usuario.id(),
+                AuditableAction.CAMBIO_ADMINISTRATIVO,
+                "HABITACION_SALA",
+                creada.publicId(),
+                AuditResult.EXITO,
+                ipOrigen
+        ));
+
+        return new HospitalRoomResponse(
+                creada.publicId(), area.publicId(), creada.code(), creada.type(), creada.status());
+    }
+
+    /**
+     * Registra una o varias camas disponibles dentro de una habitación o sala (rol administrativo).
+     */
+    @Transactional
+    public List<BedDetailResponse> createBeds(
+            String roomPublicId,
+            CreateHospitalBedRequest request,
+            String usuarioAutenticadoPublicId,
+            String ipOrigen
+    ) {
+        Objects.requireNonNull(request, "request no puede ser nulo");
+        User usuario = userRepository.findByPublicId(usuarioAutenticadoPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado."));
+        HospitalRoom room = roomRepository.findByPublicId(roomPublicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Habitación o sala no encontrada: " + roomPublicId));
+        HospitalArea area = areaRepository.findById(room.areaId()).orElse(null);
+
+        int count = request.count() != null ? request.count() : 1;
+        if (count < 1 || count > 20) {
+            throw new InvalidDataException("La cantidad de camas debe estar entre 1 y 20.");
+        }
+
+        String prefix = request.code().trim().toUpperCase(Locale.ROOT);
+        Instant ahora = Instant.now(clock);
+        List<BedDetailResponse> result = new ArrayList<>();
+
+        for (int i = 1; i <= count; i++) {
+            String bedCode = count == 1 ? prefix : prefix + "-" + String.format("%02d", i);
+            if (bedCode.length() > 30) {
+                throw new InvalidDataException("El código generado para la cama excede 30 caracteres: " + bedCode);
+            }
+
+            HospitalBed guardada = bedRepository.save(new HospitalBed(
+                    null,
+                    UUID.randomUUID().toString(),
+                    room.id(),
+                    bedCode,
+                    "DISPONIBLE",
+                    ahora,
+                    ahora
+            ));
+
+            auditService.audit(new AuditEvent(
+                    usuario.id(),
+                    AuditableAction.CAMBIO_ADMINISTRATIVO,
+                    "CAMA_HOSPITALARIA",
+                    guardada.publicId(),
+                    AuditResult.EXITO,
+                    ipOrigen
+            ));
+
+            BedDetailResponse detail = bedRepository.findDetailByPublicId(guardada.publicId())
+                    .orElseGet(() -> new BedDetailResponse(
+                            guardada.publicId(),
+                            room.publicId(),
+                            room.code(),
+                            area != null ? area.publicId() : null,
+                            area != null ? area.name() : null,
+                            null,
+                            null,
+                            guardada.code(),
+                            guardada.status(),
+                            null,
+                            null,
+                            null
+                    ));
+            result.add(detail);
+        }
+
+        return result;
     }
 }

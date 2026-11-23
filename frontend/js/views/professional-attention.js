@@ -5,7 +5,7 @@
  */
 
 import { api } from '../api.js';
-import { router } from '../router.js';
+import { motion } from '../motion.js';
 import { ui, esc } from '../ui.js';
 import { renderProfessionalAllergiesPanel } from '../components/professional-allergies-panel.js';
 
@@ -41,7 +41,7 @@ function estadoBadge(estado) {
     case 'CANCELADO':
       return `<span class="badge badge--cancelled">Cancelado</span>`;
     default:
-      return `<span class="badge">${esc(estado || '')}</span>`;
+      return `<span class="badge badge--neutral">${esc(estado || '')}</span>`;
   }
 }
 
@@ -64,7 +64,7 @@ const VITALS = [
 ];
 
 export async function professionalAttentionView(container, { params }) {
-  ui.renderLoading(container, 'Cargando atención...');
+  ui.renderSkeleton(container, 'card');
   try {
     const atencion = await api.get(`/attentions/${params.id}`);
     if (atencion.estado === 'ABIERTA') {
@@ -85,13 +85,13 @@ function header(atencion, badge) {
   return `
     <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
       <div>
-        <div class="flex items-center gap-2 mb-1">
+        <div class="flex flex-wrap items-center gap-2 mb-1">
           <a href="#/professional/agenda" class="btn btn-ghost btn--sm btn--icon-only" aria-label="Volver a la agenda">${ui.icon('arrow-left')}</a>
           <h1 class="text-2xl font-bold m-0">Atención clínica</h1>
         </div>
         <p class="text-sm text-muted m-0">Paciente: <strong>${esc(atencion.pacienteNombre)}</strong> · ${esc(atencion.especialidadNombre || '')}</p>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2">
         <a href="#/professional/patient-history/${esc(atencion.pacientePublicId)}" class="btn btn-secondary btn--sm" title="Consultar historia clínica y antecedentes previos del paciente">
           ${ui.icon('file-text', 'icon icon--sm')}
           <span>Historial previo</span>
@@ -101,11 +101,25 @@ function header(atencion, badge) {
     </div>`;
 }
 
+function clearFormErrors(rootEl) {
+  rootEl.querySelectorAll('.form-input--error, .form-textarea--error').forEach(el => {
+    el.classList.remove('form-input--error', 'form-textarea--error');
+  });
+}
+
+function markInvalidField(el) {
+  if (!el) return;
+  const parentDetails = el.closest('details');
+  if (parentDetails) parentDetails.open = true;
+  const isTextarea = el.tagName?.toLowerCase() === 'textarea';
+  el.classList.add(isTextarea ? 'form-textarea--error' : 'form-input--error');
+}
+
 /* ------------------------------------------------------------------ */
 /* Atención ABIERTA: formulario editable                               */
 /* ------------------------------------------------------------------ */
 function renderOpenForm(container, atencion) {
-  const state = { cie10: null };
+  const state = { cie10: null, cie10Seq: 0 };
 
   container.innerHTML = `
     <div style="max-width: 52rem; margin: 0 auto; padding-bottom: var(--space-12);">
@@ -115,9 +129,12 @@ function renderOpenForm(container, atencion) {
       <div id="panelAlergiasContainer"></div>
 
       <form id="attentionForm" novalidate>
-        <details class="card mb-4" open>
-          <summary class="card-title text-lg font-semibold" style="cursor: pointer; padding: var(--space-4);">Signos vitales (opcional)</summary>
-          <div class="card-body">
+        <details id="sec-vitals" class="card details-card mb-4" open>
+          <summary class="details-summary">
+            <span>Signos vitales (opcional)</span>
+            ${ui.icon('chevron-down', 'icon icon--sm details-summary-chevron')}
+          </summary>
+          <div class="details-content">
             <div class="vitals-grid" style="grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));">
               ${VITALS.map(v => `
                 <div class="form-group m-0">
@@ -129,39 +146,48 @@ function renderOpenForm(container, atencion) {
           </div>
         </details>
 
-        <details class="card mb-4" open>
-          <summary class="card-title text-lg font-semibold" style="cursor: pointer; padding: var(--space-4);">Motivo y evolución</summary>
-          <div class="card-body">
+        <details id="sec-evol" class="card details-card mb-4" open>
+          <summary class="details-summary">
+            <span>Motivo y evolución</span>
+            ${ui.icon('chevron-down', 'icon icon--sm details-summary-chevron')}
+          </summary>
+          <div class="details-content">
             <div class="form-group">
               <label for="f-motivo" class="form-label">Motivo de consulta *</label>
-              <textarea id="f-motivo" class="form-input" rows="2" maxlength="500"></textarea>
+              <textarea id="f-motivo" class="form-textarea" rows="2" maxlength="500"></textarea>
             </div>
             <div class="form-group m-0">
               <label for="f-evolucion" class="form-label">Evolución clínica *</label>
-              <textarea id="f-evolucion" class="form-input" rows="6" maxlength="4000"></textarea>
-              <span id="evolCount" class="text-xs text-muted">0 / 4000</span>
+              <textarea id="f-evolucion" class="form-textarea" rows="6" maxlength="4000"></textarea>
+              <span id="evolCount" class="text-xs text-muted mt-1">0 / 4000</span>
             </div>
           </div>
         </details>
 
-        <details class="card mb-4" open>
-          <summary class="card-title text-lg font-semibold" style="cursor: pointer; padding: var(--space-4);">Diagnóstico CIE-10 *</summary>
-          <div class="card-body">
+        <details id="sec-cie10" class="card details-card mb-4" open>
+          <summary class="details-summary">
+            <span>Diagnóstico CIE-10 *</span>
+            ${ui.icon('chevron-down', 'icon icon--sm details-summary-chevron')}
+          </summary>
+          <div class="details-content">
             <div class="form-group">
               <label for="f-cie10" class="form-label">Buscar por código o descripción</label>
               <input type="search" id="f-cie10" class="form-input" autocomplete="off" placeholder="Ej. J00, resfriado, hipertensión">
             </div>
             <div id="cie10Results" class="flex flex-col gap-1 mb-3" style="max-height: 14rem; overflow-y: auto;"></div>
-            <div id="cie10Selected" class="p-3" style="display:none; background: var(--teal-50); border-left: 4px solid var(--primary); border-radius: var(--radius-md);"></div>
+            <div id="cie10Selected" class="p-3" style="display:none; background: var(--primary-soft); border: 1px solid var(--primary-soft-border); border-left: 4px solid var(--primary); border-radius: var(--radius-md); color: var(--text);"></div>
           </div>
         </details>
 
-        <details class="card mb-6" open>
-          <summary class="card-title text-lg font-semibold" style="cursor: pointer; padding: var(--space-4);">Indicaciones *</summary>
-          <div class="card-body">
+        <details id="sec-indicaciones" class="card details-card mb-6" open>
+          <summary class="details-summary">
+            <span>Indicaciones *</span>
+            ${ui.icon('chevron-down', 'icon icon--sm details-summary-chevron')}
+          </summary>
+          <div class="details-content">
             <div class="form-group m-0">
               <label for="f-indicaciones" class="form-label">Indicaciones médicas al paciente</label>
-              <textarea id="f-indicaciones" class="form-input" rows="3" maxlength="1000"></textarea>
+              <textarea id="f-indicaciones" class="form-textarea" rows="3" maxlength="1000"></textarea>
             </div>
           </div>
         </details>
@@ -172,7 +198,7 @@ function renderOpenForm(container, atencion) {
         </div>
         <p id="formError" class="text-sm text-danger" role="alert"></p>
 
-        <div class="flex justify-end">
+        <div class="flex flex-wrap justify-end gap-2">
           <button type="submit" id="btnClose" class="btn btn-primary btn--lg">${ui.icon('check')}<span>Cerrar atención</span></button>
         </div>
       </form>
@@ -185,9 +211,17 @@ function renderOpenForm(container, atencion) {
     atencionPublicId: atencion.publicId
   });
   const evol = $('#f-evolucion');
-  evol.addEventListener('input', () => { $('#evolCount').textContent = `${evol.value.length} / 4000`; });
+  evol.addEventListener('input', () => {
+    $('#evolCount').textContent = `${evol.value.length} / 4000`;
+  });
 
-  // Búsqueda CIE-10 con debounce
+  container.querySelectorAll('#attentionForm input, #attentionForm textarea').forEach(el => {
+    el.addEventListener('input', () => {
+      el.classList.remove('form-input--error', 'form-textarea--error');
+    });
+  });
+
+  // Búsqueda CIE-10 con debounce e indicador de carga
   let timer;
   $('#f-cie10').addEventListener('input', (e) => {
     clearTimeout(timer);
@@ -195,25 +229,61 @@ function renderOpenForm(container, atencion) {
     timer = setTimeout(() => searchCie10(q), 250);
   });
 
+  function renderSelectedCie10() {
+    const sel = $('#cie10Selected');
+    if (!state.cie10) {
+      sel.style.display = 'none';
+      sel.innerHTML = '';
+      return;
+    }
+    sel.style.display = 'block';
+    sel.innerHTML = `
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <strong>${esc(state.cie10.codigo)}</strong> — ${esc(state.cie10.descripcion)}
+        </div>
+        <button type="button" id="btnClearCie10" class="btn btn-ghost btn--xs">Limpiar</button>
+      </div>
+    `;
+    motion.pulseSubtle(sel);
+    sel.querySelector('#btnClearCie10')?.addEventListener('click', () => {
+      state.cie10 = null;
+      renderSelectedCie10();
+      const input = $('#f-cie10');
+      if (input) {
+        input.value = '';
+        input.focus();
+      }
+    });
+  }
+
   async function searchCie10(q) {
     const box = $('#cie10Results');
     if (q.length < 2) { box.innerHTML = ''; return; }
+    const seq = ++state.cie10Seq;
+    box.innerHTML = `
+      <div class="inline-flex items-center gap-2 text-xs text-muted py-1">
+        ${ui.icon('refresh-cw', 'icon icon--xs icon--spin')}
+        <span>Buscando códigos CIE-10...</span>
+      </div>
+    `;
     try {
       const list = await api.get('/catalogs/icd10', { q });
+      if (seq !== state.cie10Seq || !container.isConnected) return;
       box.innerHTML = list.length === 0
         ? '<span class="text-sm text-muted">Sin resultados.</span>'
         : list.slice(0, 30).map(d => `
-            <button type="button" class="btn btn-secondary btn--sm cie-opt" data-code="${esc(d.codigo)}" data-desc="${esc(d.descripcion)}" style="justify-content:flex-start; text-align:left;">
-              <strong>${esc(d.codigo)}</strong>&nbsp;— ${esc(d.descripcion)}
+            <button type="button" class="btn btn-secondary btn--sm search-option-btn cie-opt" data-code="${esc(d.codigo)}" data-desc="${esc(d.descripcion)}">
+              <span><strong>${esc(d.codigo)}</strong> — ${esc(d.descripcion)}</span>
             </button>`).join('');
       box.querySelectorAll('.cie-opt').forEach(b => b.addEventListener('click', () => {
         state.cie10 = { codigo: b.dataset.code, descripcion: b.dataset.desc };
-        const sel = $('#cie10Selected');
-        sel.style.display = 'block';
-        sel.innerHTML = `<strong>${esc(state.cie10.codigo)}</strong> — ${esc(state.cie10.descripcion)}`;
+        $('#f-cie10').classList.remove('form-input--error');
+        renderSelectedCie10();
         box.innerHTML = '';
       }));
     } catch (err) {
+      if (seq !== state.cie10Seq) return;
       box.innerHTML = `<span class="text-sm text-danger">${esc(err.message)}</span>`;
     }
   }
@@ -230,17 +300,26 @@ function renderOpenForm(container, atencion) {
 
   $('#attentionForm').addEventListener('submit', (e) => {
     e.preventDefault();
+    clearFormErrors($('#attentionForm'));
     $('#vitalsError').textContent = '';
     $('#formError').textContent = '';
 
     const vitals = collectVitals();
     if (vitals?.presionSistolica && vitals?.presionDiastolica && vitals.presionSistolica <= vitals.presionDiastolica) {
+      const sisEl = $('#v-presionSistolica');
+      const diaEl = $('#v-presionDiastolica');
+      markInvalidField(sisEl);
+      markInvalidField(diaEl);
+      sisEl?.focus();
       $('#vitalsError').textContent = 'La presión sistólica debe ser mayor que la diastólica.';
       return;
     }
     for (const v of VITALS) {
       const n = vitals?.[v.key];
       if (n !== undefined && (n < v.min || n > v.max)) {
+        const el = $(`#v-${v.key}`);
+        markInvalidField(el);
+        el?.focus();
         $('#vitalsError').textContent = `${v.label}: valor fuera de rango (${v.min}–${v.max}).`;
         return;
       }
@@ -254,12 +333,34 @@ function renderOpenForm(container, atencion) {
       signosVitales: vitals
     };
     const missing = [];
-    if (!body.motivoConsulta) missing.push('motivo de consulta');
-    if (!body.evolucion) missing.push('evolución clínica');
-    if (!body.diagnosticoCie10Codigo) missing.push('diagnóstico CIE-10');
-    if (!body.indicaciones) missing.push('indicaciones');
+    let firstInvalid = null;
+
+    if (!body.motivoConsulta) {
+      missing.push('motivo de consulta');
+      const el = $('#f-motivo');
+      markInvalidField(el);
+      if (!firstInvalid) firstInvalid = el;
+    }
+    if (!body.evolucion) {
+      missing.push('evolución clínica');
+      markInvalidField(evol);
+      if (!firstInvalid) firstInvalid = evol;
+    }
+    if (!body.diagnosticoCie10Codigo) {
+      missing.push('diagnóstico CIE-10');
+      const el = $('#f-cie10');
+      markInvalidField(el);
+      if (!firstInvalid) firstInvalid = el;
+    }
+    if (!body.indicaciones) {
+      missing.push('indicaciones');
+      const el = $('#f-indicaciones');
+      markInvalidField(el);
+      if (!firstInvalid) firstInvalid = el;
+    }
     if (missing.length) {
       $('#formError').textContent = `Completa: ${missing.join(', ')}.`;
+      firstInvalid?.focus();
       return;
     }
 
@@ -276,6 +377,7 @@ function renderOpenForm(container, atencion) {
           const cerrada = await api.post(`/attentions/${atencion.publicId}/close`, body);
           ui.showToast('Atención cerrada correctamente.', 'success');
           renderClosed(container, cerrada);
+          motion.stepTransition(container.firstElementChild || container, 'forward');
           window.scrollTo(0, 0);
         } catch (err) {
           ui.setButtonLoading(btn, false);
@@ -302,7 +404,7 @@ function renderClosed(container, atencion) {
 
       <div class="card p-6 mb-6" style="border-top: 4px solid var(--primary);">
         <p class="text-xs text-muted m-0 mb-3">Cerrada el ${formatDateTime(atencion.fechaCierre)}</p>
-        <div class="p-3 mb-4" style="background: var(--teal-50); border-left: 4px solid var(--primary); border-radius: var(--radius-md);">
+        <div class="p-3 mb-4" style="background: var(--primary-soft); border: 1px solid var(--primary-soft-border); border-left: 4px solid var(--primary); border-radius: var(--radius-md); color: var(--text);">
           <span class="text-xs text-muted font-bold uppercase block">Diagnóstico CIE-10</span>
           <strong class="text-primary">${esc(atencion.diagnosticoCodigo)} — ${esc(atencion.diagnosticoDescripcion)}</strong>
         </div>
@@ -326,7 +428,7 @@ function renderClosed(container, atencion) {
 
       <!-- Plan de Seguimiento Post-Atención (F2.2.4) -->
       <section class="mb-8" id="followUpSection">
-        <h2 class="text-lg font-bold mb-3 flex items-center justify-between">
+        <h2 class="text-lg font-bold mb-3 flex flex-wrap items-center justify-between gap-2">
           <span>Plan de Seguimiento Post-Atención</span>
           <span id="followUpCount" class="text-sm font-normal text-muted"></span>
         </h2>
@@ -334,14 +436,17 @@ function renderClosed(container, atencion) {
           <div class="skeleton skeleton-card" style="height: 80px;"></div>
         </div>
 
-        <details class="card" id="prescribeFollowUpCard">
-          <summary class="card-title text-md font-semibold" style="cursor: pointer; padding: var(--space-4);">Prescribir tarea de seguimiento</summary>
-          <div class="card-body">
+        <details class="card details-card" id="prescribeFollowUpCard">
+          <summary class="details-summary">
+            <span>Prescribir tarea de seguimiento</span>
+            ${ui.icon('chevron-down', 'icon icon--sm details-summary-chevron')}
+          </summary>
+          <div class="details-content">
             <form id="followUpForm" novalidate>
               <div class="grid grid-cols-1 grid-cols-2-md gap-4 mb-3">
                 <div class="form-group m-0">
                   <label for="fu-tipo" class="form-label">Tipo de seguimiento *</label>
-                  <select id="fu-tipo" class="form-input">
+                  <select id="fu-tipo" class="form-select">
                     <option value="CONTROL_MEDICO">Control Médico</option>
                     <option value="EVOLUCION_SINTOMAS">Evolución de Síntomas</option>
                     <option value="EXAMEN_PENDIENTE">Examen Pendiente</option>
@@ -355,11 +460,11 @@ function renderClosed(container, atencion) {
               </div>
               <div class="form-group">
                 <label for="fu-indicaciones" class="form-label">Indicaciones para el paciente *</label>
-                <textarea id="fu-indicaciones" class="form-input" rows="3" maxlength="1000" placeholder="Ej: Continuar con el antibiótico por 7 días y reportar si persiste la fiebre o el dolor..."></textarea>
-                <span class="text-xs text-muted">Máximo 1000 caracteres.</span>
+                <textarea id="fu-indicaciones" class="form-textarea" rows="3" maxlength="1000" placeholder="Ej: Continuar con el antibiótico por 7 días y reportar si persiste la fiebre o el dolor..."></textarea>
+                <span class="text-xs text-muted mt-1">Máximo 1000 caracteres.</span>
               </div>
               <p id="fu-error" class="text-sm text-danger" role="alert"></p>
-              <div class="flex justify-end">
+              <div class="flex flex-wrap justify-end gap-2">
                 <button type="submit" id="btnPrescribeFollowUp" class="btn btn-primary">${ui.icon('check')}<span>Prescribir seguimiento</span></button>
               </div>
             </form>
@@ -372,9 +477,12 @@ function renderClosed(container, atencion) {
         ${enmiendas.length === 0 ? '<p class="text-sm text-muted m-0">Sin enmiendas.</p>' : enmiendas.map(amendHtml).join('')}
       </div>
 
-      <details class="card">
-        <summary class="card-title text-md font-semibold" style="cursor: pointer; padding: var(--space-4);">Agregar enmienda</summary>
-        <div class="card-body">
+      <details class="card details-card">
+        <summary class="details-summary">
+          <span>Agregar enmienda</span>
+          ${ui.icon('chevron-down', 'icon icon--sm details-summary-chevron')}
+        </summary>
+        <div class="details-content">
           <form id="amendForm" novalidate>
             <div class="form-group">
               <label for="a-motivo" class="form-label">Motivo *</label>
@@ -382,7 +490,7 @@ function renderClosed(container, atencion) {
             </div>
             <div class="form-group">
               <label for="a-contenido" class="form-label">Contenido aclaratorio *</label>
-              <textarea id="a-contenido" class="form-input" rows="4" maxlength="2000"></textarea>
+              <textarea id="a-contenido" class="form-textarea" rows="4" maxlength="2000"></textarea>
             </div>
             <p id="amendError" class="text-sm text-danger" role="alert"></p>
             <button type="submit" id="btnAmend" class="btn btn-secondary">Registrar enmienda</button>
@@ -391,6 +499,8 @@ function renderClosed(container, atencion) {
       </details>
     </div>
   `;
+
+  motion.staggerCards(container.querySelectorAll('.vitals-grid .vital-card'), { root: container });
 
   renderProfessionalAllergiesPanel(container.querySelector('#panelAlergiasContainerClosed'), {
     patientPublicId: atencion.pacientePublicId,
@@ -409,6 +519,7 @@ function renderClosed(container, atencion) {
         listEl.innerHTML = '<p class="text-sm text-muted m-0">Sin tareas de seguimiento prescritas para esta atención.</p>';
       } else {
         listEl.innerHTML = items.map(followUpCardHtml).join('');
+        motion.staggerCards(listEl.querySelectorAll('.card'), { root: container });
         listEl.querySelectorAll('.btn-cancel-followup').forEach(btn => {
           btn.addEventListener('click', () => {
             const publicId = btn.dataset.id;
@@ -437,15 +548,19 @@ function renderClosed(container, atencion) {
 
   const fuForm = container.querySelector('#followUpForm');
   if (fuForm) {
+    const fuIndic = container.querySelector('#fu-indicaciones');
+    fuIndic?.addEventListener('input', () => fuIndic.classList.remove('form-textarea--error'));
     fuForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const tipo = container.querySelector('#fu-tipo').value;
       const fechaSugeridaControl = container.querySelector('#fu-fecha').value || null;
-      const indicaciones = container.querySelector('#fu-indicaciones').value.trim();
+      const indicaciones = fuIndic.value.trim();
       const errEl = container.querySelector('#fu-error');
       errEl.textContent = '';
 
       if (!indicaciones) {
+        markInvalidField(fuIndic);
+        fuIndic.focus();
         errEl.textContent = 'Las indicaciones para el paciente son obligatorias.';
         return;
       }
@@ -472,13 +587,25 @@ function renderClosed(container, atencion) {
   loadFollowUps();
 
   const form = container.querySelector('#amendForm');
+  const amendMotivoEl = container.querySelector('#a-motivo');
+  const amendContenidoEl = container.querySelector('#a-contenido');
+  amendMotivoEl?.addEventListener('input', () => amendMotivoEl.classList.remove('form-input--error'));
+  amendContenidoEl?.addEventListener('input', () => amendContenidoEl.classList.remove('form-textarea--error'));
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const motivo = container.querySelector('#a-motivo').value.trim();
-    const contenido = container.querySelector('#a-contenido').value.trim();
+    clearFormErrors(form);
+    const motivo = amendMotivoEl.value.trim();
+    const contenido = amendContenidoEl.value.trim();
     const err = container.querySelector('#amendError');
     err.textContent = '';
-    if (!motivo || !contenido) { err.textContent = 'Motivo y contenido son obligatorios.'; return; }
+    if (!motivo || !contenido) {
+      if (!motivo) markInvalidField(amendMotivoEl);
+      if (!contenido) markInvalidField(amendContenidoEl);
+      (!motivo ? amendMotivoEl : amendContenidoEl).focus();
+      err.textContent = 'Motivo y contenido son obligatorios.';
+      return;
+    }
     const btn = container.querySelector('#btnAmend');
     ui.setButtonLoading(btn, true);
     try {
@@ -486,6 +613,7 @@ function renderClosed(container, atencion) {
       const list = container.querySelector('#amendList');
       if (!list.querySelector('.amend-item')) list.innerHTML = '';
       list.insertAdjacentHTML('beforeend', amendHtml(enm));
+      motion.revealPanel(list.lastElementChild, { root: container });
       form.reset();
       ui.showToast('Enmienda registrada.', 'success');
     } catch (ex) {
@@ -502,7 +630,7 @@ function followUpCardHtml(item) {
   return `
     <div class="card p-4" style="border-left: 4px solid ${isPending ? 'var(--primary)' : (isCompleted ? 'var(--success)' : 'var(--neutral-300)')};">
       <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
           ${tipoBadge(item.tipo)}
           ${estadoBadge(item.estado)}
         </div>
@@ -521,12 +649,12 @@ function followUpCardHtml(item) {
       </div>
 
       ${item.reportePaciente ? `
-        <div class="p-3 mt-2" style="background: var(--teal-50); border-left: 3px solid var(--primary); border-radius: var(--radius-sm);">
-          <div class="flex items-center justify-between gap-2 mb-1">
+        <div class="p-3 mt-2" style="background: var(--primary-soft); border: 1px solid var(--primary-soft-border); border-left: 3px solid var(--primary); border-radius: var(--radius-sm);">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
             <span class="text-xs font-bold text-primary uppercase">Reporte de evolución del paciente</span>
             <span class="text-xs text-muted">${formatDateTime(item.fechaRespuestaPaciente)}</span>
           </div>
-          <p class="text-sm m-0" style="white-space: pre-wrap; color: var(--on-teal-50);">${esc(item.reportePaciente)}</p>
+          <p class="text-sm m-0" style="white-space: pre-wrap; color: var(--text);">${esc(item.reportePaciente)}</p>
         </div>
       ` : ''}
 
@@ -545,7 +673,7 @@ function followUpCardHtml(item) {
 function amendHtml(enm) {
   return `
     <div class="amend-item p-3" style="background: var(--warning-bg); border-left: 3px solid var(--warning); border-radius: var(--radius-sm); font-size: var(--text-sm);">
-      <div class="flex justify-between gap-2 mb-1">
+      <div class="flex flex-wrap justify-between gap-2 mb-1">
         <strong style="color: var(--on-warning-bg);">${esc(enm.profesionalNombre)}</strong>
         <span class="text-xs text-muted">${formatDateTime(enm.fechaEnmienda)}</span>
       </div>

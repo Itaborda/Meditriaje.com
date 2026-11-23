@@ -169,6 +169,12 @@ test.describe('Fase 4: Aseguramiento EPS, Importación Masiva y Citas Avanzadas'
     // Confirmar aplicación definitiva en modo VALID_ROWS
     await page.selectOption('#select-modo-commit', 'VALID_ROWS');
     await page.click('#btn-confirmar-commit');
+    const confirmBtn = page.locator('.btn-confirm-modal');
+    await expect(confirmBtn).toBeVisible();
+    await Promise.all([
+      page.waitForResponse((res) => res.url().includes('/api/v1/affiliations/batches/') && res.url().includes('/commit')),
+      confirmBtn.click()
+    ]);
 
     expect(uploadCaptured).toBe(true);
     expect(commitPayload).not.toBeNull();

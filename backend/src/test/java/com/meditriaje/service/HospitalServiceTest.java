@@ -233,4 +233,99 @@ class HospitalServiceTest {
         assertThat(censo.inMaintenance()).isEqualTo(1);
         assertThat(censo.occupancyRatePercentage()).isEqualTo(25.0);
     }
+
+    @Test
+    @DisplayName("H01: Listar áreas hospitalarias retorna cada área con sus habitaciones configuradas")
+    void listAreasWithRooms_returnsAreasWithNestedRooms() {
+        when(siteRepository.getSingleSiteId()).thenReturn(1L);
+        when(areaRepository.listBySiteId(1L)).thenReturn(List.of(areaMock));
+        when(roomRepository.listByAreaId(1L)).thenReturn(List.of(habitacionMock));
+
+        List<HospitalAreaResponse> resp = hospitalService.listAreasWithRooms();
+
+        assertThat(resp).hasSize(1);
+        assertThat(resp.get(0).code()).isEqualTo("URG");
+        assertThat(resp.get(0).rooms()).hasSize(1);
+        assertThat(resp.get(0).rooms().get(0).code()).isEqualTo("OBS-01");
+    }
+
+    @Test
+    @DisplayName("H01: Crear área hospitalaria válida persiste área y audita cambio administrativo")
+    void createArea_validRequest_savesAndReturnsArea() {
+        when(userRepository.findByPublicId("admin-pub-id")).thenReturn(Optional.of(enfermeroMock));
+        when(siteRepository.getSingleSiteId()).thenReturn(1L);
+        when(areaRepository.save(any())).thenAnswer(inv -> {
+            HospitalArea a = inv.getArgument(0);
+            return new HospitalArea(9L, a.publicId(), a.siteId(), a.code(), a.name(), a.type(), a.floor(), a.status(), a.createdAt());
+        });
+
+        HospitalAreaResponse resp = hospitalService.createArea(
+                new CreateHospitalAreaRequest("hosp-3", "Hospitalización Piso 3", "hospitalizacion_general", "3"),
+                "admin-pub-id",
+                "127.0.0.1"
+        );
+
+        assertThat(resp.code()).isEqualTo("HOSP-3");
+        assertThat(resp.type()).isEqualTo("HOSPITALIZACION_GENERAL");
+        assertThat(resp.floor()).isEqualTo("3");
+        verify(auditService).audit(any());
+    }
+
+    @Test
+    @DisplayName("H01: Crear área hospitalaria con tipo inválido lanza InvalidDataException")
+    void createArea_invalidType_throwsInvalidDataException() {
+        assertThatThrownBy(() -> hospitalService.createArea(
+                new CreateHospitalAreaRequest("X-01", "Inválida", "CAFETERIA", "1"),
+                "admin-pub-id",
+                "127.0.0.1"
+        )).isInstanceOf(com.meditriaje.exception.InvalidDataException.class);
+    }
+
+    @Test
+    @DisplayName("H01: Crear habitación en área existente persiste habitación y audita cambio")
+    void createRoom_validRequest_savesAndReturnsRoom() {
+        when(userRepository.findByPublicId("admin-pub-id")).thenReturn(Optional.of(enfermeroMock));
+        when(areaRepository.findByPublicId("area-pub")).thenReturn(Optional.of(areaMock));
+        when(roomRepository.save(any())).thenAnswer(inv -> {
+            HospitalRoom r = inv.getArgument(0);
+            return new HospitalRoom(12L, r.publicId(), r.areaId(), r.code(), r.type(), r.status(), r.createdAt());
+        });
+
+        HospitalRoomResponse resp = hospitalService.createRoom(
+                "area-pub",
+                new CreateHospitalRoomRequest("hab-205", "individual"),
+                "admin-pub-id",
+                "127.0.0.1"
+        );
+
+        assertThat(resp.areaPublicId()).isEqualTo("area-pub");
+        assertThat(resp.code()).isEqualTo("HAB-205");
+        assertThat(resp.type()).isEqualTo("INDIVIDUAL");
+        verify(auditService).audit(any());
+    }
+
+    @Test
+    @DisplayName("H01: Crear camas en lote genera prefijos numerados y retorna detalle")
+    void createBeds_batchCount_generatesNumberedCodesAndReturnsDetails() {
+        when(userRepository.findByPublicId("admin-pub-id")).thenReturn(Optional.of(enfermeroMock));
+        when(roomRepository.findByPublicId("hab-pub")).thenReturn(Optional.of(habitacionMock));
+        when(areaRepository.findById(1L)).thenReturn(Optional.of(areaMock));
+        when(bedRepository.save(any())).thenAnswer(inv -> {
+            HospitalBed b = inv.getArgument(0);
+            return new HospitalBed(20L, b.publicId(), b.roomId(), b.code(), b.status(), b.createdAt(), b.updatedAt());
+        });
+        when(bedRepository.findDetailByPublicId(anyString())).thenReturn(Optional.empty());
+
+        List<BedDetailResponse> batch = hospitalService.createBeds(
+                "hab-pub",
+                new CreateHospitalBedRequest("hosp-201", 2),
+                "admin-pub-id",
+                "127.0.0.1"
+        );
+
+        assertThat(batch).hasSize(2);
+        assertThat(batch.get(0).code()).isEqualTo("HOSP-201-01");
+        assertThat(batch.get(1).code()).isEqualTo("HOSP-201-02");
+        verify(auditService, times(2)).audit(any());
+    }
 }

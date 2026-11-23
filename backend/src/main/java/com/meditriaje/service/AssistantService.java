@@ -19,7 +19,7 @@ import java.util.Locale;
 public class AssistantService {
 
     public static final String LEGAL_NOTICE =
-            "Esta orientación es proporcionada por el asistente de navegación de MediTriaje 2.0. "
+            "Esta orientación es proporcionada por el asistente de navegación de MediTriaje. "
             + "No sustituye la valoración, diagnóstico ni tratamiento de un profesional de la salud.";
 
     private static final List<String> EMERGENCY_KEYWORDS = List.of(
@@ -110,7 +110,7 @@ public class AssistantService {
     private AssistantAnswerResponse processGuestQuery(String normalizado) {
         if (containsAny(normalizado, "cita", "agendar", "reservar", "cancelar", "disponibilidad", "slot", "turno", "horario")) {
             return new AssistantAnswerResponse(
-                    "En MediTriaje 2.0 puedes agendar citas médicas presenciales o por telemedicina en tiempo real y sin colisiones de horario.\n\n"
+                    "En MediTriaje puedes agendar citas médicas presenciales o por telemedicina en tiempo real y sin colisiones de horario.\n\n"
                     + "🔒 **Para agendar tu cita**: Debes iniciar sesión con tu cuenta de paciente. Si aún no tienes una, puedes registrarte en pocos minutos con tu documento de identidad colombiano.",
                     false,
                     "CITAS_GUEST",
@@ -125,7 +125,7 @@ public class AssistantService {
 
         if (containsAny(normalizado, "triaje", "triage", "sintoma", "prioridad", "nivel", "clasificacion")) {
             return new AssistantAnswerResponse(
-                    "El Triaje Clínico de MediTriaje 2.0 te orienta según la severidad y duración de tus síntomas en 5 niveles oficiales:\n"
+                    "El Triaje Clínico de MediTriaje te orienta según la severidad y duración de tus síntomas en 5 niveles oficiales:\n"
                     + "• Nivel I (Rojo): Urgencia vital inmediata (remisión directa a urgencias/123).\n"
                     + "• Nivel II (Naranja): Atención prioritaria en urgencias.\n"
                     + "• Nivel III (Amarillo): Cita médica presencial general.\n"
@@ -145,7 +145,7 @@ public class AssistantService {
 
         if (containsAny(normalizado, "registro", "registrar", "crear cuenta", "abrir cuenta", "nuevo usuario", "inscribir")) {
             return new AssistantAnswerResponse(
-                    "El registro en MediTriaje 2.0 es gratuito para pacientes. Requiere tu documento de identidad colombiano (CC, TI, RC o CE), fecha de nacimiento para cálculo cronológico de edad y datos de contacto.",
+                    "El registro en MediTriaje es gratuito para pacientes. Requiere tu documento de identidad colombiano (CC, TI, RC o CE), fecha de nacimiento para cálculo cronológico de edad y datos de contacto.",
                     false,
                     "REGISTRO_GUEST",
                     List.of(
@@ -158,7 +158,7 @@ public class AssistantService {
 
         if (containsAny(normalizado, "receta", "medicamento", "farmacia", "droga", "remedio")) {
             return new AssistantAnswerResponse(
-                    "Las recetas médicas en MediTriaje 2.0 se emiten digitalmente con código único e inmutable tras la atención médica. Para consultar tus recetas debes ingresar a tu cuenta de paciente.",
+                    "Las recetas médicas en MediTriaje se emiten digitalmente con código único e inmutable tras la atención médica. Para consultar tus recetas debes ingresar a tu cuenta de paciente.",
                     false,
                     "FARMACIA_GUEST",
                     List.of(
@@ -183,7 +183,7 @@ public class AssistantService {
         }
 
         return new AssistantAnswerResponse(
-                "¡Hola! Te damos la bienvenida a **MediTriaje 2.0**, plataforma cloud de salud asistencial en Colombia.\n\n"
+                "¡Hola! Te damos la bienvenida a **MediTriaje**, plataforma cloud de salud asistencial en Colombia.\n\n"
                 + "Puedo orientarte sobre el funcionamiento de nuestro triaje clínico inteligente, agendamiento de citas, historia clínica inmutable y recetas digitales.\n\n"
                 + "🔒 Para agendar una cita o realizar tu triaje oficial, por favor inicia sesión o crea tu cuenta gratuita de paciente.",
                 false,
@@ -295,7 +295,7 @@ public class AssistantService {
         }
 
         return new AssistantAnswerResponse(
-                "👋 ¡Hola, Administrador! Estás en la consola de gestión de **MediTriaje 2.0**.\n\n"
+                "👋 ¡Hola, Administrador! Estás en la consola de gestión de **MediTriaje**.\n\n"
                 + "Puedes consultarme sobre la generación de turnos, alta de profesionales (ReTHUS), supervisión hospitalaria, reportes operativos o auditoría de seguridad.",
                 false,
                 "GENERAL_ADMIN",
@@ -367,7 +367,7 @@ public class AssistantService {
         }
 
         return new AssistantAnswerResponse(
-                "👋 ¡Hola, Doctor(a)! Estás en el portal asistencial de **MediTriaje 2.0**.\n\n"
+                "👋 ¡Hola, Doctor(a)! Estás en el portal asistencial de **MediTriaje**.\n\n"
                 + "Puedo orientarte en la consulta de tu agenda de citas, registro de atenciones clínicas CIE-10, emisión de recetas electrónicas o el protocolo Break-Glass.",
                 false,
                 "GENERAL_PROFESIONAL",
@@ -399,7 +399,7 @@ public class AssistantService {
         // Consulta sobre Triaje Clínico
         if (containsAny(normalizado, "triaje", "triage", "sintoma", "prioridad", "nivel i", "nivel ii", "nivel iii", "nivel iv", "nivel v", "clasificacion")) {
             return new AssistantAnswerResponse(
-                    "El Triaje Clínico de MediTriaje 2.0 te orienta según la severidad y duración de tus síntomas:\n"
+                    "El Triaje Clínico de MediTriaje te orienta según la severidad y duración de tus síntomas:\n"
                     + "• Nivel I (Rojo): Urgencia vital inmediata (remisión directa a urgencias/123).\n"
                     + "• Nivel II (Naranja): Atención prioritaria en urgencias.\n"
                     + "• Nivel III (Amarillo): Cita médica presencial general.\n"
@@ -419,7 +419,7 @@ public class AssistantService {
         // Consulta sobre Citas y Agendamiento
         if (containsAny(normalizado, "cita", "agendar", "reservar", "cancelar", "disponibilidad", "slot", "turno", "horario")) {
             return new AssistantAnswerResponse(
-                    "En MediTriaje 2.0 puedes buscar disponibilidad real por especialidad y sede hospitalaria en tiempo real.\n"
+                    "En MediTriaje puedes buscar disponibilidad real por especialidad y sede hospitalaria en tiempo real.\n"
                     + "• Agendamiento: Selecciona tu especialidad y el horario más conveniente.\n"
                     + "• Cancelación oportuna: Si no puedes asistir, puedes cancelar tu cita hasta con 2 horas de anticipación para liberar el turno a otro paciente que lo necesite.\n"
                     + "• Puntualidad: Se recomienda conectarse o llegar 15 minutos antes de la hora acordada.",
@@ -470,7 +470,7 @@ public class AssistantService {
         // Consulta sobre Historia Clínica e Inmutabilidad
         if (containsAny(normalizado, "historia", "historial", "antecedente", "inmutable", "enmienda", "correccion", "cie-10", "diagnostico")) {
             return new AssistantAnswerResponse(
-                    "Tu historia clínica en MediTriaje 2.0 cumple estrictos estándares legales de seguridad (Resolución 1995 de 1999):\n"
+                    "Tu historia clínica en MediTriaje cumple estrictos estándares legales de seguridad (Resolución 1995 de 1999):\n"
                     + "• Inmutabilidad: Una vez cerrada la atención por el médico tratante, el registro no puede ser alterado ni borrado.\n"
                     + "• Aclaraciones: Cualquier corrección debe realizarse mediante enmiendas clínicas cronológicas fechadas y firmadas por el profesional.\n"
                     + "• Consulta segura: Solo tú y los profesionales con relación asistencial activa o autorización de emergencia pueden consultar tus registros.",
@@ -487,7 +487,7 @@ public class AssistantService {
         // Consulta sobre Seguridad, Contraseña o MFA
         if (containsAny(normalizado, "contrasena", "password", "clave", "mfa", "totp", "recuperar", "bloqueo", "datos", "seguridad")) {
             return new AssistantAnswerResponse(
-                    "Seguridad y gestión de tu cuenta en MediTriaje 2.0:\n"
+                    "Seguridad y gestión de tu cuenta en MediTriaje:\n"
                     + "• Recuperación: Si olvidaste tu contraseña, solicita un código numérico temporal de 6 dígitos enviado a tu correo registrado (válido por 15 minutos).\n"
                     + "• Doble factor (MFA): Profesionales y administradores cuentan con autenticación reforzada mediante aplicaciones TOTP (Google Authenticator / Authy) y códigos de respaldo.\n"
                     + "• Habeas Data: Tratamos tus datos sensibles con cifrado estricto y conforme a la Ley 1581 de 2012.",
@@ -503,7 +503,7 @@ public class AssistantService {
 
         // Orientación General por defecto para Paciente
         return new AssistantAnswerResponse(
-                "¡Hola! Soy tu asistente de orientación en MediTriaje 2.0. Estoy aquí para ayudarte a navegar por la plataforma:\n"
+                "¡Hola! Soy tu asistente de orientación en MediTriaje. Estoy aquí para ayudarte a navegar por la plataforma:\n"
                 + "¿Qué deseas hacer hoy? Puedes preguntarme sobre cómo orientar tus síntomas con el triaje, agendar o cancelar citas, reclamar medicamentos con tu código de receta, o activar tu código QR de emergencia.",
                 false,
                 "GENERAL",

@@ -7,6 +7,7 @@
 import { router } from '../router.js';
 import { ui, esc } from '../ui.js';
 import { parseQrPayload, storePendingOperationalQr } from '../qr-payload.js';
+import { motion } from '../motion.js';
 
 let activeCleanup = null;
 
@@ -175,6 +176,7 @@ export function openQrScannerModal({
           <span class="qr-scanner-scanline"></span>
         </div>
         <div id="qrScannerOverlayMsg" class="qr-scanner-overlay-msg">
+          <span class="spinner" aria-hidden="true"></span>
           <p id="qrScannerOverlayText" class="text-sm m-0">Iniciando cámara...</p>
           <button type="button" id="btnRetryQrCamera" class="btn btn-primary btn--sm" style="display: none;">
             ${ui.icon('refresh', 'icon icon--sm')}
@@ -205,6 +207,7 @@ export function openQrScannerModal({
   `;
 
   document.body.appendChild(backdrop);
+  motion.animateModalOpen(backdrop);
 
   const videoEl = backdrop.querySelector('#qrScannerVideo');
   const overlayEl = backdrop.querySelector('#qrScannerOverlayMsg');
@@ -265,16 +268,51 @@ export function openQrScannerModal({
     if (e.key === 'Escape') {
       e.preventDefault();
       cleanup();
+      return;
+    }
+    if (e.key === 'Tab') {
+      const focusables = Array.from(backdrop.querySelectorAll(
+        'button:not([disabled]):not([style*="display: none"]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      ));
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     }
   };
 
+  let scanConfirmed = false;
   const handleDecoded = (decodedText) => {
     const clean = typeof decodedText === 'string' ? decodedText.trim() : '';
-    if (!clean || !isActive) return;
-    cleanup();
-    if (typeof onScan === 'function') {
-      onScan(clean);
+    if (!clean || !isActive || scanConfirmed) return;
+    scanConfirmed = true;
+    stopStream();
+
+    if (motion.isMotionReduced()) {
+      cleanup();
+      if (typeof onScan === 'function') onScan(clean);
+      return;
     }
+
+    backdrop.querySelectorAll('.qr-scanner-corner').forEach((corner) => {
+      corner.style.borderColor = 'var(--success)';
+    });
+    if (statusEl) {
+      statusEl.textContent = 'Código QR detectado correctamente.';
+    }
+    motion.pulseSubtle(backdrop.querySelector('.qr-scanner-reticle'));
+    setTimeout(() => {
+      cleanup();
+      if (typeof onScan === 'function') {
+        onScan(clean);
+      }
+    }, 150);
   };
 
   const showOverlay = (message, showRetry = false) => {

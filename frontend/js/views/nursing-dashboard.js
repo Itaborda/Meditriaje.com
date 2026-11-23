@@ -6,18 +6,44 @@
  */
 
 import { emergencyApi } from '../api.js';
-import { auth } from '../auth.js';
 import { motion } from '../motion.js';
-import { router } from '../router.js';
 import { ui, esc } from '../ui.js';
 import { openUniversalQrScanner } from '../components/qr-scanner-modal.js';
 
 let dashboardState = {
   filterEstado: '',
+  filterNivel: 'ALL',
+  searchTerm: '',
   queue: [],
   loading: false,
-  timerInterval: null
+  timerInterval: null,
+  hashCleanup: null
 };
+
+const TRIAGE_PILLS = [
+  { id: 'ALL', label: 'Todos' },
+  { id: 'I', label: 'Nivel I' },
+  { id: 'II', label: 'Nivel II' },
+  { id: 'III', label: 'Nivel III' },
+  { id: 'IV_V', label: 'Nivel IV–V' },
+  { id: 'NN', label: 'NN' }
+];
+
+function isNursingDashboardRoute() {
+  const path = (window.location.hash || '').slice(1).split('?')[0];
+  return path === '/nursing' || path === '/nursing/dashboard';
+}
+
+function clearDashboardAutoRefresh() {
+  if (dashboardState.timerInterval) {
+    clearInterval(dashboardState.timerInterval);
+    dashboardState.timerInterval = null;
+  }
+  if (dashboardState.hashCleanup) {
+    window.removeEventListener('hashchange', dashboardState.hashCleanup);
+    dashboardState.hashCleanup = null;
+  }
+}
 
 function formatTriageBadge(nivel) {
   switch (nivel) {
@@ -33,6 +59,22 @@ function formatTriageBadge(nivel) {
       return `<span class="badge badge--triage-v font-semibold">${ui.icon('calendar', 'icon icon--xs')} Nivel V — No Urgente</span>`;
     default:
       return `<span class="badge badge--scheduled font-semibold">${ui.icon('clock', 'icon icon--xs')} Pendiente Triaje</span>`;
+  }
+}
+
+function formatEpisodeStatusBadge(estado) {
+  switch (estado) {
+    case 'REGISTRADO':
+      return `<span class="badge badge--scheduled">Registrado · Sin triaje</span>`;
+    case 'EN_TRIAJE':
+      return `<span class="badge badge--warning">En espera médica</span>`;
+    case 'EN_ATENCION':
+      return `<span class="badge badge--in-progress">En atención</span>`;
+    case 'EGRESADO':
+    case 'CERRADO':
+      return `<span class="badge badge--attended">Egresado</span>`;
+    default:
+      return `<span class="badge badge--neutral">${esc(estado || 'Registrado')}</span>`;
   }
 }
 
@@ -53,15 +95,52 @@ function getWaitAlertClass(nivel, minutos) {
   return 'text-muted';
 }
 
+function isProvisionalItem(item) {
+  return item.codigoProvisional != null || Boolean(item.esIdentidadProvisional) || Boolean(item.esNN);
+}
+
+function getFilteredQueue() {
+  const term = dashboardState.searchTerm.trim().toLowerCase();
+  const nivel = dashboardState.filterNivel;
+
+  return dashboardState.queue.filter(item => {
+    const isNN = isProvisionalItem(item);
+    if (nivel === 'I' && item.nivelTriaje !== 'I') return false;
+    if (nivel === 'II' && item.nivelTriaje !== 'II') return false;
+    if (nivel === 'III' && item.nivelTriaje !== 'III') return false;
+    if (nivel === 'IV_V' && item.nivelTriaje !== 'IV' && item.nivelTriaje !== 'V') return false;
+    if (nivel === 'NN' && !isNN) return false;
+
+    if (!term) return true;
+    const haystack = [
+      item.pacienteNombre,
+      item.identificadorVisible,
+      item.documento,
+      item.numeroDocumento,
+      item.pacienteDocumento,
+      item.codigoProvisional,
+      item.motivoConsulta,
+      item.motivoLlegada,
+      item.motivoIngreso
+    ].filter(Boolean).join(' ').toLowerCase();
+    return haystack.includes(term);
+  });
+}
+
 export async function nursingDashboardView(container) {
+  clearDashboardAutoRefresh();
+  dashboardState.filterEstado = '';
+  dashboardState.filterNivel = 'ALL';
+  dashboardState.searchTerm = '';
+
   container.innerHTML = `
     <div style="max-width: var(--container); margin: 0 auto; padding-top: var(--space-4); padding-bottom: var(--space-12);">
       
       <!-- Encabezado de Urgencias y Enfermería -->
       <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
         <div>
-          <div class="flex items-center gap-2 mb-1">
-            <div class="empty-state-icon" style="margin: 0; width: 40px; height: 40px; background-color: var(--teal-50, #f0fdf4); color: var(--primary, #0d9488);">
+          <div class="flex flex-wrap items-center gap-2 mb-1">
+            <div class="empty-state-icon" style="margin: 0; width: 40px; height: 40px; background-color: var(--primary-soft); color: var(--primary);">
               ${ui.icon('activity', 'icon icon--md')}
             </div>
             <h1 class="text-2xl font-bold m-0">Centro de Urgencias y Triaje</h1>
@@ -132,30 +211,59 @@ export async function nursingDashboardView(container) {
         </div>
       </div>
 
-      <!-- Barra de Filtros y Estado -->
+      <!-- Barra de Filtros y Búsqueda -->
       <div class="card p-4 mb-6">
-        <div class="flex flex-wrap items-center justify-between gap-4">
-          <div class="flex flex-wrap items-center gap-2">
-            <span class="text-sm font-semibold">Filtrar por estado:</span>
-            <select id="filterEstadoSelect" class="form-select form-input--sm" style="width: auto; min-width: 210px;">
-              <option value="">Todos los activos</option>
-              <option value="REGISTRADO">Solo Registrados (sin triaje)</option>
-              <option value="EN_TRIAJE">En Espera de Atención Médica</option>
-              <option value="EN_ATENCION">En Atención Médica</option>
-            </select>
+        <div class="flex flex-col gap-3">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="flex flex-wrap items-center gap-2 flex-1 min-w-0">
+              <div class="relative flex-1" style="min-width: 220px;">
+                <label for="filterSearchInput" class="sr-only">Buscar paciente por nombre, documento o código NN</label>
+                <input
+                  type="search"
+                  id="filterSearchInput"
+                  class="form-input form-input--sm"
+                  placeholder="Buscar por nombre, documento o código NN..."
+                  autocomplete="off"
+                >
+              </div>
+              <label for="filterEstadoSelect" class="sr-only">Filtrar por estado</label>
+              <select id="filterEstadoSelect" class="form-select form-input--sm" style="width: auto; min-width: 210px;">
+                <option value="">Todos los activos</option>
+                <option value="REGISTRADO">Solo Registrados (sin triaje)</option>
+                <option value="EN_TRIAJE">En Espera de Atención Médica</option>
+                <option value="EN_ATENCION">En Atención Médica</option>
+              </select>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-xs text-muted" title="Actualización automática cada 30 segundos">Auto 30s</span>
+              <button type="button" id="btnRefreshQueue" class="btn btn-ghost btn--sm flex items-center gap-1">
+                ${ui.icon('refresh-cw', 'icon icon--sm')}
+                <span>Actualizar Cola</span>
+              </button>
+            </div>
           </div>
 
-          <button type="button" id="btnRefreshQueue" class="btn btn-ghost btn--sm flex items-center gap-1">
-            ${ui.icon('refresh-cw', 'icon icon--sm')}
-            <span>Actualizar Cola</span>
-          </button>
+          <div class="chip-group" id="triageFilterPills" role="group" aria-label="Filtrar por nivel de triaje o identidad NN">
+            ${TRIAGE_PILLS.map(p => `
+              <button
+                type="button"
+                class="chip ${dashboardState.filterNivel === p.id ? 'is-selected' : ''}"
+                data-triage-filter="${p.id}"
+                aria-pressed="${dashboardState.filterNivel === p.id}"
+                style="min-height: 2.25rem; padding: var(--space-1) var(--space-3); font-size: var(--text-xs);"
+              >
+                ${esc(p.label)}
+              </button>
+            `).join('')}
+          </div>
         </div>
       </div>
 
       <!-- Tabla de la Cola Priorizada -->
       <div class="card p-0 overflow-hidden">
         <div class="table-container" style="border: none; border-radius: 0;">
-          <table class="table" id="urgencyQueueTable" aria-label="Cola priorizada de urgencias">
+          <table class="table table--stacked" id="urgencyQueueTable" aria-label="Cola priorizada de urgencias">
             <thead>
               <tr>
                 <th scope="col">Prioridad / Nivel</th>
@@ -167,11 +275,7 @@ export async function nursingDashboardView(container) {
                 <th scope="col" class="text-right">Acciones</th>
               </tr>
             </thead>
-            <tbody id="urgencyQueueBody">
-              <tr>
-                <td colspan="7" class="text-center p-8 text-muted">Cargando cola de atención...</td>
-              </tr>
-            </tbody>
+            <tbody id="urgencyQueueBody"></tbody>
           </table>
         </div>
       </div>
@@ -179,40 +283,82 @@ export async function nursingDashboardView(container) {
     </div>
   `;
 
+  ui.renderSkeleton(document.getElementById('urgencyQueueBody'), 'table-rows');
   motion.staggerCards(container.querySelectorAll('#kpiCards > .card'), { root: container });
 
   // Hospital único: la cola es la del hospital (el servidor resuelve la sede)
-  await loadQueue();
+  await loadQueue(container);
 
   // Escuchadores de eventos
+  const searchInput = document.getElementById('filterSearchInput');
+  searchInput?.addEventListener('input', (e) => {
+    dashboardState.searchTerm = e.target.value;
+    renderQueue(container);
+  });
+
+  const pillsGroup = document.getElementById('triageFilterPills');
+  pillsGroup?.querySelectorAll('button[data-triage-filter]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      dashboardState.filterNivel = btn.getAttribute('data-triage-filter') || 'ALL';
+      pillsGroup.querySelectorAll('button[data-triage-filter]').forEach(b => {
+        const active = b.getAttribute('data-triage-filter') === dashboardState.filterNivel;
+        b.classList.toggle('is-selected', active);
+        b.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+      renderQueue(container);
+    });
+  });
 
   const estadoSelect = document.getElementById('filterEstadoSelect');
-  estadoSelect.addEventListener('change', async (e) => {
+  estadoSelect?.addEventListener('change', async (e) => {
     dashboardState.filterEstado = e.target.value;
-    await loadQueue();
+    await loadQueue(container);
   });
 
   const refreshBtn = document.getElementById('btnRefreshQueue');
-  refreshBtn.addEventListener('click', async () => {
-    await loadQueue();
+  refreshBtn?.addEventListener('click', async () => {
+    motion.spinOnce(refreshBtn);
+    await loadQueue(container);
     ui.showToast('Cola actualizada.', 'info');
   });
 
   document.getElementById('btnNursingScanQr')?.addEventListener('click', () => {
     openUniversalQrScanner();
   });
+
+  // Auto-refresco cada 30 segundos con limpieza al salir de la ruta
+  dashboardState.hashCleanup = () => {
+    if (!isNursingDashboardRoute() || !container.isConnected) {
+      clearDashboardAutoRefresh();
+    }
+  };
+  window.addEventListener('hashchange', dashboardState.hashCleanup);
+
+  dashboardState.timerInterval = setInterval(() => {
+    if (!isNursingDashboardRoute() || !container.isConnected || !document.getElementById('urgencyQueueBody')) {
+      clearDashboardAutoRefresh();
+      return;
+    }
+    loadQueue(container, { silent: true });
+  }, 30000);
 }
 
-async function loadQueue() {
+async function loadQueue(container, { silent = false } = {}) {
   const tbody = document.getElementById('urgencyQueueBody');
-  tbody.innerHTML = `<tr><td colspan="7" class="text-center p-8 text-muted">Cargando episodios de urgencias...</td></tr>`;
+  if (!tbody) return;
+
+  if (!silent) {
+    ui.renderSkeleton(tbody, 'table-rows');
+  }
 
   try {
     const rawQueue = await emergencyApi.listarColaUrgencias(dashboardState.filterEstado || null);
+    if (!container.isConnected || !document.getElementById('urgencyQueueBody')) return;
     dashboardState.queue = Array.isArray(rawQueue) ? rawQueue : (rawQueue?.items || rawQueue?.content || []);
-    renderQueue();
+    renderQueue(container, { animateRows: !silent });
     updateKpis();
   } catch (err) {
+    if (!tbody.isConnected) return;
     tbody.innerHTML = `<tr><td colspan="7" class="text-center p-8 text-danger">Error al cargar la cola de urgencias: ${esc(err.message)}</td></tr>`;
   }
 }
@@ -222,7 +368,7 @@ function updateKpis() {
   const total = queue.length;
   const criticos = queue.filter(q => q.nivelTriaje === 'I' || q.nivelTriaje === 'II').length;
   const pendientes = queue.filter(q => !q.nivelTriaje || q.nivelTriaje === 'PENDIENTE_VALORACION' || q.estado === 'REGISTRADO' || q.estadoEpisodio === 'REGISTRADO').length;
-  const nn = queue.filter(q => q.codigoProvisional != null || q.esIdentidadProvisional || q.esNN).length;
+  const nn = queue.filter(q => isProvisionalItem(q)).length;
 
   motion.animateCounter(document.getElementById('kpiTotal'), total);
   motion.animateCounter(document.getElementById('kpiCriticos'), criticos);
@@ -230,60 +376,80 @@ function updateKpis() {
   motion.animateCounter(document.getElementById('kpiNN'), nn);
 }
 
-function renderQueue() {
+function renderQueue(container, { animateRows = true } = {}) {
   const tbody = document.getElementById('urgencyQueueBody');
-  const queue = dashboardState.queue;
+  if (!tbody) return;
+  const filtered = getFilteredQueue();
 
-  if (queue.length === 0) {
+  if (filtered.length === 0) {
+    const hasClientFilter = Boolean(dashboardState.searchTerm.trim() || dashboardState.filterNivel !== 'ALL');
     tbody.innerHTML = `
       <tr>
         <td colspan="7" class="text-center p-12 text-muted">
           <div class="text-primary mb-2" style="display: inline-flex;">${ui.icon('check-circle', 'icon icon--lg')}</div>
           <p class="font-medium m-0 mx-auto">No hay pacientes en cola de urgencias para los filtros seleccionados.</p>
+          ${hasClientFilter ? `<button type="button" id="btnClearQueueFilters" class="btn btn-secondary btn--sm mt-3">Limpiar filtros</button>` : ''}
         </td>
       </tr>
     `;
+    tbody.querySelector('#btnClearQueueFilters')?.addEventListener('click', () => {
+      dashboardState.searchTerm = '';
+      dashboardState.filterNivel = 'ALL';
+      const searchEl = document.getElementById('filterSearchInput');
+      if (searchEl) searchEl.value = '';
+      document.querySelectorAll('#triageFilterPills button[data-triage-filter]').forEach(b => {
+        const active = b.getAttribute('data-triage-filter') === 'ALL';
+        b.classList.toggle('is-selected', active);
+        b.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+      renderQueue(container);
+    });
     return;
   }
 
-  tbody.innerHTML = queue.map(item => {
-    const isNN = item.codigoProvisional != null || item.esIdentidadProvisional || item.esNN;
+  tbody.innerHTML = filtered.map(item => {
+    const isNN = isProvisionalItem(item);
     const waitClass = getWaitAlertClass(item.nivelTriaje, item.minutosEspera);
     const epId = item.episodioPublicId || item.episodioId;
     const nombre = item.pacienteNombre || item.identificadorVisible || 'Paciente No Identificado';
+    const doc = item.documento || item.numeroDocumento || item.pacienteDocumento || '';
     const motivo = item.motivoConsulta || item.motivoLlegada || item.motivoIngreso || '—';
     const estado = item.estado || item.estadoEpisodio || 'REGISTRADO';
     const medico = item.medicoAsignado || item.profesionalTratanteNombre || 'Sin asignar';
 
     return `
-      <tr>
-        <td>${formatTriageBadge(item.nivelTriaje)}</td>
-        <td>
-          <div class="font-bold flex items-center gap-1">
+      <tr data-triage-level="${esc(item.nivelTriaje || '')}">
+        <td data-label="Prioridad / Nivel">${formatTriageBadge(item.nivelTriaje)}</td>
+        <td data-label="Paciente">
+          <div class="font-bold flex flex-wrap items-center gap-1">
             ${isNN ? `<span class="badge badge--warning text-xs">NN</span>` : ''}
             <span>${esc(nombre)}</span>
           </div>
-          ${isNN ? `<div class="text-xs text-muted font-mono">${esc(item.codigoProvisional)}</div>` : ''}
+          ${isNN && item.codigoProvisional ? `<div class="text-xs text-muted font-mono">${esc(item.codigoProvisional)}</div>` : ''}
+          ${!isNN && doc ? `<div class="text-xs text-muted font-mono">Doc: ${esc(doc)}</div>` : ''}
         </td>
-        <td style="max-width: 250px;">
-          <div class="text-sm truncate" title="${esc(motivo)}">${esc(motivo)}</div>
+        <td data-label="Motivo de Ingreso">
+          <div class="text-sm truncate" style="max-width: 240px;" title="${esc(motivo)}">${esc(motivo)}</div>
         </td>
-        <td>
-          <span class="${waitClass}">${formatWaitTime(item.minutosEspera)}</span>
+        <td data-label="Espera">
+          <span class="${waitClass} tabular-nums">${formatWaitTime(item.minutosEspera)}</span>
         </td>
-        <td>
-          <span class="badge ${estado === 'EN_ATENCION' ? 'badge--in-progress' : 'badge--scheduled'}">
-            ${esc(estado)}
-          </span>
+        <td data-label="Estado">
+          ${formatEpisodeStatusBadge(estado)}
         </td>
-        <td>
+        <td data-label="Médico Asignado">
           <span class="text-sm text-muted">${esc(medico)}</span>
         </td>
-        <td class="text-right">
-          <div class="flex items-center justify-end gap-1">
+        <td data-label="Acciones" class="text-right">
+          <div class="table-actions flex items-center justify-end gap-1 flex-wrap">
             <a href="#/nursing/assessment/${esc(epId)}" class="btn btn-ghost btn--xs" title="Valorar o reevaluar triaje">
               ${ui.icon('clipboard', 'icon icon--sm')}
               <span>Triaje</span>
+            </a>
+
+            <a href="#/hospital/beds/${esc(epId)}" class="btn btn-ghost btn--xs" title="Asignar o trasladar cama hospitalaria">
+              ${ui.icon('bed', 'icon icon--sm')}
+              <span>Cama</span>
             </a>
 
             ${isNN ? `
@@ -293,7 +459,13 @@ function renderQueue() {
               </a>
             ` : ''}
 
-            <button type="button" class="btn btn-ghost btn--xs btn-close-episode" data-id="${esc(epId)}" title="Egresar o cerrar episodio">
+            <button
+              type="button"
+              class="btn btn-ghost btn--xs btn-close-episode"
+              data-id="${esc(epId)}"
+              title="Egresar o cerrar episodio"
+              aria-label="Egresar o cerrar episodio de ${esc(nombre)}"
+            >
               ${ui.icon('log-out', 'icon icon--sm')}
             </button>
           </div>
@@ -301,6 +473,18 @@ function renderQueue() {
       </tr>
     `;
   }).join('');
+
+  if (animateRows) {
+    motion.staggerCards(tbody.querySelectorAll('tr[data-triage-level]'), {
+      delayStep: 25,
+      maxDelay: 160,
+      root: container
+    });
+    const urgentRows = tbody.querySelectorAll('tr[data-triage-level="I"], tr[data-triage-level="II"]');
+    if (urgentRows.length > 0) {
+      motion.pulseUrgency(urgentRows, { root: container });
+    }
+  }
 
   // Botones de cierre de episodio
   tbody.querySelectorAll('.btn-close-episode').forEach(btn => {
@@ -315,7 +499,7 @@ function renderQueue() {
           try {
             await emergencyApi.cerrarEpisodio(epId);
             ui.showToast('Episodio de urgencias egresado correctamente.', 'success');
-            await loadQueue();
+            await loadQueue(container);
           } catch (err) {
             ui.showToast('Error al egresar episodio: ' + (err.message || 'Error de servidor'), 'error');
           }

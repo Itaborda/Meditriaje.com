@@ -6,8 +6,24 @@
 
 import { api } from '../api.js';
 import { auth } from '../auth.js';
+import { motion } from '../motion.js';
 import { router } from '../router.js';
 import { ui, esc } from '../ui.js';
+
+const bogotaDayFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Bogota',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit'
+});
+
+function getBackDashboardUrl() {
+  if (auth.isPaciente) return '#/patient/dashboard';
+  if (auth.isProfesional) return '#/professional/agenda';
+  if (auth.isAdmin) return '#/admin/dashboard';
+  if (auth.isFarmaceutico) return '#/pharmacy/dispensation';
+  return '#/nursing/dashboard';
+}
 
 // Estado local de la vista de agendamiento
 let bookingState = {
@@ -61,14 +77,15 @@ function formatTime(isoString) {
 }
 
 /**
- * Agrupa los slots por fecha local (YYYY-MM-DD)
+ * Agrupa los slots por fecha local de Colombia (YYYY-MM-DD)
  */
 function groupSlotsByDay(slots) {
   const groups = new Map();
   slots.forEach(slot => {
     try {
       const d = new Date(slot.fechaHoraInicio);
-      const dayKey = d.toISOString().split('T')[0];
+      if (Number.isNaN(d.getTime())) return;
+      const dayKey = bogotaDayFormatter.format(d);
       if (!groups.has(dayKey)) {
         groups.set(dayKey, []);
       }
@@ -111,14 +128,22 @@ export async function patientBookingView(container, context = {}) {
     }
   }
 
+  const backUrl = getBackDashboardUrl();
+  const todayBogota = bogotaDayFormatter.format(new Date());
+
   container.innerHTML = `
     <div style="max-width: var(--container); margin: 0 auto; padding-top: var(--space-4); padding-bottom: var(--space-12);">
+      <nav class="breadcrumb" aria-label="Ruta de navegación">
+        <a href="${backUrl}">Inicio</a>
+        <span class="breadcrumb-separator" aria-hidden="true">/</span>
+        <span class="breadcrumb-current">Agendar Cita</span>
+      </nav>
       
       <!-- Encabezado -->
       <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
         <div>
           <div class="flex items-center gap-2 mb-1">
-            <a href="#/patient/dashboard" class="btn btn-ghost btn--sm btn--icon-only" aria-label="Volver al panel" title="Volver al panel">
+            <a href="${backUrl}" class="btn btn-ghost btn--sm btn--icon-only" aria-label="Volver al panel" title="Volver al panel">
               ${ui.icon('arrow-left')}
             </a>
             <h1 class="text-2xl font-bold m-0">Disponibilidad de Citas Médicas</h1>
@@ -139,17 +164,17 @@ export async function patientBookingView(container, context = {}) {
         <div class="card p-4 mb-6" style="border-left: 4px solid var(--primary); background: var(--surface);">
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <div class="flex items-center gap-2 mb-1">
+              <div class="flex flex-wrap items-center gap-2 mb-1">
                 <span class="badge ${bookingState.triageData.nivelPrioridad === 'II' ? 'badge--triage-2' : (bookingState.triageData.nivelPrioridad === 'IV' ? 'badge--triage-4' : 'badge--triage-3')} text-xs font-bold">
-                  Triaje Nivel ${bookingState.triageData.nivelPrioridad}
+                  Triaje Nivel ${esc(bookingState.triageData.nivelPrioridad)}
                 </span>
-                <span class="text-xs text-muted font-mono">ID: ${bookingState.triageId.slice(0, 8)}</span>
+                <span class="text-xs text-muted font-mono">ID: ${esc(bookingState.triageId.slice(0, 8))}</span>
               </div>
               <strong class="text-sm block text-text">Razón de la consulta vinculada:</strong>
-              <p class="text-xs text-muted m-0 font-medium">${bookingState.consultationReason}</p>
+              <p class="text-xs text-muted m-0 font-medium">${esc(bookingState.consultationReason)}</p>
             </div>
             <div>
-              <span class="badge badge--neutral text-xs">Ruta sugerida: ${bookingState.triageData.rutaSugerida || 'Cita Presencial'}</span>
+              <span class="badge badge--neutral text-xs">Ruta sugerida: ${esc(bookingState.triageData.rutaSugerida || 'Cita Presencial')}</span>
             </div>
           </div>
         </div>
@@ -191,8 +216,14 @@ export async function patientBookingView(container, context = {}) {
               </select>
             </div>
 
+            <!-- Filtro Fecha -->
+            <div class="form-group m-0">
+              <label for="filterDate" class="form-label text-xs">Fecha preferida</label>
+              <input type="date" id="filterDate" class="form-input text-sm" value="${esc(bookingState.filters.fecha)}" min="${todayBogota}">
+            </div>
+
             <!-- Botones de Acción -->
-            <div class="flex items-center gap-2 col-span-full">
+            <div class="flex flex-wrap items-center gap-2 col-span-full">
               <button type="submit" class="btn btn-primary text-sm" id="btnApplyFilters">
                 ${ui.icon('search')}
                 <span>Buscar turnos y especialistas</span>
@@ -207,12 +238,10 @@ export async function patientBookingView(container, context = {}) {
       </div>
 
       <!-- Resumen y Confirmación de Slot Seleccionado (Aparece al elegir turno) -->
-      <div id="slotConfirmationCard" style="display: none;" class="card card--highlight mb-8 animate-fade-in"></div>
+      <div id="slotConfirmationCard" style="display: none;" class="card card--highlight mb-8"></div>
 
       <!-- Contenedor de Resultados de Horarios -->
-      <div id="availabilityResultsContainer">
-        <div class="skeleton skeleton-card" style="height: 160px; margin-bottom: var(--space-4);"></div>
-      </div>
+      <div id="availabilityResultsContainer"></div>
     </div>
   `;
 
@@ -226,7 +255,7 @@ export async function patientBookingView(container, context = {}) {
  */
 async function loadAvailability(container) {
   const resultsContainer = container.querySelector('#availabilityResultsContainer');
-  ui.renderLoading(resultsContainer, 'Consultando horarios médicos disponibles...');
+  ui.renderSkeleton(resultsContainer, 'cards');
 
   const params = {
     page: 0,
@@ -254,7 +283,7 @@ async function loadAvailability(container) {
   } catch (err) {
     ui.renderError(resultsContainer, {
       title: 'No fue posible cargar la disponibilidad',
-      message: err.message || 'Ocurrió un problema al obtener los horarios disponibles.',
+      message: esc(err.message || 'Ocurrió un problema al obtener los horarios disponibles.'),
       onRetry: () => loadAvailability(container)
     });
   }
@@ -299,6 +328,7 @@ function setupFilterEvents(container) {
       if (reasonVal) bookingState.consultationReason = reasonVal;
     }
     bookingState.filters.modalidad = container.querySelector('#filterModality')?.value || '';
+    bookingState.filters.fecha = container.querySelector('#filterDate')?.value || '';
     
     // Ocultar confirmación previa si cambia el filtro
     hideConfirmationCard(container);
@@ -317,6 +347,14 @@ function setupFilterEvents(container) {
   const filterSpecialtyEl = container.querySelector('#filterSpecialty');
   filterSpecialtyEl?.addEventListener('change', async () => {
     bookingState.filters.especialidad = filterSpecialtyEl.value;
+    bookingState.selectedDoctor = '';
+    hideConfirmationCard(container);
+    await loadAvailability(container);
+  });
+
+  const filterDateEl = container.querySelector('#filterDate');
+  filterDateEl?.addEventListener('change', async () => {
+    bookingState.filters.fecha = filterDateEl.value || '';
     bookingState.selectedDoctor = '';
     hideConfirmationCard(container);
     await loadAvailability(container);
@@ -384,11 +422,13 @@ function renderSlotsGrouped(container) {
     }
   });
 
+  const specialtySlots = bookingState.filters.especialidad
+    ? bookingState.slots.filter(s => s.especialidadPublicId === bookingState.filters.especialidad)
+    : bookingState.slots;
+
   const displayedSlots = bookingState.selectedDoctor
-    ? bookingState.slots.filter(s => s.profesionalPublicId === bookingState.selectedDoctor && (!bookingState.filters.especialidad || s.especialidadPublicId === bookingState.filters.especialidad))
-    : (bookingState.filters.especialidad 
-        ? bookingState.slots.filter(s => s.especialidadPublicId === bookingState.filters.especialidad) 
-        : bookingState.slots);
+    ? specialtySlots.filter(s => s.profesionalPublicId === bookingState.selectedDoctor)
+    : specialtySlots;
 
   const grouped = groupSlotsByDay(displayedSlots);
   const selectedDoctorObj = bookingState.selectedDoctor ? doctorsMap.get(bookingState.selectedDoctor) : null;
@@ -404,7 +444,7 @@ function renderSlotsGrouped(container) {
               <span>Médicos disponibles para tu consulta</span>
             </h2>
             <p class="text-xs text-muted m-0">
-              ${selectedSpecialtyName ? `Especialidad: <strong>${selectedSpecialtyName}</strong> · ` : ''}Razón de consulta: <strong>${esc(bookingState.consultationReason)}</strong>
+              ${selectedSpecialtyName ? `Especialidad: <strong>${esc(selectedSpecialtyName)}</strong> · ` : ''}Razón de consulta: <strong>${esc(bookingState.consultationReason)}</strong>
             </p>
           </div>
           <span class="badge badge--scheduled text-xs">${doctorsMap.size} profesional(es) disponible(s)</span>
@@ -422,8 +462,8 @@ function renderSlotsGrouped(container) {
               ${ui.icon('users', 'icon icon--md')}
             </div>
             <div class="text-left flex-1 min-w-0">
-              <strong class="block text-sm">${selectedSpecialtyName ? `Todos en ${selectedSpecialtyName}` : 'Todos los médicos'}</strong>
-              <span class="text-xs text-muted block">${displayedSlots.length} turnos en total</span>
+              <strong class="block text-sm">${selectedSpecialtyName ? `Todos en ${esc(selectedSpecialtyName)}` : 'Todos los médicos'}</strong>
+              <span class="text-xs text-muted block">${specialtySlots.length} turnos en total</span>
               <span class="badge badge--neutral text-xs mt-1" style="font-size: 10px;">Ver toda la oferta</span>
             </div>
           </button>
@@ -436,15 +476,15 @@ function renderSlotsGrouped(container) {
               <button 
                 type="button" 
                 class="doctor-card ${isSel ? 'is-selected' : ''}" 
-                data-doctor-id="${doc.publicId}"
+                data-doctor-id="${esc(doc.publicId)}"
                 aria-pressed="${isSel}"
               >
                 <div class="doctor-avatar">
-                  <span>${initials}</span>
+                  <span>${esc(initials)}</span>
                 </div>
                 <div class="text-left flex-1 min-w-0">
-                  <strong class="block text-sm truncate" title="Dr(a). ${doc.nombre}">Dr(a). ${doc.nombre}</strong>
-                  <span class="text-xs text-muted block truncate font-medium">${doc.especialidad}</span>
+                  <strong class="block text-sm truncate" title="Dr(a). ${esc(doc.nombre)}">Dr(a). ${esc(doc.nombre)}</strong>
+                  <span class="text-xs text-muted block truncate font-medium">${esc(doc.especialidad)}</span>
                   <div class="flex flex-wrap items-center gap-1.5 mt-1">
                     <span class="badge ${isSel ? 'badge--confirmed' : 'badge--scheduled'} text-xs" style="font-size: 10px;">
                       ${doc.totalSlots} turno(s) libre(s)
@@ -462,7 +502,7 @@ function renderSlotsGrouped(container) {
     ` : `
       ${bookingState.filters.especialidad ? `
         <div class="card p-6 text-center mb-6">
-          <p class="text-muted m-0">No se encontraron profesionales con turnos libres para ${selectedSpecialtyName || 'la especialidad seleccionada'}.</p>
+          <p class="text-muted m-0">No se encontraron profesionales con turnos libres para ${esc(selectedSpecialtyName || 'la especialidad seleccionada')}.</p>
         </div>
       ` : ''}
     `}
@@ -471,7 +511,7 @@ function renderSlotsGrouped(container) {
       <div>
         <span class="text-xs text-muted font-bold uppercase tracking-wider">
           ${displayedSlots.length} horario(s) disponible(s)
-          ${selectedDoctorObj ? `· Dr(a). ${selectedDoctorObj.nombre}` : '· Todos los médicos'}
+          ${selectedDoctorObj ? `· Dr(a). ${esc(selectedDoctorObj.nombre)}` : '· Todos los médicos'}
         </span>
       </div>
       <span class="text-xs text-muted">Selecciona una hora para ver el resumen y confirmar</span>
@@ -486,11 +526,11 @@ function renderSlotsGrouped(container) {
       </div>
     ` : `
       <div class="flex flex-col gap-6">
-        ${Array.from(grouped.entries()).map(([dayKey, daySlots]) => `
-          <div class="card p-5" style="border-left: 4px solid var(--primary);">
-            <div class="flex items-center gap-2 mb-3 pb-2 border-b">
+        ${Array.from(grouped.entries()).map(([, daySlots]) => `
+          <div class="card p-5 booking-day-group" style="border-left: 4px solid var(--primary);">
+            <div class="flex flex-wrap items-center gap-2 mb-3 pb-2 border-b">
               ${ui.icon('calendar', 'icon icon--sm text-primary')}
-              <h3 class="text-md font-bold m-0 capitalize">${formatDayHeader(daySlots[0].fechaHoraInicio)}</h3>
+              <h3 class="text-md font-bold m-0 capitalize">${esc(formatDayHeader(daySlots[0].fechaHoraInicio))}</h3>
               <span class="badge badge--scheduled text-xs" style="margin-left: auto;">${daySlots.length} turnos</span>
             </div>
 
@@ -504,16 +544,16 @@ function renderSlotsGrouped(container) {
                   <button 
                     type="button" 
                     class="slot-chip ${isSelected ? 'is-selected' : ''}" 
-                    data-slot-id="${slot.slotPublicId}"
+                    data-slot-id="${esc(slot.slotPublicId)}"
                     aria-pressed="${isSelected}"
-                    aria-label="Cita a las ${formatTime(slot.fechaHoraInicio)} con ${slot.profesionalNombre}, ${slot.especialidadNombre}"
+                    aria-label="Cita a las ${esc(formatTime(slot.fechaHoraInicio))} con ${esc(slot.profesionalNombre)}, ${esc(slot.especialidadNombre)}"
                   >
-                    <span class="text-md font-bold">${formatTime(slot.fechaHoraInicio)}</span>
+                    <span class="text-md font-bold">${esc(formatTime(slot.fechaHoraInicio))}</span>
                     <span class="slot-chip-sub text-xs mt-1">
-                      ${isTele ? 'Telemedicina' : (slot.sedeNombre || 'Presencial')}
+                      ${isTele ? 'Telemedicina' : esc(slot.sedeNombre || 'Presencial')}
                     </span>
                     <span class="slot-chip-sub text-xs text-muted" style="font-size: 11px;">
-                      ${slot.profesionalNombre ? `Dr(a). ${slot.profesionalNombre.split(' ')[0]}` : ''}
+                      ${slot.profesionalNombre ? `Dr(a). ${esc(slot.profesionalNombre.split(' ')[0])}` : ''}
                     </span>
                   </button>
                 `;
@@ -524,6 +564,9 @@ function renderSlotsGrouped(container) {
       </div>
     `}
   `;
+
+  motion.staggerCards(resultsContainer.querySelectorAll('.doctor-card'), { delayStep: 25, root: container });
+  motion.staggerCards(resultsContainer.querySelectorAll('.booking-day-group'), { delayStep: 35, root: container });
 
   // Asignar listeners a las tarjetas de doctores
   resultsContainer.querySelectorAll('.doctor-card').forEach(card => {
@@ -577,7 +620,7 @@ function showConfirmationCard(container, slot) {
 
   confirmCard.style.display = 'block';
   confirmCard.innerHTML = `
-    <div class="card-header flex items-center justify-between pb-2">
+    <div class="card-header flex flex-wrap items-center justify-between gap-2 pb-2">
       <div class="flex items-center gap-2">
         ${ui.icon('calendar', 'icon icon--md text-primary')}
         <h2 class="card-title text-xl font-bold">Resumen de la cita médica</h2>
@@ -591,26 +634,26 @@ function showConfirmationCard(container, slot) {
       <div class="grid grid-cols-1 grid-cols-2-md gap-4 mb-4">
         <div>
           <span class="text-xs text-muted font-bold uppercase tracking-wider block">Fecha y Hora:</span>
-          <p class="text-md font-bold m-0 text-primary capitalize">${fechaTexto} a las ${horaTexto}</p>
-          <span class="text-xs text-muted">Duración aproximada: ${slot.duracionMinutos || 20} minutos</span>
+          <p class="text-md font-bold m-0 text-primary capitalize">${esc(fechaTexto)} a las ${esc(horaTexto)}</p>
+          <span class="text-xs text-muted">Duración aproximada: ${esc(slot.duracionMinutos || 20)} minutos</span>
         </div>
 
         <div>
           <span class="text-xs text-muted font-bold uppercase tracking-wider block">Profesional Asignado:</span>
-          <p class="text-md font-semibold m-0">${slot.profesionalNombre || 'Profesional de Turno'}</p>
-          <span class="badge badge--neutral text-xs">${slot.especialidadNombre || 'Medicina General'}</span>
+          <p class="text-md font-semibold m-0">${esc(slot.profesionalNombre || 'Profesional de Turno')}</p>
+          <span class="badge badge--neutral text-xs">${esc(slot.especialidadNombre || 'Medicina General')}</span>
         </div>
 
         <div>
           <span class="text-xs text-muted font-bold uppercase tracking-wider block">Lugar de Atención:</span>
-          <p class="text-sm font-semibold m-0">${slot.sedeNombre || 'Centro Médico MediTriaje'}</p>
-          <p class="text-xs text-muted m-0">${slot.sedeDireccion ? `${slot.sedeDireccion}, ${slot.sedeCiudad || 'Bogotá'}` : 'Consultorio asignado'}</p>
+          <p class="text-sm font-semibold m-0">${esc(slot.sedeNombre || 'Centro Médico MediTriaje')}</p>
+          <p class="text-xs text-muted m-0">${slot.sedeDireccion ? `${esc(slot.sedeDireccion)}, ${esc(slot.sedeCiudad || 'Bogotá')}` : 'Consultorio asignado'}</p>
         </div>
 
         <div>
           <span class="text-xs text-muted font-bold uppercase tracking-wider block">Triaje Clínico:</span>
           <p class="text-sm m-0">
-            ${bookingState.triageId ? `Vinculado (${bookingState.triageId.slice(0, 8)}...)` : 'Sin triaje previo'}
+            ${bookingState.triageId ? `Vinculado (${esc(bookingState.triageId.slice(0, 8))}...)` : 'Sin triaje previo'}
           </p>
         </div>
 
@@ -641,6 +684,8 @@ function showConfirmationCard(container, slot) {
       </button>
     </div>
   `;
+
+  motion.stepTransition(confirmCard, 'forward');
 
   // Foco accesible hacia la confirmación
   confirmCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -715,6 +760,7 @@ async function executeBooking(container, submitBtn, slot) {
 function renderSuccessBookingView(container, cita, slot) {
   window.scrollTo(0, 0);
 
+  const backUrl = getBackDashboardUrl();
   const isTele = cita.modalidad === 'TELEMEDICINA' || slot.modalidad === 'TELEMEDICINA';
   const fechaTexto = formatDayHeader(cita.fechaHoraInicio || slot.fechaHoraInicio);
   const horaTexto = formatTime(cita.fechaHoraInicio || slot.fechaHoraInicio);
@@ -723,7 +769,7 @@ function renderSuccessBookingView(container, cita, slot) {
     <div style="max-width: var(--container-narrow); margin: 0 auto; padding-top: var(--space-8); padding-bottom: var(--space-12); text-align: center;">
       
       <!-- Icono de Éxito Grande -->
-      <div style="width: 72px; height: 72px; border-radius: 50%; background-color: var(--success-bg); color: var(--success); display: inline-flex; align-items: center; justify-content: center; margin-bottom: var(--space-4);">
+      <div class="booking-success-icon" style="width: 72px; height: 72px; border-radius: 50%; background-color: var(--success-bg); color: var(--success); display: inline-flex; align-items: center; justify-content: center; margin-bottom: var(--space-4);">
         ${ui.icon('check', 'icon icon--lg')}
       </div>
 
@@ -738,28 +784,28 @@ function renderSuccessBookingView(container, cita, slot) {
 
       <!-- Tarjeta con Detalles Concretos de la Cita -->
       <div class="card p-6 mb-8 text-left" style="border-top: 4px solid var(--success);">
-        <div class="flex items-center justify-between pb-3 border-b mb-4">
+        <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b mb-4">
           <span class="text-xs text-muted font-bold uppercase tracking-wider">Código de Reserva:</span>
-          <span class="font-mono font-bold text-sm text-primary">${cita.publicId ? cita.publicId.slice(0, 8) : 'CONFIRMADO'}</span>
+          <span class="font-mono font-bold text-sm text-primary">${esc(cita.publicId ? cita.publicId.slice(0, 8) : 'CONFIRMADO')}</span>
         </div>
 
         <div class="grid grid-cols-1 grid-cols-2-md gap-4 mb-4">
           <div>
             <span class="text-xs text-muted font-bold uppercase tracking-wider block">Fecha y Hora:</span>
-            <p class="text-md font-bold m-0 text-text capitalize">${fechaTexto}</p>
-            <p class="text-sm font-semibold text-primary m-0">${horaTexto}</p>
+            <p class="text-md font-bold m-0 text-text capitalize">${esc(fechaTexto)}</p>
+            <p class="text-sm font-semibold text-primary m-0">${esc(horaTexto)}</p>
           </div>
 
           <div>
             <span class="text-xs text-muted font-bold uppercase tracking-wider block">Profesional:</span>
-            <p class="text-md font-semibold m-0">${cita.profesionalNombre || slot.profesionalNombre}</p>
-            <span class="badge badge--neutral text-xs">${cita.especialidadNombre || slot.especialidadNombre}</span>
+            <p class="text-md font-semibold m-0">${esc(cita.profesionalNombre || slot.profesionalNombre)}</p>
+            <span class="badge badge--neutral text-xs">${esc(cita.especialidadNombre || slot.especialidadNombre)}</span>
           </div>
 
           <div>
             <span class="text-xs text-muted font-bold uppercase tracking-wider block">Sede o Enlace:</span>
-            <p class="text-sm font-semibold m-0">${cita.sedeNombre || slot.sedeNombre}</p>
-            <p class="text-xs text-muted m-0">${cita.sedeDireccion || slot.sedeDireccion || 'Consultorio programado'}</p>
+            <p class="text-sm font-semibold m-0">${esc(cita.sedeNombre || slot.sedeNombre)}</p>
+            <p class="text-xs text-muted m-0">${esc(cita.sedeDireccion || slot.sedeDireccion || 'Consultorio programado')}</p>
           </div>
 
           <div>
@@ -786,16 +832,22 @@ function renderSuccessBookingView(container, cita, slot) {
 
       <!-- Acciones de Navegación -->
       <div class="flex flex-wrap items-center justify-center gap-4">
-        <a href="#/patient/dashboard" class="btn btn-primary btn--lg">
+        <a href="${backUrl}" class="btn btn-primary btn--lg">
           ${ui.icon('hospital')}
           <span>Ir a mi panel principal</span>
         </a>
 
-        <a href="#/patient/appointments" class="btn btn-secondary btn--lg">
-          ${ui.icon('calendar')}
-          <span>Ver todas mis citas</span>
-        </a>
+        ${auth.isPaciente ? `
+          <a href="#/patient/appointments" class="btn btn-secondary btn--lg">
+            ${ui.icon('calendar')}
+            <span>Ver todas mis citas</span>
+          </a>
+        ` : ''}
       </div>
     </div>
   `;
+
+  motion.stepTransition(container.firstElementChild, 'forward');
+  motion.springPop(container.querySelector('.booking-success-icon'), { root: container });
+  motion.drawSvg(container.querySelector('.booking-success-icon svg'), { duration: 500, root: container });
 }

@@ -6,9 +6,10 @@
 
 import { api } from '../api.js';
 import { auth } from '../auth.js';
+import { animate } from '../lib/anime.esm.min.js';
 import { motion } from '../motion.js';
 import { router } from '../router.js';
-import { ui } from '../ui.js';
+import { ui, esc } from '../ui.js';
 
 // Estado local reactivo de la sesión de triaje
 let triageState = {
@@ -92,9 +93,17 @@ export async function patientTriageView(container, context = {}) {
  * @param {HTMLElement} container
  */
 function renderWizard(container) {
+  const prevPct = `${triageState.prevStep * 50}%`;
+  const targetPct = `${triageState.step * 50}%`;
+
   container.innerHTML = `
     <div style="max-width: var(--container-narrow); margin: 0 auto; padding-top: var(--space-4); padding-bottom: var(--space-12);">
-      
+      <nav class="breadcrumb" aria-label="Ruta de navegación">
+        <a href="#/patient/dashboard">Inicio</a>
+        <span class="breadcrumb-separator" aria-hidden="true">/</span>
+        <span class="breadcrumb-current">Triaje Clínico</span>
+      </nav>
+
       <!-- Encabezado con aviso legal sereno -->
       <div class="mb-6">
         <div class="flex items-center gap-2 mb-2">
@@ -120,16 +129,33 @@ function renderWizard(container) {
         <span class="wizard-step-label">
           Paso ${triageState.step} de 2: ${triageState.step === 1 ? 'Selección de síntomas' : 'Intensidad y duración'}
         </span>
-        <span class="text-xs text-muted font-medium tabular-nums">${triageState.selectedSymptoms.size} síntoma(s) seleccionados</span>
+        <span class="text-xs text-muted font-medium tabular-nums wizard-selected-count">${triageState.selectedSymptoms.size} síntoma(s) seleccionados</span>
       </div>
       <div class="wizard-progress-bar" role="progressbar" aria-valuenow="${triageState.step * 50}" aria-valuemin="0" aria-valuemax="100">
-        <div class="wizard-progress-fill" style="width: ${triageState.step * 50}%;"></div>
+        <div class="wizard-progress-fill" style="width: ${prevPct};"></div>
       </div>
 
       <!-- Contenedor dinámico del paso actual -->
       <div id="wizardStepContent" class="mt-6"></div>
     </div>
   `;
+
+  const progressFill = container.querySelector('.wizard-progress-fill');
+  if (progressFill) {
+    if (motion.isMotionReduced() || triageState.prevStep === triageState.step) {
+      progressFill.style.width = targetPct;
+    } else {
+      progressFill.style.transition = 'none';
+      animate(progressFill, {
+        width: [prevPct, targetPct],
+        duration: 320,
+        ease: 'outQuart',
+        onComplete: () => {
+          progressFill.style.transition = '';
+        }
+      });
+    }
+  }
 
   const stepContainer = container.querySelector('#wizardStepContent');
   const direction = triageState.step < triageState.prevStep ? 'back' : 'forward';
@@ -165,7 +191,7 @@ function renderStep1(stepContainer, mainContainer) {
               id="symptomSearch" 
               class="form-input" 
               placeholder="Ej. dolor de cabeza, fiebre, mareo, pecho..." 
-              value="${triageState.searchTerm}"
+              value="${esc(triageState.searchTerm)}"
               aria-label="Buscar síntoma en el catálogo"
             >
           </div>
@@ -175,22 +201,29 @@ function renderStep1(stepContainer, mainContainer) {
         <div class="mb-4">
           <span class="text-xs text-muted font-semibold uppercase tracking-wider block mb-2">Categorías:</span>
           <div class="chip-group" id="categoryChips">
-            ${categories.map(cat => `
-              <button 
-                type="button" 
-                class="chip ${triageState.activeCategory === cat ? 'is-selected' : ''}" 
-                data-category="${cat}"
-                style="padding: var(--space-1) var(--space-3); min-height: 2.25rem; font-size: var(--text-xs);"
-              >
-                ${formatCategoryLabel(cat)}
-              </button>
-            `).join('')}
+            ${categories.map(cat => {
+              const isCatActive = triageState.activeCategory === cat;
+              return `
+                <button 
+                  type="button" 
+                  class="chip ${isCatActive ? 'is-selected' : ''}" 
+                  data-category="${esc(cat)}"
+                  aria-pressed="${isCatActive}"
+                  style="padding: var(--space-2) var(--space-3); font-size: var(--text-xs);"
+                >
+                  ${esc(formatCategoryLabel(cat))}
+                </button>
+              `;
+            }).join('')}
           </div>
         </div>
 
+        <!-- Barra resumen compacta de síntomas seleccionados -->
+        <div id="selectedSymptomsBar" class="mb-4" style="display: none;"></div>
+
         <!-- Lista de síntomas como chips seleccionables -->
         <div class="mb-4">
-          <div class="flex items-center justify-between mb-2">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
             <span class="text-xs text-muted font-semibold uppercase tracking-wider">Síntomas disponibles:</span>
             <span id="symptomCounter" class="text-xs text-muted font-medium tabular-nums"></span>
           </div>
@@ -214,8 +247,85 @@ function renderStep1(stepContainer, mainContainer) {
 
   const searchInput = stepContainer.querySelector('#symptomSearch');
   const symptomsList = stepContainer.querySelector('#symptomsList');
+  const selectedBar = stepContainer.querySelector('#selectedSymptomsBar');
   const counterSpan = stepContainer.querySelector('#symptomCounter');
   const btnNext = stepContainer.querySelector('#btnNextStep');
+
+  const syncSelectionChrome = () => {
+    btnNext.disabled = triageState.selectedSymptoms.size === 0;
+    const stepCounter = mainContainer.querySelector('.wizard-selected-count');
+    if (stepCounter) {
+      stepCounter.textContent = `${triageState.selectedSymptoms.size} síntoma(s) seleccionados`;
+    }
+    renderSelectedSummaryBar();
+  };
+
+  const syncChipDomInPlace = (code, isSelected) => {
+    const chipBtn = Array.from(symptomsList.querySelectorAll('button[data-code]'))
+      .find(b => b.getAttribute('data-code') === code);
+    if (!chipBtn) return;
+    chipBtn.classList.toggle('is-selected', isSelected);
+    chipBtn.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+    const checkIconWrap = chipBtn.querySelector('.chip-check-icon');
+    if (checkIconWrap) {
+      checkIconWrap.style.display = isSelected ? 'inline-flex' : 'none';
+    }
+  };
+
+  const renderSelectedSummaryBar = () => {
+    if (!selectedBar) return;
+    const items = Array.from(triageState.selectedSymptoms.values());
+    if (items.length === 0) {
+      selectedBar.style.display = 'none';
+      selectedBar.innerHTML = '';
+      return;
+    }
+
+    selectedBar.style.display = 'block';
+    selectedBar.innerHTML = `
+      <div class="p-3" style="background-color: var(--primary-soft); border: 1px solid var(--primary-soft-border); border-radius: var(--radius-md);">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <span class="text-xs font-bold uppercase tracking-wider text-primary tabular-nums">
+            Seleccionados (${items.length}/20)
+          </span>
+          <button type="button" id="btnClearSymptoms" class="btn btn-ghost btn--xs text-muted">
+            Limpiar selección
+          </button>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          ${items.map(item => `
+            <button
+              type="button"
+              class="badge ${item.esAlarma ? 'badge--triage-1' : 'badge--soft-primary'} cursor-pointer"
+              data-remove-code="${esc(item.codigo)}"
+              aria-label="Quitar ${esc(item.nombre)}"
+              title="Quitar ${esc(item.nombre)}"
+              style="border: 1px solid currentColor; min-height: 2rem;"
+            >
+              <span>${esc(item.nombre)}</span>
+              ${ui.icon('x', 'icon icon--xs')}
+            </button>
+          `).join('')}
+        </div>
+      </div>
+    `;
+
+    selectedBar.querySelector('#btnClearSymptoms')?.addEventListener('click', () => {
+      const codes = Array.from(triageState.selectedSymptoms.keys());
+      triageState.selectedSymptoms.clear();
+      codes.forEach(c => syncChipDomInPlace(c, false));
+      syncSelectionChrome();
+    });
+
+    selectedBar.querySelectorAll('button[data-remove-code]').forEach(rmBtn => {
+      rmBtn.addEventListener('click', () => {
+        const code = rmBtn.getAttribute('data-remove-code');
+        triageState.selectedSymptoms.delete(code);
+        syncChipDomInPlace(code, false);
+        syncSelectionChrome();
+      });
+    });
+  };
 
   // Función para filtrar y pintar los chips
   const updateSymptomsList = () => {
@@ -233,7 +343,7 @@ function renderStep1(stepContainer, mainContainer) {
     if (filtered.length === 0) {
       symptomsList.innerHTML = `
         <div class="p-6 text-center text-muted text-sm w-full">
-          No se encontraron síntomas coincidentes con "${triageState.searchTerm}". Intenta con otro término.
+          No se encontraron síntomas coincidentes con "${esc(triageState.searchTerm)}". Intenta con otro término.
         </div>
       `;
       return;
@@ -241,34 +351,38 @@ function renderStep1(stepContainer, mainContainer) {
 
     symptomsList.innerHTML = filtered.map(s => {
       const isSelected = triageState.selectedSymptoms.has(s.codigo);
-      const isAlarm = s.esAlarma;
+      const isAlarm = Boolean(s.esAlarma);
       const chipClass = `chip ${isSelected ? 'is-selected' : ''} ${isAlarm ? 'chip--alarm' : ''}`;
 
       return `
         <button 
           type="button" 
           class="${chipClass}" 
-          data-code="${s.codigo}"
-          role="checkbox"
-          aria-checked="${isSelected}"
-          aria-label="${s.nombre}${isAlarm ? ' (Síntoma de alarma clínica)' : ''}"
+          data-code="${esc(s.codigo)}"
+          aria-pressed="${isSelected}"
+          aria-label="${esc(s.nombre)}${isAlarm ? ' (Síntoma de alarma clínica)' : ''}"
         >
-          ${isAlarm ? ui.icon('alert-triangle', 'icon icon--sm') : (isSelected ? ui.icon('check', 'icon icon--sm') : '')}
-          <span>${s.nombre}</span>
+          ${isAlarm
+            ? ui.icon('alert-triangle', 'icon icon--sm')
+            : `<span class="chip-check-icon" style="display: ${isSelected ? 'inline-flex' : 'none'};">${ui.icon('check', 'icon icon--sm')}</span>`
+          }
+          <span>${esc(s.nombre)}</span>
           ${isAlarm ? '<span class="badge badge--triage-1" style="font-size: 10px; padding: 1px 4px; margin-left: 4px;">Alarma</span>' : ''}
         </button>
       `;
     }).join('');
 
-    // Listener para cada chip
+    // Listener in-place para cada chip (preserva foco y posición de scroll)
     symptomsList.querySelectorAll('button[data-code]').forEach(btn => {
       btn.addEventListener('click', () => {
         const code = btn.getAttribute('data-code');
         const symptom = triageState.catalog.find(s => s.codigo === code);
         if (!symptom) return;
 
+        let isNowSelected = false;
         if (triageState.selectedSymptoms.has(code)) {
           triageState.selectedSymptoms.delete(code);
+          isNowSelected = false;
         } else {
           if (triageState.selectedSymptoms.size >= 20) {
             ui.showToast('No puedes seleccionar más de 20 síntomas por triaje.', 'warning');
@@ -282,16 +396,18 @@ function renderStep1(stepContainer, mainContainer) {
             intensidad: 5,
             duracionHoras: 12
           });
+          isNowSelected = true;
         }
 
-        // Refrescar estado visual del botón y contador
-        updateSymptomsList();
-        btnNext.disabled = triageState.selectedSymptoms.size === 0;
-        
-        const stepCounter = mainContainer.querySelector('.wizard-stepper .text-muted');
-        if (stepCounter) {
-          stepCounter.textContent = `${triageState.selectedSymptoms.size} síntoma(s) seleccionados`;
+        btn.classList.toggle('is-selected', isNowSelected);
+        btn.setAttribute('aria-pressed', isNowSelected ? 'true' : 'false');
+        const checkIconWrap = btn.querySelector('.chip-check-icon');
+        if (checkIconWrap) {
+          checkIconWrap.style.display = isNowSelected ? 'inline-flex' : 'none';
         }
+
+        motion.springPop(btn, { scale: 0.94, y: 0, duration: 240, root: mainContainer });
+        syncSelectionChrome();
       });
     });
   };
@@ -304,8 +420,12 @@ function renderStep1(stepContainer, mainContainer) {
 
   stepContainer.querySelectorAll('#categoryChips button').forEach(catBtn => {
     catBtn.addEventListener('click', () => {
-      stepContainer.querySelectorAll('#categoryChips button').forEach(b => b.classList.remove('is-selected'));
+      stepContainer.querySelectorAll('#categoryChips button').forEach(b => {
+        b.classList.remove('is-selected');
+        b.setAttribute('aria-pressed', 'false');
+      });
       catBtn.classList.add('is-selected');
+      catBtn.setAttribute('aria-pressed', 'true');
       triageState.activeCategory = catBtn.getAttribute('data-category');
       updateSymptomsList();
     });
@@ -320,6 +440,7 @@ function renderStep1(stepContainer, mainContainer) {
   });
 
   // Render inicial
+  syncSelectionChrome();
   updateSymptomsList();
 }
 
@@ -338,11 +459,11 @@ function renderStep2(stepContainer, mainContainer) {
     <!-- Lista de tarjetas por síntoma -->
     <div class="flex flex-col gap-5 mb-6" id="symptomsDetailList">
       ${selectedList.map((item, idx) => `
-        <div class="card" data-symptom-code="${item.codigo}" style="border-left: 4px solid ${item.esAlarma ? 'var(--danger)' : 'var(--primary)'};">
-          <div class="card-header flex items-center justify-between pb-2">
+        <div class="card" data-symptom-code="${esc(item.codigo)}" style="border-left: 4px solid ${item.esAlarma ? 'var(--danger)' : 'var(--primary)'};">
+          <div class="card-header flex flex-wrap items-center justify-between gap-2 pb-2">
             <div class="flex items-center gap-2">
               <span class="badge ${item.esAlarma ? 'badge--triage-1' : 'badge--scheduled'}">${idx + 1}</span>
-              <h3 class="card-title text-md font-bold">${item.nombre}</h3>
+              <h3 class="card-title text-md font-bold">${esc(item.nombre)}</h3>
             </div>
             ${item.esAlarma ? '<span class="badge badge--triage-1">Síntoma de Alarma</span>' : ''}
           </div>
@@ -350,19 +471,19 @@ function renderStep2(stepContainer, mainContainer) {
           <div class="card-body pt-2">
             <!-- Selector de Intensidad (0-10) -->
             <div class="form-group mb-5">
-              <div class="flex items-center justify-between mb-1">
+              <div class="flex flex-wrap items-center justify-between gap-3 mb-1">
                 <label class="form-label m-0">Intensidad del malestar (0 = Ninguno, 10 = Máximo dolor):</label>
-                <span class="badge badge--neutral font-bold text-sm intensity-label" id="label-intensity-${item.codigo}">
+                <span class="badge badge--neutral font-bold text-sm intensity-label" id="label-intensity-${esc(item.codigo)}">
                   ${item.intensidad} / 10 · ${getIntensityDescription(item.intensidad)}
                 </span>
               </div>
-              <div class="scale-selector" role="group" aria-label="Escala de intensidad para ${item.nombre}">
+              <div class="scale-selector" role="group" aria-label="Escala de intensidad para ${esc(item.nombre)}">
                 ${[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(val => `
                   <button 
                     type="button" 
                     class="scale-btn ${item.intensidad === val ? 'is-selected' : ''}" 
                     data-val="${val}"
-                    data-code="${item.codigo}"
+                    data-code="${esc(item.codigo)}"
                     aria-pressed="${item.intensidad === val}"
                   >
                     ${val}
@@ -373,25 +494,25 @@ function renderStep2(stepContainer, mainContainer) {
 
             <!-- Duración en Horas -->
             <div class="form-group mb-2">
-              <label for="duration-${item.codigo}" class="form-label">
+              <label for="duration-${esc(item.codigo)}" class="form-label">
                 ¿Hace cuántas horas comenzaron los síntomas aproximadamente?
               </label>
               <div class="flex flex-wrap items-center gap-2">
                 <input 
                   type="number" 
-                  id="duration-${item.codigo}" 
+                  id="duration-${esc(item.codigo)}" 
                   class="form-input duration-input" 
                   style="max-width: 140px;" 
                   min="0" 
                   step="1" 
-                  value="${item.duracionHoras}" 
-                  data-code="${item.codigo}"
-                  aria-label="Duración en horas para ${item.nombre}"
+                  value="${esc(item.duracionHoras)}" 
+                  data-code="${esc(item.codigo)}"
+                  aria-label="Duración en horas para ${esc(item.nombre)}"
                 >
                 <span class="text-sm text-muted">horas</span>
 
                 <!-- Presets rápidos para comodidad táctil -->
-                <div class="flex flex-wrap gap-1" style="margin-left: auto;">
+                <div class="flex flex-wrap gap-2" style="margin-left: auto;">
                   ${[
                     { label: '2 h', val: 2 },
                     { label: '6 h', val: 6 },
@@ -399,17 +520,21 @@ function renderStep2(stepContainer, mainContainer) {
                     { label: '24 h (1 d)', val: 24 },
                     { label: '48 h (2 d)', val: 48 },
                     { label: '72 h (3 d)', val: 72 }
-                  ].map(preset => `
-                    <button 
-                      type="button" 
-                      class="btn btn-secondary btn--sm duration-preset" 
-                      data-code="${item.codigo}" 
-                      data-hours="${preset.val}"
-                      style="font-size: var(--text-xs); padding: 4px 8px; min-height: 32px;"
-                    >
-                      ${preset.label}
-                    </button>
-                  `).join('')}
+                  ].map(preset => {
+                    const isPresetActive = Number(item.duracionHoras) === preset.val;
+                    return `
+                      <button 
+                        type="button" 
+                        class="btn ${isPresetActive ? 'btn-primary is-selected' : 'btn-secondary'} duration-preset" 
+                        data-code="${esc(item.codigo)}" 
+                        data-hours="${preset.val}"
+                        aria-pressed="${isPresetActive}"
+                        style="font-size: var(--text-xs); padding: 0 var(--space-3); min-height: var(--touch-target);"
+                      >
+                        ${preset.label}
+                      </button>
+                    `;
+                  }).join('')}
                 </div>
               </div>
             </div>
@@ -428,11 +553,11 @@ function renderStep2(stepContainer, mainContainer) {
         <div class="form-group m-0">
           <textarea 
             id="triageObservations" 
-            class="form-input" 
+            class="form-textarea" 
             rows="3" 
             maxlength="500" 
             placeholder="Describe brevemente cualquier otro síntoma o condición médica relevante..."
-          >${triageState.observaciones}</textarea>
+          >${esc(triageState.observaciones)}</textarea>
           <div class="flex justify-end mt-1">
             <span id="charCount" class="text-xs text-muted">0 / 500 caracteres</span>
           </div>
@@ -441,7 +566,7 @@ function renderStep2(stepContainer, mainContainer) {
     </div>
 
     <!-- Acciones del pie del asistente -->
-    <div class="flex items-center justify-between gap-4">
+    <div class="flex flex-wrap items-center justify-between gap-3">
       <button type="button" id="btnBackToStep1" class="btn btn-secondary">
         ${ui.icon('chevron-left')}
         <span>Atrás: Modificar síntomas</span>
@@ -454,6 +579,19 @@ function renderStep2(stepContainer, mainContainer) {
     </div>
   `;
 
+  motion.staggerCards(stepContainer.querySelectorAll('#symptomsDetailList .card'), { root: mainContainer });
+
+  const syncDurationPresetHighlight = (code, hours) => {
+    stepContainer.querySelectorAll('.duration-preset').forEach(presetBtn => {
+      if (presetBtn.getAttribute('data-code') !== code) return;
+      const isCur = Number(presetBtn.getAttribute('data-hours')) === Number(hours);
+      presetBtn.classList.toggle('btn-primary', isCur);
+      presetBtn.classList.toggle('is-selected', isCur);
+      presetBtn.classList.toggle('btn-secondary', !isCur);
+      presetBtn.setAttribute('aria-pressed', isCur ? 'true' : 'false');
+    });
+  };
+
   // Listener para botones de intensidad
   stepContainer.querySelectorAll('.scale-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -465,14 +603,17 @@ function renderStep2(stepContainer, mainContainer) {
       item.intensidad = val;
 
       // Actualizar botones de este síntoma
-      stepContainer.querySelectorAll(`.scale-btn[data-code="${code}"]`).forEach(b => {
+      stepContainer.querySelectorAll('.scale-btn').forEach(b => {
+        if (b.getAttribute('data-code') !== code) return;
         const isCur = parseInt(b.getAttribute('data-val'), 10) === val;
         b.classList.toggle('is-selected', isCur);
         b.setAttribute('aria-pressed', isCur ? 'true' : 'false');
       });
 
+      motion.springPop(btn, { scale: 0.92, y: 0, duration: 240, root: mainContainer });
+
       // Actualizar label
-      const label = stepContainer.querySelector(`#label-intensity-${code}`);
+      const label = stepContainer.querySelector(`#label-intensity-${CSS.escape(code)}`);
       if (label) {
         label.textContent = `${val} / 10 · ${getIntensityDescription(val)}`;
       }
@@ -481,13 +622,16 @@ function renderStep2(stepContainer, mainContainer) {
 
   // Listener para inputs de duración
   stepContainer.querySelectorAll('.duration-input').forEach(input => {
-    input.addEventListener('change', (e) => {
+    const handleDurationChange = (e) => {
       const code = input.getAttribute('data-code');
       const item = triageState.selectedSymptoms.get(code);
       if (item) {
         item.duracionHoras = Math.max(0, parseFloat(e.target.value) || 0);
+        syncDurationPresetHighlight(code, item.duracionHoras);
       }
-    });
+    };
+    input.addEventListener('input', handleDurationChange);
+    input.addEventListener('change', handleDurationChange);
   });
 
   // Listener para presets de duración
@@ -498,8 +642,10 @@ function renderStep2(stepContainer, mainContainer) {
       const item = triageState.selectedSymptoms.get(code);
       if (item) {
         item.duracionHoras = hours;
-        const input = stepContainer.querySelector(`#duration-${code}`);
+        const input = stepContainer.querySelector(`#duration-${CSS.escape(code)}`);
         if (input) input.value = hours;
+        syncDurationPresetHighlight(code, hours);
+        motion.springPop(btn, { scale: 0.94, y: 0, duration: 220, root: mainContainer });
       }
     });
   });
@@ -589,6 +735,11 @@ export function renderEmergencyView(container, resultado) {
 
   container.innerHTML = `
     <div style="max-width: var(--container-narrow); margin: 0 auto; padding-top: var(--space-6); padding-bottom: var(--space-12);">
+      <nav class="breadcrumb" aria-label="Ruta de navegación">
+        <a href="#/patient/dashboard">Inicio</a>
+        <span class="breadcrumb-separator" aria-hidden="true">/</span>
+        <span class="breadcrumb-current">Triaje Clínico</span>
+      </nav>
       
       <!-- Tarjeta Principal de Emergencia Nivel I -->
       <div class="card mb-6" style="border: 2px solid var(--danger); border-top: 8px solid var(--danger); box-shadow: var(--shadow-xl); overflow: hidden;">
@@ -596,15 +747,15 @@ export function renderEmergencyView(container, resultado) {
         <!-- Header de Emergencia -->
         <div class="p-6" style="background: linear-gradient(180deg, rgba(239, 68, 68, 0.08) 0%, var(--surface) 100%); border-bottom: 1px solid var(--border-color);">
           <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-            <span class="badge badge--triage-1 text-sm font-bold flex items-center gap-1" style="background-color: var(--danger); color: #FFFFFF; padding: var(--space-1) var(--space-3); border-radius: var(--radius-full);">
+            <span class="badge badge--triage-1 text-sm font-bold flex items-center gap-1" style="background-color: #DC2626; color: #FFFFFF; border-color: #B91C1C; padding: var(--space-1) var(--space-3); border-radius: var(--radius-full);">
               ${ui.icon('alert-triangle', 'icon icon--sm')}
               <span>Nivel I · Emergencia Médica Inmediata</span>
             </span>
-            ${resultado.publicId ? `<span class="text-xs text-muted font-mono">ID: ${resultado.publicId.slice(0, 8)}</span>` : ''}
+            ${resultado.publicId ? `<span class="text-xs text-muted font-mono">ID: ${esc(resultado.publicId.slice(0, 8))}</span>` : ''}
           </div>
 
           <div class="flex items-start gap-4 mt-2">
-            <div style="background-color: var(--danger); color: #FFFFFF; border-radius: 50%; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 4px 10px rgba(220, 38, 38, 0.3);">
+            <div class="triage-hero-icon" style="background-color: #DC2626; color: #FFFFFF; border-radius: 50%; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 4px 10px rgba(220, 38, 38, 0.3);">
               ${ui.icon('alert-triangle', 'icon icon--lg')}
             </div>
             <div>
@@ -612,7 +763,7 @@ export function renderEmergencyView(container, resultado) {
                 Busca atención de urgencias ahora
               </h1>
               <p class="text-base font-medium mt-2 mb-0" style="color: var(--text); line-height: var(--leading-normal);">
-                ${resultado.mensaje || 'Llama al 123 o acude a urgencias de inmediato.'}
+                ${esc(resultado.mensaje || 'Llama al 123 o acude a urgencias de inmediato.')}
               </p>
             </div>
           </div>
@@ -627,9 +778,9 @@ export function renderEmergencyView(container, resultado) {
             </p>
             <a 
               href="tel:123" 
-              class="btn btn-danger btn--lg" 
+              class="btn btn-emergency btn--lg" 
               id="btnEmergencyCall"
-              style="font-size: var(--text-2xl); font-weight: var(--weight-bold); padding: var(--space-4) var(--space-8); min-height: 4.2rem; width: 100%; max-width: 400px; margin: 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-3); box-shadow: 0 10px 15px -3px rgba(220, 38, 38, 0.3), 0 4px 6px -4px rgba(220, 38, 38, 0.2); text-decoration: none; border-radius: var(--radius-md);"
+              style="font-size: var(--text-2xl); font-weight: var(--weight-bold); padding: var(--space-4) var(--space-8); min-height: 4.2rem; width: 100%; max-width: 400px; margin: 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-3); text-decoration: none; border-radius: var(--radius-md);"
             >
               ${ui.icon('phone', 'icon icon--lg')}
               <span>Llamar al 123</span>
@@ -648,7 +799,7 @@ export function renderEmergencyView(container, resultado) {
             <div class="flex flex-wrap gap-2 mt-1">
               ${alarmSymptomItems.map(item => `
                 <span class="badge badge--triage-1" style="background-color: var(--surface); color: var(--danger); border: 1px solid var(--danger); font-weight: var(--weight-semibold); font-size: var(--text-sm); padding: var(--space-1) var(--space-3);">
-                  ${item}
+                  ${esc(item)}
                 </span>
               `).join('')}
             </div>
@@ -689,7 +840,7 @@ export function renderEmergencyView(container, resultado) {
           <div class="p-4" style="background-color: var(--surface-2); border-radius: var(--radius-md); font-size: var(--text-xs); color: var(--text-muted); line-height: var(--leading-normal);">
             <strong class="text-text block mb-1">Aviso de Orientación Asistencial:</strong>
             <p class="m-0 mb-1">Prototipo académico. Orienta, no diagnostica ni reemplaza la valoración de un profesional de la salud.</p>
-            <span class="font-mono text-muted" style="font-size: 11px;">Versión de reglas clínicas: ${resultado.versionReglas || 'v1-prototipo'}</span>
+            <span class="font-mono text-muted" style="font-size: 11px;">Versión de reglas clínicas: ${esc(resultado.versionReglas || 'v1-prototipo')}</span>
           </div>
         </div>
 
@@ -709,7 +860,7 @@ export function renderEmergencyView(container, resultado) {
   `;
 
   motion.stepTransition(container.querySelector('.card'), 'forward');
-  motion.drawSvg(container.querySelector('.badge svg, .card-header svg'), { duration: 550, root: container });
+  motion.drawSvg(container.querySelector('.triage-hero-icon svg'), { duration: 550, root: container });
 }
 
 /**
@@ -725,16 +876,21 @@ export function renderTriageResultView(container, resultado) {
 
   container.innerHTML = `
     <div style="max-width: var(--container-narrow); margin: 0 auto; padding-top: var(--space-6); padding-bottom: var(--space-12);">
+      <nav class="breadcrumb" aria-label="Ruta de navegación">
+        <a href="#/patient/dashboard">Inicio</a>
+        <span class="breadcrumb-separator" aria-hidden="true">/</span>
+        <span class="breadcrumb-current">Triaje Clínico</span>
+      </nav>
       
       <!-- Tarjeta Principal del Resultado -->
       <div class="card mb-6" style="border-top: 6px solid ${nivelConfig.borderColor};">
         <div class="card-header pb-3">
-          <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-2 w-full">
             <span class="badge ${nivelConfig.badgeClass} text-sm font-bold flex items-center gap-2">
-              ${ui.icon(nivelConfig.icon, 'icon icon--sm')}
-              <span>Nivel ${nivel} · ${nivelConfig.title}</span>
+              <span class="triage-hero-icon inline-flex">${ui.icon(nivelConfig.icon, 'icon icon--sm')}</span>
+              <span>Nivel ${esc(nivel)} · ${esc(nivelConfig.title)}</span>
             </span>
-            <span class="text-xs text-muted font-mono">ID: ${resultado.publicId.slice(0, 8)}</span>
+            <span class="text-xs text-muted font-mono">ID: ${resultado.publicId ? esc(resultado.publicId.slice(0, 8)) : '—'}</span>
           </div>
           <h1 class="card-title text-2xl font-bold">Resultado de tu Orientación</h1>
           <p class="card-subtitle text-sm text-muted">Clasificación orientativa según los síntomas reportados</p>
@@ -745,8 +901,8 @@ export function renderTriageResultView(container, resultado) {
           <div class="alert alert--info mb-6">
             ${ui.icon('info', 'icon alert-icon')}
             <div class="alert-content">
-              <div class="alert-title">Ruta asistencial sugerida: ${formatRutaSugerida(resultado.rutaSugerida)}</div>
-              <p class="m-0">${resultado.mensaje}</p>
+              <div class="alert-title">Ruta asistencial sugerida: ${esc(formatRutaSugerida(resultado.rutaSugerida))}</div>
+              <p class="m-0">${esc(resultado.mensaje)}</p>
             </div>
           </div>
 
@@ -754,7 +910,7 @@ export function renderTriageResultView(container, resultado) {
           <div class="mb-6">
             <h3 class="text-sm font-bold uppercase tracking-wider text-muted mb-3">Síntomas reportados:</h3>
             <div class="table-container">
-              <table class="table">
+              <table class="table table--stacked">
                 <thead>
                   <tr>
                     <th>Síntoma</th>
@@ -765,11 +921,11 @@ export function renderTriageResultView(container, resultado) {
                 <tbody>
                   ${(resultado.sintomas || []).map(s => `
                     <tr>
-                      <td class="font-medium">${s.nombre}</td>
-                      <td>
-                        <span class="badge badge--neutral">${s.intensidad} / 10</span>
+                      <td data-label="Síntoma" class="font-medium">${esc(s.nombre)}</td>
+                      <td data-label="Intensidad">
+                        <span class="badge badge--neutral">${esc(s.intensidad)} / 10</span>
                       </td>
-                      <td>${s.duracionHoras} h</td>
+                      <td data-label="Duración">${esc(s.duracionHoras)} h</td>
                     </tr>
                   `).join('')}
                 </tbody>
@@ -790,7 +946,7 @@ export function renderTriageResultView(container, resultado) {
             <span>Volver a mi panel</span>
           </a>
 
-          <a href="#/patient/book?triageId=${resultado.publicId}" class="btn btn-primary btn--lg" id="btnBookFromTriage">
+          <a href="#/patient/book?triageId=${encodeURIComponent(resultado.publicId || '')}" class="btn btn-primary btn--lg" id="btnBookFromTriage">
             ${ui.icon('calendar')}
             <span>Ver horarios disponibles para agendar</span>
           </a>
@@ -800,7 +956,7 @@ export function renderTriageResultView(container, resultado) {
   `;
 
   motion.stepTransition(container.querySelector('.card'), 'forward');
-  motion.drawSvg(container.querySelector('.badge svg, .card-header svg'), { duration: 550, root: container });
+  motion.drawSvg(container.querySelector('.triage-hero-icon svg'), { duration: 550, root: container });
 }
 
 /**
@@ -809,7 +965,7 @@ export function renderTriageResultView(container, resultado) {
 async function renderReadOnlyTriage(container, triageId) {
   ui.renderLoading(container, 'Cargando información del triaje...');
   try {
-    const triaje = await api.get(`/triage/${triageId}`);
+    const triaje = await api.get(`/triage/${encodeURIComponent(triageId)}`);
     if (triaje.esEmergencia || triaje.nivelPrioridad === 'I') {
       renderEmergencyView(container, triaje);
     } else {
@@ -818,8 +974,10 @@ async function renderReadOnlyTriage(container, triageId) {
   } catch (err) {
     ui.renderError(container, {
       title: 'No fue posible abrir el triaje',
-      message: err.message || 'No se encontró el triaje solicitado o no tienes permiso para acceder a él.',
-      onRetry: () => router.navigate('/patient/dashboard')
+      message: esc(err.message || 'No se encontró el triaje solicitado o no tienes permiso para acceder a él.'),
+      onRetry: () => renderReadOnlyTriage(container, triageId),
+      actionText: 'Volver al panel',
+      onAction: () => router.navigate('/patient/dashboard')
     });
   }
 }
